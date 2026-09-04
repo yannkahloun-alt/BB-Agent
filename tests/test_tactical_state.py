@@ -171,8 +171,16 @@ def _state(
         skill_id="skill.attack",
         target_kind=TargetKind.ACTOR,
         target_actor_id="enemy",
-        ap_cost=ResolvedCost(4, ResolutionStage.PREVIEW_RESOLVED, "fixture UI"),
-        fatigue_cost=ResolvedCost(10, ResolutionStage.PREVIEW_RESOLVED, "fixture UI"),
+        ap_cost=ResolvedCost(
+            4,
+            ResolutionStage.PREVIEW_RESOLVED,
+            ResolutionAuthority.HANDCRAFTED_FIXTURE,
+        ),
+        fatigue_cost=ResolvedCost(
+            10,
+            ResolutionStage.PREVIEW_RESOLVED,
+            ResolutionAuthority.HANDCRAFTED_FIXTURE,
+        ),
         preview=PlayerVisiblePreview(
             displayed_hit_chance=ResolvedPreviewValue(
                 67, ResolutionStage.PREVIEW_RESOLVED, ResolutionAuthority.PLAYER_UI
@@ -787,6 +795,50 @@ def test_preview_authority_is_closed_and_debug_authority_is_profile_gated() -> N
                 actions=(replace(action, preview=debug_preview),),
             ),
         ).normalized()
+
+
+def test_cost_authority_is_closed_and_debug_authority_is_profile_gated() -> None:
+    with pytest.raises(ValueError, match="valid authority"):
+        ResolvedCost(
+            4,
+            ResolutionStage.PREVIEW_RESOLVED,
+            "runtime oracle",  # type: ignore[arg-type]
+        )
+
+    state = _state()
+    action = replace(
+        state.action_affordances.actions[0],
+        ap_cost=ResolvedCost(
+            4,
+            ResolutionStage.PREVIEW_RESOLVED,
+            ResolutionAuthority.DEBUG_ORACLE,
+        ),
+    )
+    with pytest.raises(ValueError, match="DEBUG_ORACLE cost"):
+        replace(
+            state,
+            state_id="",
+            action_affordances=replace(state.action_affordances, actions=(action,)),
+        ).normalized()
+
+
+def test_complete_affordance_set_requires_actions_and_source_generation() -> None:
+    with pytest.raises(ValueError, match="at least one action"):
+        ActionAffordanceSet(
+            "brother",
+            "state-id",
+            "generation-1",
+            AffordanceCompleteness.COMPLETE,
+            (),
+        )
+    with pytest.raises(ValueError, match="source_generation cannot be empty"):
+        ActionAffordanceSet(
+            "brother",
+            "state-id",
+            "",
+            AffordanceCompleteness.INCOMPLETE,
+            (),
+        )
 
 
 def test_occupancy_and_neighbor_invariants_are_enforced() -> None:

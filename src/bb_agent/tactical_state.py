@@ -358,11 +358,13 @@ class Environment:
 class ResolvedCost:
     value: int
     stage: ResolutionStage
-    authority: str
+    authority: ResolutionAuthority
 
     def __post_init__(self) -> None:
-        if self.value < 0 or not self.authority:
-            raise ValueError("resolved costs require non-negative value and authority")
+        if self.value < 0:
+            raise ValueError("resolved costs require a non-negative value")
+        if not isinstance(self.authority, ResolutionAuthority):
+            raise ValueError("resolved costs require a valid authority")
 
 
 @dataclass(frozen=True, slots=True)
@@ -567,6 +569,14 @@ class ActionAffordanceSet:
     source_generation: str
     completeness: AffordanceCompleteness
     actions: tuple[ActionAffordance, ...]
+
+    def __post_init__(self) -> None:
+        if not self.actor_id:
+            raise ValueError("affordance set actor_id cannot be empty")
+        if not self.source_generation:
+            raise ValueError("affordance set source_generation cannot be empty")
+        if self.completeness is AffordanceCompleteness.COMPLETE and not self.actions:
+            raise ValueError("complete affordance set must contain at least one action")
 
 
 @dataclass(frozen=True, slots=True)
@@ -804,6 +814,14 @@ class TacticalState:
                     if preview_value.authority is ResolutionAuthority.DEBUG_ORACLE:
                         raise ValueError(
                             "player_legal cannot consume DEBUG_ORACLE preview"
+                        )
+                for cost in (action.ap_cost, action.fatigue_cost):
+                    if (
+                        cost is not None
+                        and cost.authority is ResolutionAuthority.DEBUG_ORACLE
+                    ):
+                        raise ValueError(
+                            "player_legal cannot consume DEBUG_ORACLE cost"
                         )
             if action.skill_id is not None and action.skill_id not in {
                 skill.skill_id for skill in active.skills
