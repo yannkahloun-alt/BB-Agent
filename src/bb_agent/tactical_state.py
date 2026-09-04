@@ -879,7 +879,7 @@ class TacticalState:
             action.pop("debug_ground_truth", None)
             action.pop("source_generation", None)
             action.pop("provenance", None)
-            _strip_resolution_authorities(action)
+            _strip_action_resolution_authorities(action)
         return value
 
     def _validate_structure(self) -> None:
@@ -1369,14 +1369,31 @@ def _canonical_payload_bytes(value: Any) -> bytes:
     return canonical_json_bytes(_jsonify(value))
 
 
-def _strip_resolution_authorities(value: Any) -> None:
-    if isinstance(value, dict):
-        value.pop("authority", None)
-        for child in value.values():
-            _strip_resolution_authorities(child)
-    elif isinstance(value, list):
-        for child in value:
-            _strip_resolution_authorities(child)
+def _strip_action_resolution_authorities(action: dict[str, JsonValue]) -> None:
+    for cost_name in ("ap_cost", "fatigue_cost"):
+        cost = action.get(cost_name)
+        if isinstance(cost, dict):
+            cost.pop("authority", None)
+    preview = action.get("preview")
+    if not isinstance(preview, dict):
+        return
+    for preview_name in (
+        "displayed_hit_chance",
+        "displayed_damage",
+        "affected_tile_ids",
+    ):
+        wrapper = preview.get(preview_name)
+        if isinstance(wrapper, dict):
+            wrapper.pop("authority", None)
+    facts = preview.get("facts")
+    if isinstance(facts, list):
+        for entry in facts:
+            if (
+                isinstance(entry, list)
+                and len(entry) == 2
+                and isinstance(entry[1], dict)
+            ):
+                entry[1].pop("authority", None)
 
 
 def _jsonify(value: Any) -> JsonValue:

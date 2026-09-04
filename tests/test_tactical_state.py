@@ -421,6 +421,45 @@ def test_resolved_value_and_stage_remain_part_of_semantic_identity() -> None:
     assert changed_stage.state_id != state.state_id
 
 
+def test_resolution_authority_stripping_preserves_nested_semantic_keys() -> None:
+    state = _state()
+    action = state.action_affordances.actions[0]
+
+    def rebuild(
+        semantic_authority: str, wrapper_authority: ResolutionAuthority
+    ) -> TacticalState:
+        fact = ResolvedPreviewValue(
+            {"authority": semantic_authority, "detail": 1},
+            ResolutionStage.PREVIEW_RESOLVED,
+            wrapper_authority,
+        )
+        changed = replace(
+            action,
+            preview=replace(
+                action.preview,
+                facts=(("extension.authority_collision", fact),),
+            ),
+        )
+        return TacticalState.create(
+            **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
+            | {
+                "state_id": "",
+                "action_affordances": replace(
+                    state.action_affordances,
+                    captured_for_state_id="",
+                    actions=(changed,),
+                ),
+            }
+        )
+
+    alpha_fixture = rebuild("alpha", ResolutionAuthority.HANDCRAFTED_FIXTURE)
+    alpha_ui = rebuild("alpha", ResolutionAuthority.PLAYER_UI)
+    beta_fixture = rebuild("beta", ResolutionAuthority.HANDCRAFTED_FIXTURE)
+
+    assert alpha_fixture.state_id == alpha_ui.state_id
+    assert alpha_fixture.state_id != beta_fixture.state_id
+
+
 def test_player_legal_rejects_debug_knowledge() -> None:
     state = _state(InformationProfile.OMNISCIENT_DEBUG)
     leaked = replace(
