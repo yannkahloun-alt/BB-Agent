@@ -6,7 +6,9 @@ def test_version_registry_references_frozen_contracts() -> None:
 
     assert versions["m1_spec"] == "issues-1-through-13.freeze-1"
     assert versions["information_policy"] == "issue-2.amended-by-13"
-    assert versions["action_affordance"] == "issue-4.amended-by-13.contingent-reactions-19"
+    assert (
+        versions["action_affordance"] == "issue-4.amended-by-13.contingent-reactions-19"
+    )
     assert set(versions) == {
         "m1_spec",
         "information_policy",

@@ -933,7 +933,10 @@ class TacticalState:
                 for action in self.action_affordances.actions
             )
         )
-        if self.contract_version != CURRENT_VERSIONS.tactical_state and not legacy_reaction_free:
+        if (
+            self.contract_version != CURRENT_VERSIONS.tactical_state
+            and not legacy_reaction_free
+        ):
             raise ValueError("unsupported tactical-state contract_version")
         if self.decision.round < 0 or self.decision.decision_index < 0:
             raise ValueError("decision coordinates must be non-negative")

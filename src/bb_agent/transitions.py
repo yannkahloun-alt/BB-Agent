@@ -158,7 +158,11 @@ def _move(
             0, ResolutionStage.PREVIEW_RESOLVED, action.ap_cost.authority
         )
         moved = replace(_with_costs(mover, action))
-        pending = [(1.0, moved, (), None)]
+        # A path-scoped reaction resolves after the mover reaches its declared
+        # trigger step.  Carry that position through each branch: an
+        # interruption leaves the mover where it was interrupted, rather than
+        # rewinding it to the action's origin or a later path step.
+        pending = [(1.0, moved, ())]
         for reaction in sorted(
             action.contingent_reactions,
             key=lambda item: (
@@ -167,12 +171,14 @@ def _move(
             ),
         ):
             next_pending = []
-            for probability, actor, effects, _ in pending:
+            for probability, actor, effects in pending:
                 if actor.life_state is not LifeState.ALIVE:
-                    next_pending.append(
-                        (probability, actor, effects, reaction.path_step_tile_id)
-                    )
+                    # Death interrupts movement and suppresses later reactions.
+                    next_pending.append((probability, actor, effects))
                     continue
+                actor = replace(
+                    actor, position=KnownValue.exact(reaction.path_step_tile_id)
+                )
                 synthetic = ActionAffordance(
                     "contingent-aoo",
                     reaction.reacting_actor_id,
@@ -225,7 +231,6 @@ def _move(
                                 ("aoo", reaction.reacting_actor_id),
                                 ("hp_damage", branch.hp_damage),
                             ),
-                            reaction.path_step_tile_id,
                         )
                     )
             pending = next_pending
@@ -244,10 +249,10 @@ def _move(
                     else actor,
                     action.destination_tile_id
                     if actor.life_state is LifeState.ALIVE
-                    else tile_id,
+                    else actor.position.value,
                     effects=effects,
                 )
-                for probability, actor, effects, tile_id in pending
+                for probability, actor, effects in pending
             ),
         )
     moved = replace(

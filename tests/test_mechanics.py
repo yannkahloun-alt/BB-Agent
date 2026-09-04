@@ -20,10 +20,12 @@ from bb_agent.serialization import canonical_sha256
 from bb_agent.tactical_state import (
     ActionKind,
     AffordanceCompleteness,
+    ContingentReaction,
     InformationProfile,
     ItemState,
     KnowledgeClass,
     KnownValue,
+    LifeState,
     PlayerVisiblePreview,
     Representation,
     ResolutionAuthority,
@@ -456,6 +458,88 @@ def test_safe_and_unsafe_move_never_repath_or_guess_aoo():
     )
     assert unsafe.status is ResultStatus.INCOMPLETE_COVERAGE
     assert unsafe.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
+
+
+def test_supported_lethal_contingent_aoo_interrupts_at_its_trigger_step():
+    authority = _authority()
+    reaction = ContingentReaction(
+        "east",
+        "enemy",
+        "AOO",
+        skill_id="actives.chop",
+        hit_chance=ResolvedPreviewValue(
+            95,
+            ResolutionStage.PREVIEW_RESOLVED,
+            ResolutionAuthority.HANDCRAFTED_FIXTURE,
+        ),
+    )
+    move = replace(
+        _wait(),
+        kind=ActionKind.MOVE_TO,
+        destination_tile_id="east",
+        resolved_path=("east",),
+        contingent_reactions=(reaction,),
+    )
+    actors = tuple(
+        replace(
+            actor,
+            perks=KnownValue.exact([]),
+            traits=KnownValue.exact([]),
+            resources=replace(
+                actor.resources,
+                action_points=KnownValue(
+                    Representation.EXACT,
+                    KnowledgeClass.DERIVED,
+                    value=0,
+                    basis=("zero-cost reaction",),
+                ),
+                fatigue=KnownValue(
+                    Representation.EXACT,
+                    KnowledgeClass.DERIVED,
+                    value=0,
+                    basis=("zero-cost reaction",),
+                ),
+                fatigue_capacity=KnownValue(
+                    Representation.EXACT,
+                    KnowledgeClass.DERIVED,
+                    value=100,
+                    basis=("zero-cost reaction",),
+                ),
+            ),
+            equipment=(
+                ItemState(
+                    "hand-axe",
+                    KnownValue.exact("weapon.hand_axe"),
+                    KnownValue.exact("mainhand"),
+                    KnownValue.exact(True),
+                ),
+            ),
+        )
+        if actor.actor_id == "enemy"
+        else replace(
+            actor,
+            perks=KnownValue.exact([]),
+            traits=KnownValue.exact([]),
+            resources=replace(
+                actor.resources,
+                hit_points=KnownValue.exact(1),
+                head_armor=KnownValue.exact(0),
+                body_armor=KnownValue.exact(0),
+            ),
+        )
+        for actor in _state().combatants
+    )
+    state = _snapshot(authority, move, combatants=actors)
+
+    result = evaluate_transition(authority, state, state.action_affordances.actions[0])
+
+    assert result.status is ResultStatus.SUCCESS
+    assert result.value is not None
+    killed = [branch for branch in result.value.branches if branch.interrupted]
+    assert killed
+    assert all(branch.destination_tile_id == "east" for branch in killed)
+    assert all(branch.actor.position.value == "east" for branch in killed)
+    assert all(branch.actor.life_state is LifeState.REMOVED for branch in killed)
 
 
 def test_displayed_damage_is_terminal_and_subsequent_mitigation_is_allowed():
