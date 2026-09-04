@@ -53,6 +53,29 @@ Independent lightweight Python static analysis. New warnings/errors are not acce
 
 The exact commands/configuration are established by #14 and repository files; this policy defines the required outcomes and stable check identities.
 
+## Local commands equivalent to CI
+
+Use Python 3.12 from a clean checkout. Initialize and verify the shared workflow,
+then install the project and pinned development tools:
+
+```powershell
+git submodule update --init --recursive
+python tools/verify_workflow_dependency.py
+python -m pip install -e ".[dev]"
+```
+
+Run the three stable checks with exactly these commands:
+
+```powershell
+python -m pytest
+python -m ruff format --check .
+python -m ruff check .
+python -m pyflakes src tests tools
+```
+
+The two Ruff commands together constitute the `ruff` check. None of these checks
+requires network access after the development dependencies have been installed.
+
 ## Merge policy
 
 A PR is merge-ready only when:
