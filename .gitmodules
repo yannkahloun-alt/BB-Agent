@@ -1,0 +1,3 @@
+[submodule ".agent-workflow"]
+	path = .agent-workflow
+	url = https://github.com/yannkahloun-alt/codex-agent-workflow.git
