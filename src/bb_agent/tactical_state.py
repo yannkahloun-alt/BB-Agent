@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass, field, fields, is_dataclass, replace
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from enum import StrEnum
-from types import UnionType
+from types import MappingProxyType, UnionType
 from typing import Any, Self, get_args, get_origin, get_type_hints
 
 from bb_agent.serialization import JsonValue, canonical_json_bytes, canonical_sha256
@@ -116,6 +117,19 @@ class KnownValue:
     confidence: float | None = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "value", _freeze_json(self.value))
+        object.__setattr__(
+            self, "candidates", tuple(_freeze_json(value) for value in self.candidates)
+        )
+        object.__setattr__(
+            self,
+            "distribution",
+            tuple(
+                (_freeze_json(outcome), probability)
+                for outcome, probability in self.distribution
+            ),
+        )
+        object.__setattr__(self, "basis", tuple(self.basis))
         _require_enum(self.representation, Representation, "representation")
         _require_enum(self.knowledge_class, KnowledgeClass, "knowledge_class")
         payloads = {
@@ -420,6 +434,7 @@ class ResolvedPreviewValue:
     authority: ResolutionAuthority
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "value", _freeze_json(self.value))
         _require_enum(self.stage, ResolutionStage, "resolved preview stage")
         if not isinstance(self.authority, ResolutionAuthority):
             raise ValueError("resolved preview values require a valid authority")
@@ -492,6 +507,9 @@ class ActionAffordance:
     debug_ground_truth: JsonValue = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(
+            self, "debug_ground_truth", _freeze_json(self.debug_ground_truth)
+        )
         _require_enum(self.kind, ActionKind, "affordance kind")
         _require_enum(self.provenance, AffordanceProvenance, "affordance provenance")
         if self.target_kind is not None:
@@ -653,6 +671,7 @@ class TacticalState:
     annotations: JsonValue = None
 
     def __post_init__(self) -> None:
+        object.__setattr__(self, "annotations", _freeze_json(self.annotations))
         _require_enum(
             self.information_profile, InformationProfile, "information_profile"
         )
@@ -780,7 +799,7 @@ class TacticalState:
         ).normalized()
 
     def to_dict(self, *, include_annotations: bool = True) -> dict[str, JsonValue]:
-        value = _jsonify(asdict(self))
+        value = _jsonify(self)
         assert isinstance(value, dict)
         if not include_annotations:
             value.pop("annotations", None)
@@ -943,9 +962,14 @@ class TacticalState:
                 if actor.relation is Relation.HOSTILE:
                     _validate_hostile_player_legal(actor)
                 if actor.relation is Relation.HOSTILE and not actor.visible:
-                    if actor.position.representation is Representation.EXACT:
+                    if (
+                        actor.position.representation is not Representation.UNKNOWN
+                        and actor.position.knowledge_class
+                        is not KnowledgeClass.INFERRED
+                    ):
                         raise ValueError(
-                            "hidden hostile cannot have an exact current position"
+                            "hidden hostile current position must be UNKNOWN "
+                            "or INFERRED"
                         )
                     _validate_hidden_hostile_staleness(actor)
             if actor.position.representation is Representation.EXACT:
@@ -1139,9 +1163,7 @@ def _command_intent(action: ActionAffordance) -> dict[str, JsonValue]:
     return {
         "actor_id": action.actor_id,
         "kind": action.kind.value,
-        "parameters": _jsonify(
-            tuple((key, asdict(value)) for key, value in action.parameters)
-        ),
+        "parameters": _jsonify(action.parameters),
         "skill_id": action.skill_id,
         "item_id": action.item_id,
         "target_kind": action.target_kind.value if action.target_kind else None,
@@ -1215,10 +1237,28 @@ def _require_int(value: Any, field_name: str) -> None:
         raise ValueError(f"{field_name} requires an integer")
 
 
+def _freeze_json(value: Any) -> Any:
+    if value is None or isinstance(value, bool | int | float | str):
+        return value
+    if isinstance(value, Mapping):
+        if any(not isinstance(key, str) for key in value):
+            raise TypeError("JSON object keys must be strings")
+        return MappingProxyType(
+            {key: _freeze_json(child) for key, child in sorted(value.items())}
+        )
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return tuple(_freeze_json(child) for child in value)
+    raise TypeError(f"unsupported JSON payload: {type(value).__name__}")
+
+
 def _jsonify(value: Any) -> JsonValue:
     if isinstance(value, StrEnum):
         return value.value
-    if isinstance(value, dict):
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            item.name: _jsonify(getattr(value, item.name)) for item in fields(value)
+        }
+    if isinstance(value, Mapping):
         return {str(key): _jsonify(child) for key, child in value.items()}
     if isinstance(value, tuple | list):
         return [_jsonify(child) for child in value]

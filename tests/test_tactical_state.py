@@ -1096,3 +1096,106 @@ def test_state_round_trip_preserves_valid_uncertainty_numeric_metadata() -> None
     assert loaded.combatants[1].tactical_stats[0].value.confidence == 0.75
     origin = next(tile for tile in loaded.tiles if tile.tile_id == "origin")
     assert origin.movement_cost.distribution == ((1, 0.6), (2, 0.4))
+
+
+def test_json_payloads_are_deep_frozen_against_caller_mutation() -> None:
+    source = [{"tile": "east"}]
+    known = KnownValue.exact(source)
+    preview_source = {"path": ["east"]}
+    preview = ResolvedPreviewValue(
+        preview_source,
+        ResolutionStage.PREVIEW_RESOLVED,
+        ResolutionAuthority.PLAYER_UI,
+    )
+
+    source[0]["tile"] = "mutated"
+    preview_source["path"].append("mutated")
+    assert known.value[0]["tile"] == "east"  # type: ignore[index]
+    assert preview.value["path"] == ("east",)  # type: ignore[index]
+    with pytest.raises(TypeError):
+        known.value[0]["tile"] = "blocked"  # type: ignore[index]
+    with pytest.raises(TypeError):
+        preview.value["new"] = True  # type: ignore[index]
+
+
+def test_from_dict_deep_freezes_payloads_and_round_trips() -> None:
+    state = _state()
+    serialized = state.to_dict()
+    loaded = TacticalState.from_dict(serialized)
+    serialized["annotations"]["expected_best"] = "mutated"  # type: ignore[index]
+    assert loaded.annotations["expected_best"] == "attack:enemy"  # type: ignore[index]
+    assert TacticalState.from_dict(loaded.to_dict()) == loaded
+
+
+@pytest.mark.parametrize(
+    "position",
+    [
+        KnownValue(
+            Representation.SET,
+            KnowledgeClass.OBSERVED,
+            candidates=("east",),
+        ),
+        KnownValue(
+            Representation.EXACT,
+            KnowledgeClass.REMEMBERED,
+            value="east",
+            observed_at=ObservationPoint(1, 1),
+        ),
+    ],
+)
+def test_hidden_hostile_current_position_rejects_observed_and_remembered_payloads(
+    position: KnownValue,
+) -> None:
+    state = _state()
+    hidden = replace(
+        state.combatants[1],
+        visible=False,
+        position=position,
+        resources=_unknown_resources(),
+        last_seen=LastSeen("east", ObservationPoint(1, 1)),
+    )
+    with pytest.raises(ValueError, match="must be UNKNOWN or INFERRED"):
+        replace(
+            state,
+            state_id="",
+            combatants=(state.combatants[0], hidden),
+            tiles=tuple(
+                replace(tile, occupant_actor_id=None)
+                if tile.tile_id == "east"
+                else tile
+                for tile in state.tiles
+            ),
+        ).normalized()
+
+
+def test_hidden_hostile_inferred_position_with_last_seen_round_trips() -> None:
+    state = _state()
+    hidden = replace(
+        state.combatants[1],
+        visible=False,
+        position=KnownValue(
+            Representation.SET,
+            KnowledgeClass.INFERRED,
+            candidates=("east", "origin"),
+            basis=("movement_bound",),
+        ),
+        resources=_unknown_resources(),
+        last_seen=LastSeen("east", ObservationPoint(1, 1)),
+    )
+    rebuilt = TacticalState.create(
+        **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
+        | {
+            "state_id": "",
+            "combatants": (state.combatants[0], hidden),
+            "tiles": tuple(
+                replace(tile, occupant_actor_id=None)
+                if tile.tile_id == "east"
+                else tile
+                for tile in state.tiles
+            ),
+            "action_affordances": replace(
+                state.action_affordances, captured_for_state_id=""
+            ),
+        }
+    )
+    assert TacticalState.from_dict(rebuilt.to_dict()) == rebuilt
