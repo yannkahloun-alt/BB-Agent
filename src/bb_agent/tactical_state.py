@@ -554,6 +554,9 @@ class ActionAffordance:
     parameters: tuple[tuple[str, KnownValue], ...] = ()
     ap_cost: ResolvedCost | None = None
     fatigue_cost: ResolvedCost | None = None
+    charge_cost: ResolvedCost | None = None
+    ammo_cost: ResolvedCost | None = None
+    item_action_cost: ResolvedCost | None = None
     skill_id: str | None = None
     item_id: str | None = None
     target_kind: TargetKind | None = None
@@ -589,15 +592,13 @@ class ActionAffordance:
             raise ValueError("generic parameters require the extension namespace")
         if self.mode_variant == "":
             raise ValueError("mode_variant cannot be empty")
-        if self.ap_cost is None or self.fatigue_cost is None:
-            raise ValueError("every affordance requires resolved AP and fatigue costs")
+        if any(cost is None for cost in _action_costs(self)):
+            raise ValueError("every affordance requires all five resolved costs")
         if self.kind is ActionKind.MOVE_TO:
             if not self.destination_tile_id or not self.resolved_path:
                 raise ValueError("MOVE_TO requires destination and resolved path")
             if self.resolved_path[-1] != self.destination_tile_id:
                 raise ValueError("MOVE_TO path must end at destination")
-            if self.ap_cost is None or self.fatigue_cost is None:
-                raise ValueError("MOVE_TO requires resolved AP and fatigue costs")
             if any(
                 value is not None
                 for value in (
@@ -962,7 +963,7 @@ class TacticalState:
                         raise ValueError(
                             "player_legal cannot consume DEBUG_ORACLE preview"
                         )
-                for cost in (action.ap_cost, action.fatigue_cost):
+                for cost in _action_costs(action):
                     if (
                         cost is not None
                         and cost.authority is ResolutionAuthority.DEBUG_ORACLE
@@ -1154,6 +1155,16 @@ def _preview_values(preview: PlayerVisiblePreview) -> tuple[ResolvedPreviewValue
     return values + tuple(value for _, value in preview.facts)
 
 
+def _action_costs(action: ActionAffordance) -> tuple[ResolvedCost | None, ...]:
+    return (
+        action.ap_cost,
+        action.fatigue_cost,
+        action.charge_cost,
+        action.ammo_cost,
+        action.item_action_cost,
+    )
+
+
 def _validate_action_authorities(
     action: ActionAffordance, profile: InformationProfile
 ) -> None:
@@ -1168,7 +1179,7 @@ def _validate_action_authorities(
     allowed = {provider_authority, ResolutionAuthority.PLAYER_UI}
     if profile is InformationProfile.OMNISCIENT_DEBUG:
         allowed.add(ResolutionAuthority.DEBUG_ORACLE)
-    authorities = [action.ap_cost.authority, action.fatigue_cost.authority]  # type: ignore[union-attr]
+    authorities = [cost.authority for cost in _action_costs(action) if cost is not None]
     authorities.extend(value.authority for value in _preview_values(action.preview))
     if any(authority not in allowed for authority in authorities):
         raise ValueError("resolved authority does not match affordance provenance")
@@ -1378,7 +1389,13 @@ def _canonical_payload_bytes(value: Any) -> bytes:
 
 
 def _strip_action_resolution_authorities(action: dict[str, JsonValue]) -> None:
-    for cost_name in ("ap_cost", "fatigue_cost"):
+    for cost_name in (
+        "ap_cost",
+        "fatigue_cost",
+        "charge_cost",
+        "ammo_cost",
+        "item_action_cost",
+    ):
         cost = action.get(cost_name)
         if isinstance(cost, dict):
             cost.pop("authority", None)

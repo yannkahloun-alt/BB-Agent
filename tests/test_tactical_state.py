@@ -191,6 +191,13 @@ def _state(
             ResolutionStage.PREVIEW_RESOLVED,
             provider_authority,
         ),
+        charge_cost=ResolvedCost(
+            0, ResolutionStage.PREVIEW_RESOLVED, provider_authority
+        ),
+        ammo_cost=ResolvedCost(0, ResolutionStage.PREVIEW_RESOLVED, provider_authority),
+        item_action_cost=ResolvedCost(
+            0, ResolutionStage.PREVIEW_RESOLVED, provider_authority
+        ),
         preview=PlayerVisiblePreview(
             displayed_hit_chance=ResolvedPreviewValue(
                 67, ResolutionStage.PREVIEW_RESOLVED, provider_authority
@@ -993,6 +1000,97 @@ def test_cost_authority_is_closed_and_debug_authority_is_profile_gated() -> None
         ).normalized()
 
 
+@pytest.mark.parametrize("field_name", ["charge_cost", "ammo_cost", "item_action_cost"])
+def test_additional_costs_reject_debug_and_cross_provider_authorities(
+    field_name: str,
+) -> None:
+    state = _state()
+    action = state.action_affordances.actions[0]
+
+    debug_cost = ResolvedCost(
+        0,
+        ResolutionStage.PREVIEW_RESOLVED,
+        ResolutionAuthority.DEBUG_ORACLE,
+    )
+    with pytest.raises(ValueError, match="DEBUG_ORACLE cost"):
+        replace(
+            state,
+            state_id="",
+            action_affordances=replace(
+                state.action_affordances,
+                actions=(replace(action, **{field_name: debug_cost}),),
+            ),
+        ).normalized()
+
+    mismatched_cost = replace(
+        debug_cost, authority=ResolutionAuthority.GAME_PLAYER_AFFORDANCE
+    )
+    with pytest.raises(ValueError, match="does not match affordance provenance"):
+        replace(
+            state,
+            state_id="",
+            action_affordances=replace(
+                state.action_affordances,
+                actions=(replace(action, **{field_name: mismatched_cost}),),
+            ),
+        ).normalized()
+
+
+def test_nonzero_additional_costs_round_trip_without_changing_action_intent() -> None:
+    state = _state()
+    action = state.action_affordances.actions[0]
+    changed = replace(
+        action,
+        charge_cost=replace(action.charge_cost, value=2),
+        ammo_cost=replace(action.ammo_cost, value=1),
+        item_action_cost=replace(action.item_action_cost, value=3),
+    )
+    rebuilt = TacticalState.create(
+        **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
+        | {
+            "state_id": "",
+            "action_affordances": replace(
+                state.action_affordances,
+                captured_for_state_id="",
+                actions=(changed,),
+            ),
+        }
+    )
+
+    loaded = TacticalState.from_dict(rebuilt.to_dict())
+    assert loaded == rebuilt
+    assert loaded.action_affordances.actions[0].action_id == action.action_id
+
+
+@pytest.mark.parametrize("field_name", ["charge_cost", "ammo_cost", "item_action_cost"])
+@pytest.mark.parametrize("change", ["value", "stage"])
+def test_additional_cost_value_and_stage_are_semantic_identity(
+    field_name: str, change: str
+) -> None:
+    state = _state()
+    action = state.action_affordances.actions[0]
+    cost = getattr(action, field_name)
+    changed_cost = (
+        replace(cost, value=1)
+        if change == "value"
+        else replace(cost, stage=ResolutionStage.SOURCE_RESOLVED)
+    )
+    changed = TacticalState.create(
+        **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
+        | {
+            "state_id": "",
+            "action_affordances": replace(
+                state.action_affordances,
+                captured_for_state_id="",
+                actions=(replace(action, **{field_name: changed_cost}),),
+            ),
+        }
+    )
+
+    assert changed.state_id != state.state_id
+    assert changed.action_affordances.actions[0].action_id == action.action_id
+
+
 def test_resolution_authority_must_match_affordance_provider() -> None:
     state = _state()
     action = state.action_affordances.actions[0]
@@ -1073,10 +1171,15 @@ def test_closed_enums_reject_raw_strings_on_direct_construction() -> None:
 
 def test_every_affordance_requires_explicit_resolved_costs() -> None:
     action = _state().action_affordances.actions[0]
-    with pytest.raises(ValueError, match="requires resolved AP and fatigue costs"):
-        replace(action, ap_cost=None)
-    with pytest.raises(ValueError, match="requires resolved AP and fatigue costs"):
-        replace(action, fatigue_cost=None)
+    for field_name in (
+        "ap_cost",
+        "fatigue_cost",
+        "charge_cost",
+        "ammo_cost",
+        "item_action_cost",
+    ):
+        with pytest.raises(ValueError, match="requires all five resolved costs"):
+            replace(action, **{field_name: None})
 
     zero = ResolvedCost(
         0,
@@ -1091,6 +1194,9 @@ def test_every_affordance_requires_explicit_resolved_costs() -> None:
         "generation-1",
         ap_cost=zero,
         fatigue_cost=zero,
+        charge_cost=zero,
+        ammo_cost=zero,
+        item_action_cost=zero,
     )
     end_turn = replace(wait, kind=ActionKind.END_TURN)
     assert wait.ap_cost.value == end_turn.fatigue_cost.value == 0
