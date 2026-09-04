@@ -14,7 +14,7 @@ still take precedence.
 
 - Workflow submodule path: `.agent-workflow`
 - Workflow upstream: `yannkahloun-alt/codex-agent-workflow`
-- Current pin: `v1.1.1` (`ecdf075c7baf35414c131db54f9409e5c82b3a6e`)
+- Current pin: `v1.1.2` (`4171010e1a17643876036b3dfd463b2e3a615c5f`)
 - Approved stable selector: greatest non-prerelease SemVer tag in the `v1.x`
   series
 

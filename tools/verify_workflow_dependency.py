@@ -3,7 +3,7 @@
 import subprocess
 from pathlib import Path
 
-EXPECTED_COMMIT = "ecdf075c7baf35414c131db54f9409e5c82b3a6e"
+EXPECTED_COMMIT = "4171010e1a17643876036b3dfd463b2e3a615c5f"
 EXPECTED_URL = "https://github.com/yannkahloun-alt/codex-agent-workflow.git"
 REQUIRED_FILES = (
     ".agent-workflow/AGENTS.md",
