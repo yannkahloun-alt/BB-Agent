@@ -31,7 +31,7 @@ Fresh clones/worktrees should initialize the dependency with:
 git submodule update --init --recursive
 ```
 
-The project-specific quality and CI contract is in [`docs/TESTING.md`](docs/TESTING.md). Initial M1 CI targets Python 3.12 and stable PR checks named `tests`, `ruff`, and `pyflakes`; issue #14 owns their first executable implementation. Green CI is necessary for merge readiness but never overrides a failed frozen-spec, safety-critical, or mechanics-coverage gate.
+The project-specific quality and CI contract is in [`docs/TESTING.md`](docs/TESTING.md). Initial M1 CI targets Python 3.12 and already runs stable PR checks named `tests`, `ruff`, and `pyflakes`. Green CI is necessary for merge readiness but never overrides a failed frozen-spec, safety-critical, or mechanics-coverage gate.
 
 See [`docs/AGENT_WORKFLOW_DEPENDENCY.md`](docs/AGENT_WORKFLOW_DEPENDENCY.md) for the behavioral dependency and upgrade policy.
 

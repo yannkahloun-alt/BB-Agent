@@ -20,12 +20,15 @@ A missing, stale, or broken `.agent-workflow` pin is a validation failure, not a
 
 ## Routine task iteration
 
-During implementation:
+During autonomous implementation, add or update explicit deterministic
+regression tests and fixtures for behavioral fixes and semantic corrections,
+then push a coherent change to the ticket's single draft PR. GitHub CI validates
+the exact PR head. Routine autonomous work does **not** run CI-equivalent
+pytest, Ruff, Pyflakes, or static-analysis commands locally.
 
-- run focused tests for the changed behavior and adjacent contracts;
-- add explicit regression tests for bug fixes and semantic corrections;
-- run the applicable static-analysis checks before declaring the task ready for review;
-- inspect structured warnings/coverage failures rather than relying on exit code alone.
+Local automated validation is reserved for a check genuinely unavailable in CI
+or an explicit user instruction. Inspect CI diagnostics and structured
+warnings/coverage failures rather than relying on an exit code alone.
 
 Tests and decision fixtures used by the M1 kernel must be deterministic, machine-independent, network-free, and independent of a locally installed Battle Brothers game or private save files.
 
@@ -37,7 +40,9 @@ Pull requests targeting `main` must eventually expose these stable required GitH
 - `ruff`
 - `pyflakes`
 
-Issue #14 owns the first executable CI implementation of this policy. Check names are part of the branch-protection contract and should remain stable once introduced unless deliberately migrated.
+These checks are implemented in `.github/workflows/ci.yml`. Their names are part
+of the branch-protection contract and should remain stable unless deliberately
+migrated.
 
 ### `tests`
 
@@ -51,12 +56,15 @@ Ruff formatting/lint/static checks as configured by the repository. New warnings
 
 Independent lightweight Python static analysis. New warnings/errors are not acceptable.
 
-The exact commands/configuration are established by #14 and repository files; this policy defines the required outcomes and stable check identities.
+The exact commands/configuration are defined in repository CI configuration;
+this policy defines the required outcomes and stable check identities.
 
-## Local commands equivalent to CI
+## Local CI-equivalent commands (manual reference/debugging only)
 
-Use Python 3.12 from a clean checkout. Initialize and verify the shared workflow,
-then install the project and pinned development tools:
+These commands document the repository-owned CI implementation for manual
+reference or explicit debugging. They are not part of the normal autonomous
+ticket lifecycle. Use Python 3.12 from a clean checkout. Initialize and verify
+the shared workflow, then install the project and pinned development tools:
 
 ```powershell
 git submodule update --init --recursive
@@ -88,11 +96,14 @@ A PR is merge-ready only when:
 
 **CI is authoritative for deterministic merge readiness, but CI success never overrides a failed frozen-spec, safety-critical fixture, or mechanics-coverage gate.**
 
-Normal implementation should reach `main` through the repository's workflow-controlled PR lifecycle. Avoid casual direct implementation commits to `main`.
+Normal implementation reaches `main` through the shared workflow-controlled PR
+lifecycle. One named ticket uses one implementation PR; later implementation,
+CI-fix, review-fix, and exact-head review generations reuse that PR. Avoid
+casual direct implementation commits to `main`.
 
 ## Branch protection target
 
-Once #14 establishes the first successful CI workflow, `main` should be configured to require the stable checks:
+`main` branch protection requires the stable checks:
 
 ```text
 tests
@@ -100,7 +111,12 @@ ruff
 pyflakes
 ```
 
-The repository may run on a free/single-account model where independent Agent B review is operational rather than a GitHub status check. That review remains mandatory under the shared workflow even when GitHub cannot enforce it as branch protection.
+Independent review remains mandatory under the shared workflow even when GitHub
+cannot enforce it as a branch-protection status check. When trustworthy fresh
+subagent isolation is available, review uses a fresh read-only subagent in the
+existing ticket workspace. A separate review task/thread/worktree is a fallback
+only for a concrete, recorded host/tool limitation or stronger explicit project
+policy.
 
 ## Coverage policy
 
@@ -208,8 +224,9 @@ When a test flakes:
 Unless the ticket explicitly defines a stronger gate, it is done when:
 
 1. assigned behavior is implemented within frozen scope;
-2. focused tests/regression fixtures exist and pass;
-3. the normal required test/static-analysis gates pass;
+2. focused tests/regression fixtures exist and pass in authoritative CI;
+3. the normal required test/static-analysis gates pass in authoritative CI on
+   the exact PR head;
 4. deterministic/replay/coverage diagnostics applicable to the touched subsystem are clean;
 5. documentation is updated where commands/contracts changed;
 6. independent review and the normal shared-workflow PR lifecycle complete successfully.
