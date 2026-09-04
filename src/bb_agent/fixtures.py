@@ -536,39 +536,40 @@ def _compare_cross_view(legal: Any, debug: Any, path: str) -> str | None:
 def _debug_value_is_compatible(legal: KnownValue, debug: KnownValue) -> bool:
     if legal.representation is Representation.UNKNOWN:
         return True
-    if legal.representation is Representation.EXACT:
-        return debug.representation is Representation.EXACT and _same_json(
-            legal.value, debug.value
-        )
-    if legal.representation is Representation.RANGE:
-        if debug.representation is Representation.EXACT:
-            return _within_range(debug.value, legal.minimum, legal.maximum)
-        if debug.representation is Representation.RANGE:
+    if debug.representation is Representation.RANGE:
+        if legal.representation is Representation.RANGE:
             return _within_range(debug.minimum, legal.minimum, legal.maximum) and (
                 _within_range(debug.maximum, legal.minimum, legal.maximum)
             )
+        if debug.minimum != debug.maximum:
+            return False
+        debug_domain = (debug.minimum,)
+    else:
+        debug_domain = _discrete_domain(debug)
+    if debug_domain is None:
         return False
-    if legal.representation is Representation.SET:
-        allowed = legal.candidates
-        if debug.representation is Representation.EXACT:
-            return _json_member(debug.value, allowed)
-        if debug.representation is Representation.SET:
-            return all(_json_member(value, allowed) for value in debug.candidates)
-        return False
-    if legal.representation is Representation.DISTRIBUTION:
-        support = tuple(
-            value for value, probability in legal.distribution if probability > 0
+    if legal.representation is Representation.RANGE:
+        return all(
+            _within_range(value, legal.minimum, legal.maximum) for value in debug_domain
         )
-        if debug.representation is Representation.EXACT:
-            return _json_member(debug.value, support)
-        if debug.representation is Representation.DISTRIBUTION:
-            return all(
-                probability == 0 or _json_member(value, support)
-                for value, probability in debug.distribution
-            )
-        if debug.representation is Representation.SET:
-            return all(_json_member(value, support) for value in debug.candidates)
-    return False
+    legal_domain = _discrete_domain(legal)
+    if legal_domain is None:
+        return False
+    return all(_json_member(value, legal_domain) for value in debug_domain)
+
+
+def _discrete_domain(value: KnownValue) -> tuple[JsonValue, ...] | None:
+    if value.representation is Representation.EXACT:
+        return (value.value,)
+    if value.representation is Representation.SET:
+        return value.candidates
+    if value.representation is Representation.DISTRIBUTION:
+        return tuple(
+            outcome for outcome, probability in value.distribution if probability > 0
+        )
+    if value.representation is Representation.RANGE and value.minimum == value.maximum:
+        return (value.minimum,)
+    return None
 
 
 def _within_range(value: Any, minimum: Any, maximum: Any) -> bool:

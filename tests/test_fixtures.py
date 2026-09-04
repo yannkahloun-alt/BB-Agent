@@ -2,6 +2,8 @@ import json
 from dataclasses import fields, replace
 from pathlib import Path
 
+import pytest
+
 from bb_agent.fixtures import (
     FixtureEnvelope,
     FixtureMetadata,
@@ -63,6 +65,22 @@ def _with_state(fixture: FixtureEnvelope, **changes: object) -> FixtureEnvelope:
         state=state,
         expectations=fixture.expectations,
         oracle_annotations=fixture.oracle_annotations,
+    )
+
+
+def _with_enemy_hit_points(
+    fixture: FixtureEnvelope, value: KnownValue
+) -> FixtureEnvelope:
+    enemy = next(
+        actor for actor in fixture.state.combatants if actor.actor_id == "enemy"
+    )
+    changed_enemy = replace(enemy, resources=replace(enemy.resources, hit_points=value))
+    return _with_state(
+        fixture,
+        combatants=tuple(
+            changed_enemy if actor.actor_id == "enemy" else actor
+            for actor in fixture.state.combatants
+        ),
     )
 
 
@@ -192,22 +210,7 @@ def test_pair_accepts_contained_debug_truth_and_rejects_contradiction() -> None:
     legal = _fixture()
     debug = _fixture(InformationProfile.OMNISCIENT_DEBUG)
 
-    def with_enemy_hp(fixture: FixtureEnvelope, value: KnownValue) -> FixtureEnvelope:
-        enemy = next(
-            actor for actor in fixture.state.combatants if actor.actor_id == "enemy"
-        )
-        changed_enemy = replace(
-            enemy, resources=replace(enemy.resources, hit_points=value)
-        )
-        return _with_state(
-            fixture,
-            combatants=tuple(
-                changed_enemy if actor.actor_id == "enemy" else actor
-                for actor in fixture.state.combatants
-            ),
-        )
-
-    legal_range = with_enemy_hp(
+    legal_range = _with_enemy_hit_points(
         legal,
         KnownValue(
             Representation.RANGE,
@@ -216,11 +219,11 @@ def test_pair_accepts_contained_debug_truth_and_rejects_contradiction() -> None:
             maximum=60,
         ),
     )
-    contained = with_enemy_hp(
+    contained = _with_enemy_hit_points(
         debug,
         KnownValue.exact(50, KnowledgeClass.DEBUG_GROUND_TRUTH),
     )
-    outside = with_enemy_hp(
+    outside = _with_enemy_hit_points(
         debug,
         KnownValue.exact(30, KnowledgeClass.DEBUG_GROUND_TRUTH),
     )
@@ -229,6 +232,104 @@ def test_pair_accepts_contained_debug_truth_and_rejects_contradiction() -> None:
     rejected = validate_fixture_pair(legal_range, outside)
     assert rejected.status is ResultStatus.VALIDATION_FAILURE
     assert rejected.problems[0].code is ErrorCode.FIXTURE_PAIR_MISMATCH
+
+
+def _exact(value: int, *, debug: bool = False) -> KnownValue:
+    if debug:
+        return KnownValue.exact(value, KnowledgeClass.DEBUG_GROUND_TRUTH)
+    return KnownValue(
+        Representation.EXACT,
+        KnowledgeClass.DERIVED,
+        value=value,
+        basis=("player-visible",),
+    )
+
+
+def _range(minimum: int, maximum: int, *, debug: bool = False) -> KnownValue:
+    return KnownValue(
+        Representation.RANGE,
+        KnowledgeClass.DEBUG_GROUND_TRUTH if debug else KnowledgeClass.OBSERVED,
+        minimum=minimum,
+        maximum=maximum,
+    )
+
+
+def _set(*values: int, debug: bool = False) -> KnownValue:
+    return KnownValue(
+        Representation.SET,
+        KnowledgeClass.DEBUG_GROUND_TRUTH if debug else KnowledgeClass.OBSERVED,
+        candidates=values,
+    )
+
+
+def _distribution(*entries: tuple[int, float], debug: bool = False) -> KnownValue:
+    return KnownValue(
+        Representation.DISTRIBUTION,
+        KnowledgeClass.DEBUG_GROUND_TRUTH if debug else KnowledgeClass.OBSERVED,
+        distribution=entries,
+    )
+
+
+@pytest.mark.parametrize(
+    ("legal_value", "debug_value", "accepted"),
+    (
+        (KnownValue.unknown(), _exact(50, debug=True), True),
+        (KnownValue.unknown(), _range(40, 60, debug=True), True),
+        (KnownValue.unknown(), _set(40, 60, debug=True), True),
+        (KnownValue.unknown(), _distribution((40, 0.5), (60, 0.5), debug=True), True),
+        (_exact(50), _exact(50, debug=True), True),
+        (_exact(50), _range(50, 50, debug=True), True),
+        (_exact(50), _set(50, debug=True), True),
+        (_exact(50), _distribution((50, 1.0), (60, 0.0), debug=True), True),
+        (_range(40, 60), _exact(50, debug=True), True),
+        (_range(40, 60), _range(45, 55, debug=True), True),
+        (_range(40, 60), _set(40, 50, 60, debug=True), True),
+        (_range(40, 60), _distribution((45, 0.5), (55, 0.5), debug=True), True),
+        (_set(40, 50, 60), _exact(50, debug=True), True),
+        (_set(40, 50, 60), _range(50, 50, debug=True), True),
+        (_set(40, 50, 60), _set(40, 60, debug=True), True),
+        (
+            _set(40, 50, 60),
+            _distribution((40, 0.5), (60, 0.5), debug=True),
+            True,
+        ),
+        (_distribution((40, 0.5), (60, 0.5)), _exact(40, debug=True), True),
+        (
+            _distribution((40, 0.5), (60, 0.5)),
+            _range(60, 60, debug=True),
+            True,
+        ),
+        (
+            _distribution((40, 0.5), (60, 0.5)),
+            _set(40, 60, debug=True),
+            True,
+        ),
+        (
+            _distribution((40, 0.5), (60, 0.5)),
+            _distribution((40, 1.0), (50, 0.0), debug=True),
+            True,
+        ),
+        (_exact(50), _range(49, 50, debug=True), False),
+        (_range(40, 60), _set(40, 70, debug=True), False),
+        (_range(40, 60), _distribution((50, 0.5), (70, 0.5), debug=True), False),
+        (_set(40, 50, 60), _range(40, 50, debug=True), False),
+        (_set(40, 50, 60), _distribution((40, 0.5), (55, 0.5), debug=True), False),
+        (_distribution((40, 0.5), (60, 0.5)), _exact(50, debug=True), False),
+    ),
+)
+def test_pair_debug_domain_must_be_subset_of_legal_domain(
+    legal_value: KnownValue, debug_value: KnownValue, accepted: bool
+) -> None:
+    legal = _with_enemy_hit_points(_fixture(), legal_value)
+    debug = _with_enemy_hit_points(
+        _fixture(InformationProfile.OMNISCIENT_DEBUG), debug_value
+    )
+
+    result = validate_fixture_pair(legal, debug)
+
+    assert (result.status is ResultStatus.SUCCESS) is accepted
+    if not accepted:
+        assert result.problems[0].code is ErrorCode.FIXTURE_PAIR_MISMATCH
 
 
 def test_pair_allows_explicitly_marked_debug_only_hidden_skill() -> None:

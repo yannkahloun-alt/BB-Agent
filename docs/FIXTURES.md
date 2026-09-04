@@ -24,10 +24,14 @@ player-legal state validation forbids it. Use `validate_fixture_pair` for
 views that must share a nonempty `raw_capture_id` and retain distinct state IDs.
 Pair validation also requires the same battle/decision identity, active actor,
 affordance generation and command set, and player-visible state/action facts.
-An explicitly marked `DEBUG_GROUND_TRUTH` value must be compatible with the
-legal representation: exact values agree, exact/ranged truth stays inside a
-legal range, set truth stays in the legal candidates, and distribution truth
-stays in its support. Unknown legal values accept debug truth. Identity-keyed
+An explicitly marked `DEBUG_GROUND_TRUTH` value must represent a possible-value
+domain that is provably a subset of the legal domain. `UNKNOWN` is universal;
+`EXACT` is a singleton; `RANGE` is a continuous interval; `SET` contains its
+candidates; and `DISTRIBUTION` contains its positive-probability support.
+Consequently discrete truth may fit inside a legal range, while a debug range
+fits a discrete legal domain only when it is degenerate and that one value is a
+member. Zero-probability outcomes do not enlarge a distribution's domain.
+Identity-keyed
 combatants, equipment, effects, skills, tactical stats, turn entries, and
 ground entities/state require every legal item to have a compatible debug
 counterpart, while permitting additional items only when their visibility or
