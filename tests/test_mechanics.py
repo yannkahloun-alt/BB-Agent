@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import bb_agent.transitions as transitions
 from bb_agent.mechanics import (
     MANDATORY_FAMILIES,
     CoverageStatus,
@@ -14,8 +15,13 @@ from bb_agent.mechanics import (
     load_catalog,
     load_manifest,
 )
-from bb_agent.outcomes import HitResult, evaluate_ordinary_attack
-from bb_agent.results import ErrorCode, ResultStatus
+from bb_agent.outcomes import (
+    AttackOutcome,
+    HitResult,
+    OutcomeBranch,
+    evaluate_ordinary_attack,
+)
+from bb_agent.results import ErrorCode, Result, ResultStatus
 from bb_agent.serialization import canonical_sha256
 from bb_agent.tactical_state import (
     ActionKind,
@@ -147,13 +153,197 @@ def _ordinary_attack_state(authority, *, hit_points=60, head_armor=40, body_armo
 
 
 def _wait(kind=ActionKind.WAIT):
-    return replace(
+    action = replace(
         _attack(),
         kind=kind,
         skill_id=None,
         target_kind=None,
         target_actor_id=None,
         preview=PlayerVisiblePreview(),
+    )
+    return replace(
+        action,
+        ap_cost=replace(action.ap_cost, value=0),
+        fatigue_cost=replace(action.fatigue_cost, value=0),
+        charge_cost=replace(action.charge_cost, value=0),
+        ammo_cost=replace(action.ammo_cost, value=0),
+        item_action_cost=replace(action.item_action_cost, value=0),
+    )
+
+
+def _resource_action(skill_id: str):
+    ap, fatigue, ammo = {
+        "actives.recover": (9, 0, 0),
+        "actives.reload_bolt": (4, 20, 1),
+    }[skill_id]
+    action = replace(
+        _wait(),
+        kind=ActionKind.USE_SKILL,
+        skill_id=skill_id,
+        target_kind=TargetKind.SELF,
+    )
+    return replace(
+        action,
+        ap_cost=replace(action.ap_cost, value=ap),
+        fatigue_cost=replace(action.fatigue_cost, value=fatigue),
+        ammo_cost=replace(action.ammo_cost, value=ammo),
+    )
+
+
+def _move_action(
+    *,
+    destination="east",
+    path=("east",),
+    reactions=(),
+    ap=2,
+    fatigue=4,
+):
+    action = replace(
+        _wait(),
+        kind=ActionKind.MOVE_TO,
+        destination_tile_id=destination,
+        resolved_path=path,
+        contingent_reactions=reactions,
+    )
+    return replace(
+        action,
+        ap_cost=replace(action.ap_cost, value=ap),
+        fatigue_cost=replace(action.fatigue_cost, value=fatigue),
+    )
+
+
+def _movement_state(
+    authority,
+    move,
+    *,
+    mover_hp=60,
+    mover_head_armor=40,
+    mover_body_armor=70,
+    second_enemy=False,
+    enemy_far=False,
+):
+    base = _state()
+    brother = next(actor for actor in base.combatants if actor.actor_id == "brother")
+    enemy = next(actor for actor in base.combatants if actor.actor_id == "enemy")
+    brother = replace(
+        brother,
+        perks=KnownValue.exact([]),
+        traits=KnownValue.exact([]),
+        resources=replace(
+            brother.resources,
+            hit_points=KnownValue.exact(mover_hp),
+            head_armor=KnownValue.exact(mover_head_armor),
+            body_armor=KnownValue.exact(mover_body_armor),
+        ),
+    )
+    hand_axe = ItemState(
+        "hand-axe",
+        KnownValue.exact("weapon.hand_axe"),
+        KnownValue.exact("mainhand"),
+        KnownValue.exact(True),
+    )
+    enemy_position = "far" if enemy_far else "northeast"
+    enemy = replace(
+        enemy,
+        position=KnownValue.exact(enemy_position),
+        resources=brother.resources,
+        perks=KnownValue.exact([]),
+        traits=KnownValue.exact([]),
+        equipment=(hand_axe,),
+    )
+    actors = [brother, enemy]
+    if second_enemy:
+        actors.append(
+            replace(enemy, actor_id="enemy-2", position=KnownValue.exact("southeast"))
+        )
+
+    east_neighbors = [None, None, "northeast", "origin", None, None]
+    if second_enemy:
+        east_neighbors[4] = "southeast"
+    if "east2" in move.resolved_path:
+        east_neighbors[0] = "east2"
+
+    origin_neighbors = ["east", "northeast", None, None, None, None]
+    if second_enemy:
+        origin_neighbors[5] = "southeast"
+
+    tiles = [
+        Tile(
+            "origin",
+            HexCoord(0, 0),
+            0,
+            KnownValue.exact("plain"),
+            tuple(origin_neighbors),
+            "brother",
+        ),
+        Tile(
+            "east",
+            HexCoord(1, 0),
+            0,
+            KnownValue.exact("plain"),
+            tuple(east_neighbors),
+        ),
+        Tile(
+            "northeast",
+            HexCoord(1, -1),
+            0,
+            KnownValue.exact("plain"),
+            (None, None, None, None, "origin", "east"),
+            None if enemy_far else "enemy",
+        ),
+    ]
+    if second_enemy:
+        tiles.append(
+            Tile(
+                "southeast",
+                HexCoord(0, 1),
+                0,
+                KnownValue.exact("plain"),
+                (None, "east", "origin", None, None, None),
+                "enemy-2",
+            )
+        )
+    if "east2" in move.resolved_path:
+        tiles.append(
+            Tile(
+                "east2",
+                HexCoord(2, 0),
+                0,
+                KnownValue.exact("plain"),
+                (None, None, None, "east", None, None),
+            )
+        )
+    if enemy_far:
+        tiles.append(
+            Tile(
+                "far",
+                HexCoord(3, 0),
+                0,
+                KnownValue.exact("plain"),
+                (None, None, None, None, None, None),
+                "enemy",
+            )
+        )
+    return _snapshot(
+        authority,
+        move,
+        information_profile=InformationProfile.OMNISCIENT_DEBUG,
+        combatants=tuple(actors),
+        tiles=tuple(tiles),
+    )
+
+
+def _reaction(actor_id="enemy", hit_chance=67):
+    return ContingentReaction(
+        "east",
+        actor_id,
+        "AOO",
+        skill_id="actives.chop",
+        hit_chance=ResolvedPreviewValue(
+            hit_chance,
+            ResolutionStage.PREVIEW_RESOLVED,
+            ResolutionAuthority.HANDCRAFTED_FIXTURE,
+        ),
     )
 
 
@@ -325,19 +515,14 @@ def test_ordinary_content_never_accepts_unknown_shape(tmp_path, changes):
 
 def test_move_requires_aoo_dependency_and_has_transition_coverage(tmp_path):
     authority = _enabled(tmp_path, "move")
-    move = replace(
-        _wait(),
-        kind=ActionKind.MOVE_TO,
-        destination_tile_id="east",
-        resolved_path=("east",),
-    )
-    # Current command legality belongs to source; coverage does not invent paths.
-    state = _snapshot(authority, move)
+    move = _move_action()
+    state = _movement_state(authority, move)
     result = authority.classify(state)
     assert result.status is ResultStatus.SUCCESS
     assert result.value.affordances[0].family_ids == ("aoo", "move")
     enabled = _enabled(tmp_path, "move", "aoo")
-    assert enabled.classify(state).status is ResultStatus.SUCCESS
+    compatible = _movement_state(enabled, move)
+    assert enabled.classify(compatible).status is ResultStatus.SUCCESS
 
 
 @pytest.mark.parametrize(
@@ -358,7 +543,8 @@ def test_simple_resource_skill_declarations(tmp_path, family, skill):
 def test_end_turn_declaration_and_manifest_version_affect_report(tmp_path):
     pending = _authority()
     enabled = _enabled(tmp_path, "end_turn")
-    state = _snapshot(enabled, _wait(ActionKind.END_TURN))
+    action = _wait(ActionKind.END_TURN)
+    state = _snapshot(enabled, action)
     assert enabled.classify(state).status is ResultStatus.SUCCESS
     assert pending.classify(state).status is ResultStatus.SUCCESS
     assert enabled.manifest.fingerprint != pending.manifest.fingerprint
@@ -380,8 +566,8 @@ def test_simple_transitions_use_resolved_costs_and_preserve_turn_boundaries():
     assert wait_branch.actor_has_waited is True
     assert wait_branch.actor_may_wait is False
     assert wait_branch.turn_ended is False
-    assert wait_branch.actor.resources.action_points.value == 5
-    assert wait_branch.actor.resources.fatigue.value == 10
+    assert wait_branch.actor.resources.action_points.value == 9
+    assert wait_branch.actor.resources.fatigue.value == 0
 
     end_result = evaluate_transition(authority, state, end_turn)
     assert end_result.status is ResultStatus.SUCCESS
@@ -389,18 +575,26 @@ def test_simple_transitions_use_resolved_costs_and_preserve_turn_boundaries():
 
 
 @pytest.mark.parametrize(
-    "skill,effect",
-    [("actives.recover", "fatigue_recovered"), ("actives.reload_bolt", "loaded")],
+    "skill,effect,expected_ap,expected_fatigue",
+    [
+        ("actives.recover", "fatigue_recovered", 0, 0),
+        ("actives.reload_bolt", "loaded", 5, 20),
+    ],
 )
-def test_simple_resource_transitions_are_deterministic(skill, effect):
+def test_simple_resource_transitions_are_deterministic(
+    skill, effect, expected_ap, expected_fatigue
+):
     authority = _authority()
-    action = _attack(skill, target_kind=TargetKind.SELF, target_actor_id=None)
+    action = _resource_action(skill)
     state = _snapshot(authority, action)
     action = state.action_affordances.actions[0]
     result = evaluate_transition(authority, state, action)
     assert result.status is ResultStatus.SUCCESS
-    assert result.value.branches[0].effects[0][0] == effect
-    assert result.value.branches[0].probability == 1.0
+    branch = result.value.branches[0]
+    assert branch.effects[0][0] == effect
+    assert branch.probability == 1.0
+    assert branch.actor.resources.action_points.value == expected_ap
+    assert branch.actor.resources.fatigue.value == expected_fatigue
 
 
 def test_supported_equipment_transition_moves_declared_item_to_declared_slot():
@@ -429,169 +623,180 @@ def test_supported_equipment_transition_moves_declared_item_to_declared_slot():
     assert result.value.branches[0].actor.equipment[0].slot.value == "mainhand"
 
 
-def test_safe_and_unsafe_move_never_repath_or_guess_aoo():
+def test_move_without_supplied_reaction_does_not_invent_aoo():
     authority = _authority()
-    move = replace(
-        _wait(),
-        kind=ActionKind.MOVE_TO,
-        destination_tile_id="east",
-        resolved_path=("east",),
-    )
-    safe_state = _snapshot(
-        authority,
-        move,
-        combatants=tuple(
-            replace(actor, relation=actor.relation.NEUTRAL)
-            if actor.actor_id == "enemy"
-            else actor
-            for actor in _state().combatants
-        ),
-    )
-    safe = evaluate_transition(
-        authority, safe_state, safe_state.action_affordances.actions[0]
-    )
-    assert safe.status is ResultStatus.SUCCESS
-    assert safe.value.branches[0].destination_tile_id == "east"
-    assert safe.value.branches[0].actor.position.value == "east"
-
-    unsafe_state = _snapshot(authority, move)
-    unsafe = evaluate_transition(
-        authority, unsafe_state, unsafe_state.action_affordances.actions[0]
-    )
-    assert unsafe.status is ResultStatus.INCOMPLETE_COVERAGE
-    assert unsafe.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
-
-
-def test_supported_lethal_contingent_aoo_interrupts_at_its_trigger_step():
-    authority = _authority()
-    reactions = tuple(
-        ContingentReaction(
-            "east",
-            actor_id,
-            "AOO",
-            skill_id="actives.chop",
-            hit_chance=ResolvedPreviewValue(
-                95,
-                ResolutionStage.PREVIEW_RESOLVED,
-                ResolutionAuthority.HANDCRAFTED_FIXTURE,
-            ),
-        )
-        for actor_id in ("enemy", "enemy-2")
-    )
-    move = replace(
-        _wait(),
-        kind=ActionKind.MOVE_TO,
-        destination_tile_id="origin",
-        resolved_path=("east", "origin"),
-        contingent_reactions=reactions,
-    )
-    actors = tuple(
-        replace(
-            actor,
-            perks=KnownValue.exact([]),
-            traits=KnownValue.exact([]),
-            resources=replace(
-                actor.resources,
-                action_points=KnownValue(
-                    Representation.EXACT,
-                    KnowledgeClass.DERIVED,
-                    value=0,
-                    basis=("zero-cost reaction",),
-                ),
-                fatigue=KnownValue(
-                    Representation.EXACT,
-                    KnowledgeClass.DERIVED,
-                    value=0,
-                    basis=("zero-cost reaction",),
-                ),
-                fatigue_capacity=KnownValue(
-                    Representation.EXACT,
-                    KnowledgeClass.DERIVED,
-                    value=100,
-                    basis=("zero-cost reaction",),
-                ),
-            ),
-            equipment=(
-                ItemState(
-                    "hand-axe",
-                    KnownValue.exact("weapon.hand_axe"),
-                    KnownValue.exact("mainhand"),
-                    KnownValue.exact(True),
-                ),
-            ),
-        )
-        if actor.actor_id == "enemy"
-        else replace(
-            actor,
-            perks=KnownValue.exact([]),
-            traits=KnownValue.exact([]),
-            resources=replace(
-                actor.resources,
-                hit_points=KnownValue.exact(1),
-                head_armor=KnownValue.exact(0),
-                body_armor=KnownValue.exact(0),
-            ),
-        )
-        for actor in _state().combatants
-    )
-    enemy = next(actor for actor in actors if actor.actor_id == "enemy")
-    actors += (
-        replace(enemy, actor_id="enemy-2", position=KnownValue.exact("southwest")),
-    )
-    tiles = tuple(
-        replace(
-            tile,
-            neighbors=("east", None, None, None, "southwest", None),
-        )
-        if tile.tile_id == "origin"
-        else tile
-        for tile in _state().tiles
-    ) + (
-        Tile(
-            "southwest",
-            HexCoord(-1, 1),
-            0,
-            KnownValue.exact("plain"),
-            (None, "origin", None, None, None, None),
-            "enemy-2",
-        ),
-    )
-    state = _snapshot(authority, move, combatants=actors, tiles=tiles)
+    move = _move_action()
+    state = _movement_state(authority, move)
 
     result = evaluate_transition(authority, state, state.action_affordances.actions[0])
 
     assert result.status is ResultStatus.SUCCESS
     assert result.value is not None
-    killed = [branch for branch in result.value.branches if branch.interrupted]
-    assert killed
-    assert all(branch.destination_tile_id == "east" for branch in killed)
-    assert all(branch.actor.position.value == "east" for branch in killed)
-    assert all(branch.actor.life_state is LifeState.REMOVED for branch in killed)
-    assert all(branch.effects.count(("aoo", "enemy")) == 1 for branch in killed)
-    assert any(("aoo", "enemy-2") not in branch.effects for branch in killed), (
-        "a lethal first reaction must suppress the later reaction"
+    assert result.value.branches == (
+        replace(
+            result.value.branches[0],
+            probability=1.0,
+            completed=True,
+            interrupted=False,
+        ),
     )
+    assert result.value.branches[0].destination_tile_id == "east"
+    assert result.value.branches[0].actor.position.value == "east"
+
+
+def test_sidestep_aoo_hit_interrupts_at_origin_and_miss_completes():
+    authority = _authority()
+    move = _move_action(reactions=(_reaction(),))
+    state = _movement_state(authority, move)
+
+    result = evaluate_transition(authority, state, state.action_affordances.actions[0])
+
+    assert result.status is ResultStatus.SUCCESS
+    assert result.value is not None
+    completed = [branch for branch in result.value.branches if branch.completed]
+    interrupted = [branch for branch in result.value.branches if branch.interrupted]
+    surviving_hits = [
+        branch
+        for branch in interrupted
+        if branch.actor.life_state is LifeState.ALIVE
+    ]
+    assert sum(branch.probability for branch in completed) == pytest.approx(0.33)
+    assert all(branch.actor.position.value == "east" for branch in completed)
+    assert surviving_hits
+    assert all(branch.actor.position.value == "origin" for branch in surviving_hits)
+    assert all(branch.destination_tile_id == "origin" for branch in surviving_hits)
+
+
+def test_lethal_contingent_aoo_interrupts_at_origin():
+    authority = _authority()
+    move = _move_action(reactions=(_reaction(hit_chance=95),))
+    state = _movement_state(
+        authority,
+        move,
+        mover_hp=1,
+        mover_head_armor=0,
+        mover_body_armor=0,
+    )
+
+    result = evaluate_transition(authority, state, state.action_affordances.actions[0])
+
+    assert result.status is ResultStatus.SUCCESS
+    assert result.value is not None
+    killed = [
+        branch
+        for branch in result.value.branches
+        if branch.actor.life_state is LifeState.REMOVED
+    ]
+    assert killed
+    assert all(branch.interrupted for branch in killed)
+    assert all(branch.actor.position.value == "origin" for branch in killed)
+    assert all(branch.destination_tile_id == "origin" for branch in killed)
+    assert sum(
+        branch.probability for branch in result.value.branches if branch.completed
+    ) == pytest.approx(0.05)
+
+
+def test_multiple_aoos_continue_after_nonlethal_hit_but_still_block_move(monkeypatch):
+    authority = _authority()
+    move = _move_action(reactions=(_reaction("enemy"), _reaction("enemy-2")))
+    state = _movement_state(authority, move, second_enemy=True)
+
+    def fake_attack(_authority, variant, action):
+        target = next(
+            actor for actor in variant.combatants if actor.actor_id == action.target_actor_id
+        )
+        hp = target.resources.hit_points.value
+        head = target.resources.head_armor.value
+        body = target.resources.body_armor.value
+        if action.actor_id == "enemy":
+            branches = (
+                OutcomeBranch(
+                    HitResult.MISS,
+                    0.5,
+                    target_hp=hp,
+                    target_head_armor=head,
+                    target_body_armor=body,
+                    actor_action_points=0,
+                    actor_fatigue=0,
+                ),
+                OutcomeBranch(
+                    HitResult.BODY,
+                    0.5,
+                    hp_damage=1,
+                    target_hp=hp - 1,
+                    target_head_armor=head,
+                    target_body_armor=body,
+                    actor_action_points=0,
+                    actor_fatigue=0,
+                ),
+            )
+        else:
+            branches = (
+                OutcomeBranch(
+                    HitResult.MISS,
+                    1.0,
+                    target_hp=hp,
+                    target_head_armor=head,
+                    target_body_armor=body,
+                    actor_action_points=0,
+                    actor_fatigue=0,
+                ),
+            )
+        return Result.success(
+            AttackOutcome("contingent-aoo", "test.v1", 50, branches)
+        )
+
+    monkeypatch.setattr(transitions, "evaluate_ordinary_attack", fake_attack)
+
+    result = evaluate_transition(authority, state, state.action_affordances.actions[0])
+
+    assert result.status is ResultStatus.SUCCESS
+    assert result.value is not None
+    interrupted = [branch for branch in result.value.branches if branch.interrupted]
+    assert interrupted
+    assert any(
+        ("aoo", "enemy") in branch.effects
+        and ("aoo", "enemy-2") in branch.effects
+        and branch.actor.life_state is LifeState.ALIVE
+        for branch in interrupted
+    )
+    assert all(branch.actor.position.value == "origin" for branch in interrupted)
+
+
+def test_contingent_aoo_rejects_impossible_reactor_geometry():
+    authority = _authority()
+    move = _move_action(reactions=(_reaction(),))
+    state = _movement_state(authority, move, enemy_far=True)
+
+    result = evaluate_transition(authority, state, state.action_affordances.actions[0])
+
+    assert result.status is ResultStatus.INCOMPLETE_COVERAGE
+    assert result.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
+    assert "not adjacent" in result.problems[0].message
+
+
+def test_multistep_contingent_aoo_fails_closed_without_per_step_costs():
+    authority = _authority()
+    move = _move_action(
+        destination="east2",
+        path=("east", "east2"),
+        reactions=(_reaction(),),
+        ap=4,
+        fatigue=8,
+    )
+    state = _movement_state(authority, move)
+
+    result = evaluate_transition(authority, state, state.action_affordances.actions[0])
+
+    assert result.status is ResultStatus.INCOMPLETE_COVERAGE
+    assert result.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
+    assert "per-step resolved costs" in result.problems[0].message
 
 
 def test_move_costs_fail_closed_when_resolved_resources_are_insufficient():
     authority = _authority()
-    move = replace(
-        _wait(),
-        kind=ActionKind.MOVE_TO,
-        destination_tile_id="east",
-        resolved_path=("east",),
-        ap_cost=replace(_wait().ap_cost, value=10),
-    )
-    state = _snapshot(
-        authority,
-        move,
-        combatants=tuple(
-            replace(actor, relation=actor.relation.NEUTRAL)
-            if actor.actor_id == "enemy"
-            else actor
-            for actor in _state().combatants
-        ),
-    )
+    move = _move_action(ap=10)
+    state = _movement_state(authority, move)
 
     result = evaluate_transition(authority, state, state.action_affordances.actions[0])
 
@@ -616,75 +821,27 @@ def test_contingent_aoo_fails_closed_for_unrepresented_player_uncertainty(
     target_value: KnownValue,
 ):
     authority = _authority()
-    move = replace(
-        _wait(),
-        kind=ActionKind.MOVE_TO,
-        destination_tile_id="east",
-        resolved_path=("east",),
-        contingent_reactions=(
-            ContingentReaction(
-                "east",
-                "enemy",
-                "AOO",
-                skill_id="actives.chop",
-                hit_chance=ResolvedPreviewValue(
-                    67,
-                    ResolutionStage.PREVIEW_RESOLVED,
-                    ResolutionAuthority.HANDCRAFTED_FIXTURE,
-                ),
-            ),
+    move = _move_action(reactions=(_reaction(),))
+    state = _movement_state(authority, move)
+    mover = next(actor for actor in state.combatants if actor.actor_id == "brother")
+    uncertain_mover = replace(
+        mover,
+        resources=replace(
+            mover.resources,
+            hit_points=target_value,
+            head_armor=target_value,
+            body_armor=target_value,
         ),
     )
-    actors = tuple(
-        replace(
-            actor,
-            perks=KnownValue.exact([]),
-            traits=KnownValue.exact([]),
-            resources=replace(
-                actor.resources,
-                action_points=KnownValue(
-                    Representation.EXACT,
-                    KnowledgeClass.DERIVED,
-                    value=0,
-                    basis=("zero-cost reaction",),
-                ),
-                fatigue=KnownValue(
-                    Representation.EXACT,
-                    KnowledgeClass.DERIVED,
-                    value=0,
-                    basis=("zero-cost reaction",),
-                ),
-                fatigue_capacity=KnownValue(
-                    Representation.EXACT,
-                    KnowledgeClass.DERIVED,
-                    value=100,
-                    basis=("zero-cost reaction",),
-                ),
-            ),
-            equipment=(
-                ItemState(
-                    "hand-axe",
-                    KnownValue.exact("weapon.hand_axe"),
-                    KnownValue.exact("mainhand"),
-                    KnownValue.exact(True),
-                ),
-            ),
-        )
-        if actor.actor_id == "enemy"
-        else replace(
-            actor,
-            perks=KnownValue.exact([]),
-            traits=KnownValue.exact([]),
-            resources=replace(
-                actor.resources,
-                hit_points=target_value,
-                head_armor=target_value,
-                body_armor=target_value,
-            ),
-        )
-        for actor in _state().combatants
+    values = {field.name: getattr(state, field.name) for field in fields(state)}
+    values.update(
+        state_id="",
+        combatants=tuple(
+            uncertain_mover if actor.actor_id == "brother" else actor
+            for actor in state.combatants
+        ),
     )
-    state = _snapshot(authority, move, combatants=actors)
+    state = TacticalState.create(**values)
 
     result = evaluate_transition(authority, state, state.action_affordances.actions[0])
 
