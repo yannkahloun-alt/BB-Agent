@@ -656,9 +656,7 @@ def test_sidestep_aoo_hit_interrupts_at_origin_and_miss_completes():
     completed = [branch for branch in result.value.branches if branch.completed]
     interrupted = [branch for branch in result.value.branches if branch.interrupted]
     surviving_hits = [
-        branch
-        for branch in interrupted
-        if branch.actor.life_state is LifeState.ALIVE
+        branch for branch in interrupted if branch.actor.life_state is LifeState.ALIVE
     ]
     assert sum(branch.probability for branch in completed) == pytest.approx(0.33)
     assert all(branch.actor.position.value == "east" for branch in completed)
@@ -703,7 +701,9 @@ def test_multiple_aoos_continue_after_nonlethal_hit_but_still_block_move(monkeyp
 
     def fake_attack(_authority, variant, action):
         target = next(
-            actor for actor in variant.combatants if actor.actor_id == action.target_actor_id
+            actor
+            for actor in variant.combatants
+            if actor.actor_id == action.target_actor_id
         )
         hp = target.resources.hit_points.value
         head = target.resources.head_armor.value
@@ -742,9 +742,7 @@ def test_multiple_aoos_continue_after_nonlethal_hit_but_still_block_move(monkeyp
                     actor_fatigue=0,
                 ),
             )
-        return Result.success(
-            AttackOutcome("contingent-aoo", "test.v1", 50, branches)
-        )
+        return Result.success(AttackOutcome("contingent-aoo", "test.v1", 50, branches))
 
     monkeypatch.setattr(transitions, "evaluate_ordinary_attack", fake_attack)
 
@@ -810,9 +808,9 @@ def test_move_costs_fail_closed_when_resolved_resources_are_insufficient():
     [
         KnownValue.unknown(),
         KnownValue(
-            Representation.DISTRIBUTION,
+            Representation.SET,
             KnowledgeClass.INFERRED,
-            distribution=((1, 0.5), (2, 0.5)),
+            candidates=(1, 2),
             basis=("player-visible uncertainty",),
         ),
     ],
