@@ -1,4 +1,4 @@
-from dataclasses import replace
+from dataclasses import fields, replace
 
 import pytest
 
@@ -11,9 +11,12 @@ from bb_agent.tactical_state import (
     BattleContext,
     Combatant,
     DecisionContext,
+    EffectState,
     Environment,
+    EpistemicMetadata,
     HexCoord,
     InformationProfile,
+    ItemState,
     KnowledgeClass,
     KnownValue,
     LastSeen,
@@ -24,6 +27,7 @@ from bb_agent.tactical_state import (
     Representation,
     ResolutionStage,
     ResolvedCost,
+    ResolvedPreviewValue,
     ResourceState,
     RulesetIdentity,
     SkillState,
@@ -53,6 +57,18 @@ def _resources(*, debug: bool = False) -> ResourceState:
         body_armor=KnownValue.exact(70, knowledge),
         maximum_body_armor=KnownValue.exact(80, knowledge),
         initiative=KnownValue.exact(105, knowledge),
+    )
+
+
+def _unknown_resources() -> ResourceState:
+    unknown = KnownValue.unknown
+    return ResourceState(
+        hit_points=unknown(),
+        maximum_hit_points=unknown(),
+        action_points=unknown(),
+        maximum_action_points=unknown(),
+        fatigue=unknown(),
+        fatigue_capacity=unknown(),
     )
 
 
@@ -144,7 +160,14 @@ def _state(
         target_actor_id="enemy",
         ap_cost=ResolvedCost(4, ResolutionStage.PREVIEW_RESOLVED, "fixture UI"),
         fatigue_cost=ResolvedCost(10, ResolutionStage.PREVIEW_RESOLVED, "fixture UI"),
-        preview=PlayerVisiblePreview(displayed_hit_chance=67),
+        preview=PlayerVisiblePreview(
+            displayed_hit_chance=ResolvedPreviewValue(
+                67, ResolutionStage.PREVIEW_RESOLVED, "Battle Brothers UI"
+            ),
+            affected_tile_ids=ResolvedPreviewValue(
+                ["east"], ResolutionStage.PREVIEW_RESOLVED, "Battle Brothers UI"
+            ),
+        ),
         debug_ground_truth=(
             {"enemy_melee_defense": 12}
             if profile is InformationProfile.OMNISCIENT_DEBUG
@@ -183,7 +206,11 @@ def test_player_legal_preview_does_not_require_hidden_defense() -> None:
     enemy = next(actor for actor in state.combatants if actor.actor_id == "enemy")
     action = state.action_affordances.actions[0]
 
-    assert action.preview.displayed_hit_chance == 67
+    assert action.preview.displayed_hit_chance.value == 67  # type: ignore[union-attr]
+    assert (
+        action.preview.displayed_hit_chance.stage  # type: ignore[union-attr]
+        is ResolutionStage.PREVIEW_RESOLVED
+    )
     assert action.debug_ground_truth is None
     assert enemy.resources.morale.representation is Representation.UNKNOWN
     serialized_action = state.to_dict()["action_affordances"]["actions"][0]  # type: ignore[index]
@@ -503,6 +530,95 @@ def test_affordance_rejects_duplicate_parameters_and_incompatible_fields() -> No
             target_actor_id=None,
             destination_tile_id="east",
         )
+
+
+def test_hidden_hostile_changeable_state_cannot_remain_current_observed_truth() -> None:
+    state = _state()
+    enemy = state.combatants[1]
+    hidden = replace(
+        enemy,
+        visible=False,
+        position=KnownValue.unknown(),
+        last_seen=LastSeen("east", ObservationPoint(1, 1)),
+    )
+    hidden_state = replace(
+        state,
+        state_id="",
+        combatants=(state.combatants[0], hidden),
+        tiles=tuple(
+            replace(tile, occupant_actor_id=None) if tile.tile_id == "east" else tile
+            for tile in state.tiles
+        ),
+    )
+    with pytest.raises(ValueError, match="changeable state must be stale"):
+        hidden_state.normalized()
+
+
+def test_hidden_hostile_stale_equipment_and_effects_round_trip() -> None:
+    state = _state()
+    enemy = state.combatants[1]
+    seen = ObservationPoint(1, 1)
+    remembered = EpistemicMetadata(KnowledgeClass.REMEMBERED, observed_at=seen)
+    hidden = replace(
+        enemy,
+        visible=False,
+        position=KnownValue.unknown(),
+        resources=_unknown_resources(),
+        equipment=(
+            ItemState(
+                "enemy-weapon",
+                "item.spear",
+                "main_hand",
+                membership_knowledge=remembered,
+                content_knowledge=remembered,
+                slot_knowledge=remembered,
+            ),
+        ),
+        effects=(
+            EffectState(
+                "enemy-effect",
+                "effect.example",
+                membership_knowledge=remembered,
+                content_knowledge=remembered,
+            ),
+        ),
+        last_seen=LastSeen("east", seen),
+        identity_knowledge=remembered,
+        faction_knowledge=remembered,
+    )
+    rebuilt = TacticalState.create(
+        **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
+        | {
+            "state_id": "",
+            "combatants": (state.combatants[0], hidden),
+            "tiles": tuple(
+                replace(tile, occupant_actor_id=None)
+                if tile.tile_id == "east"
+                else tile
+                for tile in state.tiles
+            ),
+            "action_affordances": replace(
+                state.action_affordances, captured_for_state_id=""
+            ),
+        }
+    )
+    assert TacticalState.from_dict(rebuilt.to_dict()) == rebuilt
+
+
+def test_semantic_duplicate_commands_with_different_ids_are_rejected() -> None:
+    state = _state()
+    action = state.action_affordances.actions[0]
+    duplicate = replace(action, action_id="caller-chose-another-id")
+    duplicated = replace(
+        state,
+        state_id="",
+        action_affordances=replace(
+            state.action_affordances, actions=(action, duplicate)
+        ),
+    )
+
+    with pytest.raises(ValueError, match="duplicate executable command"):
+        duplicated.normalized()
 
 
 def test_occupancy_and_neighbor_invariants_are_enforced() -> None:

@@ -91,6 +91,23 @@ class ObservationPoint:
 
 
 @dataclass(frozen=True, slots=True)
+class EpistemicMetadata:
+    knowledge_class: KnowledgeClass
+    observed_at: ObservationPoint | None = None
+    basis: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if (
+            self.knowledge_class is KnowledgeClass.REMEMBERED
+            and self.observed_at is None
+        ):
+            raise ValueError("REMEMBERED metadata requires observed_at")
+        if self.knowledge_class in (KnowledgeClass.DERIVED, KnowledgeClass.INFERRED):
+            if not self.basis:
+                raise ValueError("derived/inferred metadata requires basis")
+
+
+@dataclass(frozen=True, slots=True)
 class KnownValue:
     """An exact, uncertain, remembered, or deliberately unknown value."""
 
@@ -193,6 +210,15 @@ class Tile:
     movement_cost: KnownValue = field(default_factory=KnownValue.unknown)
     traversable: KnownValue = field(default_factory=KnownValue.unknown)
     blocks_line_of_sight: KnownValue = field(default_factory=KnownValue.unknown)
+    terrain_knowledge: EpistemicMetadata = field(
+        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
+    )
+    blocking_knowledge: EpistemicMetadata = field(
+        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
+    )
+    dynamic_state_knowledge: EpistemicMetadata = field(
+        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
+    )
 
     def __post_init__(self) -> None:
         if not self.tile_id or not self.terrain_id:
@@ -208,6 +234,15 @@ class ItemState:
     slot: str
     condition: KnownValue = field(default_factory=KnownValue.unknown)
     ammunition: KnownValue = field(default_factory=KnownValue.unknown)
+    membership_knowledge: EpistemicMetadata = field(
+        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
+    )
+    content_knowledge: EpistemicMetadata = field(
+        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
+    )
+    slot_knowledge: EpistemicMetadata = field(
+        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,6 +251,12 @@ class EffectState:
     content_id: str
     stacks: KnownValue = field(default_factory=KnownValue.unknown)
     remaining_duration: KnownValue = field(default_factory=KnownValue.unknown)
+    membership_knowledge: EpistemicMetadata = field(
+        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
+    )
+    content_knowledge: EpistemicMetadata = field(
+        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,6 +315,12 @@ class Combatant:
     perks: KnownValue = field(default_factory=KnownValue.unknown)
     traits: KnownValue = field(default_factory=KnownValue.unknown)
     last_seen: LastSeen | None = None
+    identity_knowledge: EpistemicMetadata = field(
+        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
+    )
+    faction_knowledge: EpistemicMetadata = field(
+        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -335,23 +382,54 @@ class ResolvedCost:
 
 
 @dataclass(frozen=True, slots=True)
-class PlayerVisiblePreview:
-    displayed_hit_chance: int | None = None
-    affected_tile_ids: tuple[str, ...] = ()
-    displayed_damage: tuple[int, int] | None = None
-    facts: tuple[tuple[str, JsonValue], ...] = ()
+class ResolvedPreviewValue:
+    value: JsonValue
+    stage: ResolutionStage
+    authority: str
 
     def __post_init__(self) -> None:
-        if (
-            self.displayed_hit_chance is not None
-            and not 0 <= self.displayed_hit_chance <= 100
-        ):
-            raise ValueError("displayed hit chance must be in [0, 100]")
-        if self.displayed_damage is not None and (
-            self.displayed_damage[0] < 0
-            or self.displayed_damage[0] > self.displayed_damage[1]
-        ):
-            raise ValueError("invalid displayed damage range")
+        if not self.authority:
+            raise ValueError("resolved preview values require authority")
+
+
+@dataclass(frozen=True, slots=True)
+class PlayerVisiblePreview:
+    displayed_hit_chance: ResolvedPreviewValue | None = None
+    affected_tile_ids: ResolvedPreviewValue | None = None
+    displayed_damage: ResolvedPreviewValue | None = None
+    facts: tuple[tuple[str, ResolvedPreviewValue], ...] = ()
+
+    def __post_init__(self) -> None:
+        fact_keys = tuple(key for key, _ in self.facts)
+        if len(fact_keys) != len(set(fact_keys)):
+            raise ValueError("duplicate player-visible preview fact key")
+        if self.displayed_hit_chance is not None:
+            chance = self.displayed_hit_chance.value
+            if (
+                isinstance(chance, bool)
+                or not isinstance(chance, int)
+                or not 0 <= chance <= 100
+            ):
+                raise ValueError("displayed hit chance must be an integer in [0, 100]")
+        if self.displayed_damage is not None:
+            damage = self.displayed_damage.value
+            if (
+                not isinstance(damage, list | tuple)
+                or len(damage) != 2
+                or any(
+                    isinstance(item, bool) or not isinstance(item, int)
+                    for item in damage
+                )
+                or damage[0] < 0
+                or damage[0] > damage[1]
+            ):
+                raise ValueError("invalid displayed damage range")
+        if self.affected_tile_ids is not None:
+            affected = self.affected_tile_ids.value
+            if not isinstance(affected, list | tuple) or not all(
+                isinstance(tile_id, str) for tile_id in affected
+            ):
+                raise ValueError("affected tile preview must contain tile IDs")
 
 
 @dataclass(frozen=True, slots=True)
@@ -706,6 +784,7 @@ class TacticalState:
                 if tile.visibility is KnowledgeClass.DEBUG_GROUND_TRUTH:
                     raise ValueError("player_legal cannot contain DEBUG_GROUND_TRUTH")
         action_ids: set[str] = set()
+        command_intents: dict[str, str] = {}
         for action in self.action_affordances.actions:
             if action.actor_id != active.actor_id:
                 raise ValueError("affordance actor does not match active actor")
@@ -714,6 +793,11 @@ class TacticalState:
             if action.action_id in action_ids:
                 raise ValueError("duplicate action_id")
             action_ids.add(action.action_id)
+            intent = canonical_sha256(_command_intent(action))
+            prior_action_id = command_intents.get(intent)
+            if prior_action_id is not None and prior_action_id != action.action_id:
+                raise ValueError("duplicate executable command has different action_id")
+            command_intents[intent] = action.action_id
             if (
                 self.information_profile is InformationProfile.PLAYER_LEGAL
                 and action.debug_ground_truth is not None
@@ -742,7 +826,10 @@ class TacticalState:
                 raise ValueError("affordance target_actor_id references unknown actor")
             if action.target_tile_id is not None and action.target_tile_id not in tiles:
                 raise ValueError("affordance target_tile_id references unknown tile")
-            for tile_id in (*action.resolved_path, *action.preview.affected_tile_ids):
+            affected_tiles: tuple[str, ...] = ()
+            if action.preview.affected_tile_ids is not None:
+                affected_tiles = tuple(action.preview.affected_tile_ids.value)  # type: ignore[arg-type]
+            for tile_id in (*action.resolved_path, *affected_tiles):
                 if tile_id not in tiles:
                     raise ValueError(f"affordance references unknown tile {tile_id}")
             if action.kind is ActionKind.MOVE_TO:
@@ -776,6 +863,7 @@ class TacticalState:
                         raise ValueError(
                             "hidden hostile cannot have an exact current position"
                         )
+                    _validate_hidden_hostile_staleness(actor)
             if actor.position.representation is Representation.EXACT:
                 tile_id = actor.position.value
                 if not isinstance(tile_id, str) or tile_id not in tiles:
@@ -787,8 +875,8 @@ class TacticalState:
                     raise ValueError("actor position and tile occupancy disagree")
         for tile in self.tiles:
             if self.information_profile is InformationProfile.PLAYER_LEGAL:
-                for value in _walk_known_values(tile):
-                    if value.knowledge_class is KnowledgeClass.DEBUG_GROUND_TRUTH:
+                for knowledge in _walk_knowledge_classes(tile):
+                    if knowledge is KnowledgeClass.DEBUG_GROUND_TRUTH:
                         raise ValueError(
                             "player_legal cannot contain DEBUG_GROUND_TRUTH"
                         )
@@ -812,9 +900,56 @@ class TacticalState:
 
 
 def _reject_debug_knowledge(actor: Combatant) -> None:
-    for value in _walk_known_values(actor):
-        if value.knowledge_class is KnowledgeClass.DEBUG_GROUND_TRUTH:
+    for knowledge in _walk_knowledge_classes(actor):
+        if knowledge is KnowledgeClass.DEBUG_GROUND_TRUTH:
             raise ValueError("player_legal cannot contain DEBUG_GROUND_TRUTH")
+
+
+def _walk_knowledge_classes(value: Any) -> tuple[KnowledgeClass, ...]:
+    if isinstance(value, KnownValue | EpistemicMetadata):
+        return (value.knowledge_class,)
+    if hasattr(value, "__dataclass_fields__"):
+        result: tuple[KnowledgeClass, ...] = ()
+        for name in value.__dataclass_fields__:
+            result += _walk_knowledge_classes(getattr(value, name))
+        return result
+    if isinstance(value, tuple):
+        return sum((_walk_knowledge_classes(child) for child in value), ())
+    return ()
+
+
+def _validate_hidden_hostile_staleness(actor: Combatant) -> None:
+    prohibited = {KnowledgeClass.EXACT_OBSERVED, KnowledgeClass.OBSERVED}
+    changeable: list[KnowledgeClass] = [
+        value.knowledge_class for value in _walk_known_values(actor.resources)
+    ]
+    changeable.extend(
+        (
+            actor.identity_knowledge.knowledge_class,
+            actor.faction_knowledge.knowledge_class,
+        )
+    )
+    for item in actor.equipment:
+        changeable.extend(
+            (
+                item.membership_knowledge.knowledge_class,
+                item.content_knowledge.knowledge_class,
+                item.condition.knowledge_class,
+                item.ammunition.knowledge_class,
+                item.slot_knowledge.knowledge_class,
+            )
+        )
+    for effect in actor.effects:
+        changeable.extend(
+            (
+                effect.membership_knowledge.knowledge_class,
+                effect.content_knowledge.knowledge_class,
+                effect.stacks.knowledge_class,
+                effect.remaining_duration.knowledge_class,
+            )
+        )
+    if any(knowledge in prohibited for knowledge in changeable):
+        raise ValueError("hidden hostile changeable state must be stale or uncertain")
 
 
 def _validate_resources(resources: ResourceState) -> None:
@@ -859,12 +994,18 @@ def _normalize_actions(
 ) -> tuple[ActionAffordance, ...]:
     unique: dict[str, ActionAffordance] = {}
     for action in actions:
+        affected = action.preview.affected_tile_ids
+        if affected is not None:
+            affected = replace(
+                affected,
+                value=sorted(set(affected.value)),  # type: ignore[arg-type]
+            )
         normalized = replace(
             action,
             parameters=tuple(sorted(action.parameters)),
             preview=replace(
                 action.preview,
-                affected_tile_ids=tuple(sorted(set(action.preview.affected_tile_ids))),
+                affected_tile_ids=affected,
                 facts=tuple(sorted(action.preview.facts)),
             ),
         )
@@ -875,7 +1016,30 @@ def _normalize_actions(
     return tuple(unique[action_id] for action_id in sorted(unique))
 
 
+def _command_intent(action: ActionAffordance) -> dict[str, JsonValue]:
+    return {
+        "actor_id": action.actor_id,
+        "kind": action.kind.value,
+        "parameters": _jsonify(action.parameters),
+        "skill_id": action.skill_id,
+        "item_id": action.item_id,
+        "target_kind": action.target_kind.value if action.target_kind else None,
+        "target_actor_id": action.target_actor_id,
+        "target_tile_id": action.target_tile_id,
+        "target_direction": action.target_direction,
+        "mode_variant": action.mode_variant,
+        "destination_tile_id": action.destination_tile_id,
+        "resolved_path": _jsonify(action.resolved_path),
+        "source_location": action.source_location,
+        "target_slot": action.target_slot,
+        "displaced_item_id": action.displaced_item_id,
+        "displaced_item_destination": action.displaced_item_destination,
+    }
+
+
 def _normalize_epistemic(value: Any) -> Any:
+    if isinstance(value, EpistemicMetadata):
+        return replace(value, basis=tuple(sorted(set(value.basis))))
     if isinstance(value, KnownValue):
         candidates = value.candidates
         if value.representation is Representation.SET:
