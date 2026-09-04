@@ -3,13 +3,13 @@
   "content_fingerprint": "4c4b714832d1989740a6f07dce058c11aa1e9123056966ede06ce42d1df182bd",
   "families": [
     {"family_id": "ordinary_attack", "status": "SUPPORTED", "action_kinds": ["USE_SKILL"], "content_ids": ["actives.chop"], "outcome_effects": ["hit_miss", "hit_location", "armor_damage", "hp_damage", "kill", "resources"], "model_version": "ordinary-attack.v1", "reason": null, "requires": []},
-    {"family_id": "move", "status": "EVALUATION_UNSUPPORTED", "action_kinds": ["MOVE_TO"], "content_ids": [], "outcome_effects": ["resolved_path", "resources", "position"], "model_version": null, "reason": "Movement transition pending #19.", "requires": ["aoo"]},
-    {"family_id": "aoo", "status": "EVALUATION_UNSUPPORTED", "action_kinds": [], "content_ids": [], "outcome_effects": ["disengagement", "interruption", "friendly_harm"], "model_version": null, "reason": "Mandatory AOO/disengagement outcomes pending #19.", "requires": []},
-    {"family_id": "wait", "status": "EVALUATION_UNSUPPORTED", "action_kinds": ["WAIT"], "content_ids": [], "outcome_effects": ["tempo"], "model_version": null, "reason": "Wait transition pending #19.", "requires": []},
-    {"family_id": "end_turn", "status": "EVALUATION_UNSUPPORTED", "action_kinds": ["END_TURN"], "content_ids": [], "outcome_effects": ["tempo", "resources"], "model_version": null, "reason": "End-turn transition pending #19.", "requires": []},
-    {"family_id": "equip", "status": "EVALUATION_UNSUPPORTED", "action_kinds": ["EQUIP_ITEM"], "content_ids": ["weapon.hand_axe"], "outcome_effects": ["equipment", "resources"], "model_version": null, "reason": "Declared item transitions pending #19.", "requires": []},
-    {"family_id": "recover", "status": "EVALUATION_UNSUPPORTED", "action_kinds": ["USE_SKILL"], "content_ids": ["actives.recover"], "outcome_effects": ["fatigue"], "model_version": null, "reason": "Recover transition pending #19.", "requires": []},
-    {"family_id": "reload", "status": "EVALUATION_UNSUPPORTED", "action_kinds": ["USE_SKILL"], "content_ids": ["actives.reload_bolt"], "outcome_effects": ["ammunition", "loaded_state"], "model_version": null, "reason": "Reload transition pending #19.", "requires": []},
+    {"family_id": "move", "status": "SUPPORTED", "action_kinds": ["MOVE_TO"], "content_ids": [], "outcome_effects": ["resolved_path", "resources", "position"], "model_version": "transitions.v1", "reason": null, "requires": ["aoo"]},
+    {"family_id": "aoo", "status": "SUPPORTED", "action_kinds": [], "content_ids": [], "outcome_effects": ["disengagement", "interruption", "friendly_harm"], "model_version": "transitions.v1", "reason": null, "requires": []},
+    {"family_id": "wait", "status": "SUPPORTED", "action_kinds": ["WAIT"], "content_ids": [], "outcome_effects": ["tempo"], "model_version": "transitions.v1", "reason": null, "requires": []},
+    {"family_id": "end_turn", "status": "SUPPORTED", "action_kinds": ["END_TURN"], "content_ids": [], "outcome_effects": ["tempo", "resources"], "model_version": "transitions.v1", "reason": null, "requires": []},
+    {"family_id": "equip", "status": "SUPPORTED", "action_kinds": ["EQUIP_ITEM"], "content_ids": ["weapon.hand_axe"], "outcome_effects": ["equipment", "resources"], "model_version": "transitions.v1", "reason": null, "requires": []},
+    {"family_id": "recover", "status": "SUPPORTED", "action_kinds": ["USE_SKILL"], "content_ids": ["actives.recover"], "outcome_effects": ["fatigue"], "model_version": "transitions.v1", "reason": null, "requires": []},
+    {"family_id": "reload", "status": "SUPPORTED", "action_kinds": ["USE_SKILL"], "content_ids": ["actives.reload_bolt"], "outcome_effects": ["ammunition", "loaded_state"], "model_version": "transitions.v1", "reason": null, "requires": []},
     {"family_id": "special", "status": "EVALUATION_UNSUPPORTED", "action_kinds": ["USE_SKILL"], "content_ids": [], "outcome_effects": ["control", "aoe", "defensive", "special"], "model_version": null, "reason": "Other control, AOE, defensive and special mechanics need separately tested declarations.", "requires": []}
   ]
 }

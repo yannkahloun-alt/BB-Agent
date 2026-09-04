@@ -33,6 +33,7 @@ from bb_agent.tactical_state import (
     TacticalState,
     TargetKind,
 )
+from bb_agent.transitions import evaluate_transition
 from test_tactical_state import _state
 
 DATA = Path(__file__).parents[1] / "src" / "bb_agent" / "data"
@@ -160,11 +161,7 @@ def test_builtin_is_pinned_immutable_and_honest():
     assert (
         authority.manifest.family("ordinary_attack").status is CoverageStatus.SUPPORTED
     )
-    assert all(
-        family.status is CoverageStatus.EVALUATION_UNSUPPORTED
-        for family in authority.manifest.families
-        if family.family_id != "ordinary_attack"
-    )
+    assert authority.manifest.family("move").model_version == "transitions.v1"
     assert (
         authority.catalog.provenance.revision
         == "162f498ac7c49b4c317bbf54718a595ecef6a65a"
@@ -175,7 +172,7 @@ def test_builtin_is_pinned_immutable_and_honest():
     with pytest.raises(TypeError):
         authority.catalog.entries[0].facts[0] = ("changed", 1)
     result = authority.classify(_snapshot(authority, _attack(), _wait()))
-    assert result.status is ResultStatus.INCOMPLETE_COVERAGE
+    assert result.status is ResultStatus.SUCCESS
     assert len(result.value.affordances) == 2
 
 
@@ -322,7 +319,7 @@ def test_ordinary_content_never_accepts_unknown_shape(tmp_path, changes):
     assert result.status is ResultStatus.INCOMPLETE_COVERAGE
 
 
-def test_move_requires_aoo_even_when_movement_stub_is_supported(tmp_path):
+def test_move_requires_aoo_dependency_and_has_transition_coverage(tmp_path):
     authority = _enabled(tmp_path, "move")
     move = replace(
         _wait(),
@@ -333,9 +330,8 @@ def test_move_requires_aoo_even_when_movement_stub_is_supported(tmp_path):
     # Current command legality belongs to source; coverage does not invent paths.
     state = _snapshot(authority, move)
     result = authority.classify(state)
-    assert result.status is ResultStatus.INCOMPLETE_COVERAGE
+    assert result.status is ResultStatus.SUCCESS
     assert result.value.affordances[0].family_ids == ("aoo", "move")
-    assert any(problem.mechanic_id == "aoo" for problem in result.problems)
     enabled = _enabled(tmp_path, "move", "aoo")
     assert enabled.classify(state).status is ResultStatus.SUCCESS
 
@@ -360,8 +356,106 @@ def test_end_turn_declaration_and_manifest_version_affect_report(tmp_path):
     enabled = _enabled(tmp_path, "end_turn")
     state = _snapshot(enabled, _wait(ActionKind.END_TURN))
     assert enabled.classify(state).status is ResultStatus.SUCCESS
-    assert pending.classify(state).status is ResultStatus.INCOMPLETE_COVERAGE
+    assert pending.classify(state).status is ResultStatus.SUCCESS
     assert enabled.manifest.fingerprint != pending.manifest.fingerprint
+
+
+def test_simple_transitions_use_resolved_costs_and_preserve_turn_boundaries():
+    authority = _authority()
+    state = _snapshot(authority, _wait(), _wait(ActionKind.END_TURN))
+    wait = next(
+        a for a in state.action_affordances.actions if a.kind is ActionKind.WAIT
+    )
+    end_turn = next(
+        a for a in state.action_affordances.actions if a.kind is ActionKind.END_TURN
+    )
+
+    wait_result = evaluate_transition(authority, state, wait)
+    assert wait_result.status is ResultStatus.SUCCESS
+    wait_branch = wait_result.value.branches[0]
+    assert wait_branch.actor_has_waited is True
+    assert wait_branch.actor_may_wait is False
+    assert wait_branch.turn_ended is False
+    assert wait_branch.actor.resources.action_points.value == 5
+    assert wait_branch.actor.resources.fatigue.value == 10
+
+    end_result = evaluate_transition(authority, state, end_turn)
+    assert end_result.status is ResultStatus.SUCCESS
+    assert end_result.value.branches[0].turn_ended is True
+
+
+@pytest.mark.parametrize(
+    "skill,effect",
+    [("actives.recover", "fatigue_recovered"), ("actives.reload_bolt", "loaded")],
+)
+def test_simple_resource_transitions_are_deterministic(skill, effect):
+    authority = _authority()
+    action = _attack(skill, target_kind=TargetKind.SELF, target_actor_id=None)
+    state = _snapshot(authority, action)
+    action = state.action_affordances.actions[0]
+    result = evaluate_transition(authority, state, action)
+    assert result.status is ResultStatus.SUCCESS
+    assert result.value.branches[0].effects[0][0] == effect
+    assert result.value.branches[0].probability == 1.0
+
+
+def test_supported_equipment_transition_moves_declared_item_to_declared_slot():
+    authority = _authority()
+    state = _state()
+    item = ItemState(
+        "axe",
+        KnownValue.exact("weapon.hand_axe"),
+        KnownValue.exact("bag"),
+        KnownValue.exact(True),
+    )
+    actors = tuple(
+        replace(actor, equipment=(item,)) if actor.actor_id == "brother" else actor
+        for actor in state.combatants
+    )
+    action = replace(
+        _wait(),
+        kind=ActionKind.EQUIP_ITEM,
+        item_id="axe",
+        source_location="bag",
+        target_slot="mainhand",
+    )
+    state = _snapshot(authority, action, combatants=actors)
+    result = evaluate_transition(authority, state, state.action_affordances.actions[0])
+    assert result.status is ResultStatus.SUCCESS
+    assert result.value.branches[0].actor.equipment[0].slot.value == "mainhand"
+
+
+def test_safe_and_unsafe_move_never_repath_or_guess_aoo():
+    authority = _authority()
+    move = replace(
+        _wait(),
+        kind=ActionKind.MOVE_TO,
+        destination_tile_id="east",
+        resolved_path=("east",),
+    )
+    safe_state = _snapshot(
+        authority,
+        move,
+        combatants=tuple(
+            replace(actor, relation=actor.relation.NEUTRAL)
+            if actor.actor_id == "enemy"
+            else actor
+            for actor in _state().combatants
+        ),
+    )
+    safe = evaluate_transition(
+        authority, safe_state, safe_state.action_affordances.actions[0]
+    )
+    assert safe.status is ResultStatus.SUCCESS
+    assert safe.value.branches[0].destination_tile_id == "east"
+    assert safe.value.branches[0].actor.position.value == "east"
+
+    unsafe_state = _snapshot(authority, move)
+    unsafe = evaluate_transition(
+        authority, unsafe_state, unsafe_state.action_affordances.actions[0]
+    )
+    assert unsafe.status is ResultStatus.INCOMPLETE_COVERAGE
+    assert unsafe.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
 
 
 def test_displayed_damage_is_terminal_and_subsequent_mitigation_is_allowed():

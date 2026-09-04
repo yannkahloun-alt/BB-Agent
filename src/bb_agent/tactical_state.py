@@ -545,6 +545,30 @@ class PlayerVisiblePreview:
 
 
 @dataclass(frozen=True, slots=True)
+class ContingentReaction:
+    """A supplied, path-scoped hostile reaction; never an enemy action set."""
+
+    path_step_tile_id: str
+    reacting_actor_id: str
+    reaction_kind: str
+    skill_id: str | None = None
+    hit_chance: ResolvedPreviewValue | None = None
+    unsupported_mechanic_id: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.path_step_tile_id or not self.reacting_actor_id:
+            raise ValueError("contingent reaction identity cannot be empty")
+        if self.reaction_kind != "AOO":
+            raise ValueError("only AOO contingent reactions are supported")
+        if bool(self.skill_id) == bool(self.unsupported_mechanic_id):
+            raise ValueError(
+                "reaction requires exactly one supported or unsupported identity"
+            )
+        if self.skill_id and self.hit_chance is None:
+            raise ValueError("supported reaction requires resolved hit chance")
+
+
+@dataclass(frozen=True, slots=True)
 class ActionAffordance:
     action_id: str
     actor_id: str
@@ -572,6 +596,7 @@ class ActionAffordance:
     displaced_item_destination: str | None = None
     preview: PlayerVisiblePreview = field(default_factory=PlayerVisiblePreview)
     debug_ground_truth: JsonValue = None
+    contingent_reactions: tuple[ContingentReaction, ...] = ()
 
     def __post_init__(self) -> None:
         object.__setattr__(
@@ -616,6 +641,11 @@ class ActionAffordance:
                 )
             ):
                 raise ValueError("MOVE_TO contains incompatible action fields")
+            if any(
+                reaction.path_step_tile_id not in self.resolved_path
+                for reaction in self.contingent_reactions
+            ):
+                raise ValueError("reaction trigger must be a resolved path step")
         elif self.kind is ActionKind.USE_SKILL:
             self._validate_skill_target()
             if (
@@ -677,6 +707,8 @@ class ActionAffordance:
             or self.resolved_path
         ):
             raise ValueError(f"{self.kind} contains incompatible action fields")
+        elif self.contingent_reactions:
+            raise ValueError("only MOVE_TO may carry contingent reactions")
 
     def _validate_skill_target(self) -> None:
         if not self.skill_id or self.target_kind is None:
@@ -885,6 +917,8 @@ class TacticalState:
         affordances.pop("captured_for_state_id", None)
         affordances.pop("source_generation", None)
         for action in affordances["actions"]:  # type: ignore[union-attr]
+            if action.get("contingent_reactions") == []:
+                action.pop("contingent_reactions", None)
             action.pop("debug_ground_truth", None)
             action.pop("source_generation", None)
             action.pop("provenance", None)
@@ -1298,6 +1332,11 @@ def _command_intent(action: ActionAffordance) -> dict[str, JsonValue]:
         "target_slot": action.target_slot,
         "displaced_item_id": action.displaced_item_id,
         "displaced_item_destination": action.displaced_item_destination,
+        **(
+            {"contingent_reactions": _jsonify(action.contingent_reactions)}
+            if action.contingent_reactions
+            else {}
+        ),
     }
 
 
