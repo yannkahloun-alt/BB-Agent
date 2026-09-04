@@ -862,6 +862,53 @@ def test_complete_affordance_set_requires_actions_and_source_generation() -> Non
         )
 
 
+def test_closed_enums_reject_raw_strings_on_direct_construction() -> None:
+    debug = _state(InformationProfile.OMNISCIENT_DEBUG)
+    with pytest.raises(ValueError, match="information_profile requires"):
+        replace(debug, information_profile="player_legal")  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="affordance kind requires"):
+        replace(
+            debug.action_affordances.actions[0],
+            kind="USE_SKILL",  # type: ignore[arg-type]
+        )
+    with pytest.raises(ValueError, match="resolved cost stage requires"):
+        ResolvedCost(
+            4,
+            "PREVIEW_RESOLVED",  # type: ignore[arg-type]
+            ResolutionAuthority.PLAYER_UI,
+        )
+    with pytest.raises(ValueError, match="representation requires"):
+        KnownValue(  # type: ignore[arg-type]
+            "UNKNOWN",
+            KnowledgeClass.UNKNOWN,
+        )
+
+
+def test_every_affordance_requires_explicit_resolved_costs() -> None:
+    action = _state().action_affordances.actions[0]
+    with pytest.raises(ValueError, match="requires resolved AP and fatigue costs"):
+        replace(action, ap_cost=None)
+    with pytest.raises(ValueError, match="requires resolved AP and fatigue costs"):
+        replace(action, fatigue_cost=None)
+
+    zero = ResolvedCost(
+        0,
+        ResolutionStage.PREVIEW_RESOLVED,
+        ResolutionAuthority.HANDCRAFTED_FIXTURE,
+    )
+    wait = ActionAffordance(
+        "temporary-id",
+        "brother",
+        ActionKind.WAIT,
+        AffordanceProvenance.HANDCRAFTED_FIXTURE,
+        "generation-1",
+        ap_cost=zero,
+        fatigue_cost=zero,
+    )
+    end_turn = replace(wait, kind=ActionKind.END_TURN)
+    assert wait.ap_cost.value == end_turn.fatigue_cost.value == 0
+
+
 def test_occupancy_and_neighbor_invariants_are_enforced() -> None:
     state = _state()
     bad_tile = replace(state.tiles[0], neighbors=(None,) * 6)

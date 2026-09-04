@@ -113,6 +113,8 @@ class KnownValue:
     confidence: float | None = None
 
     def __post_init__(self) -> None:
+        _require_enum(self.representation, Representation, "representation")
+        _require_enum(self.knowledge_class, KnowledgeClass, "knowledge_class")
         payloads = {
             Representation.EXACT: self.value is not None,
             Representation.RANGE: self.minimum is not None or self.maximum is not None,
@@ -210,6 +212,7 @@ class Tile:
     blocks_line_of_sight: KnownValue = field(default_factory=KnownValue.unknown)
 
     def __post_init__(self) -> None:
+        _require_enum(self.visibility, KnowledgeClass, "tile visibility")
         if not self.tile_id:
             raise ValueError("tile ID cannot be empty")
         if len(self.neighbors) != 6:
@@ -306,6 +309,10 @@ class Combatant:
     traits: KnownValue = field(default_factory=KnownValue.unknown)
     last_seen: LastSeen | None = None
 
+    def __post_init__(self) -> None:
+        _require_enum(self.relation, Relation, "combatant relation")
+        _require_enum(self.life_state, LifeState, "combatant life_state")
+
 
 @dataclass(frozen=True, slots=True)
 class RulesetIdentity:
@@ -361,6 +368,7 @@ class ResolvedCost:
     authority: ResolutionAuthority
 
     def __post_init__(self) -> None:
+        _require_enum(self.stage, ResolutionStage, "resolved cost stage")
         if self.value < 0:
             raise ValueError("resolved costs require a non-negative value")
         if not isinstance(self.authority, ResolutionAuthority):
@@ -374,6 +382,7 @@ class ResolvedPreviewValue:
     authority: ResolutionAuthority
 
     def __post_init__(self) -> None:
+        _require_enum(self.stage, ResolutionStage, "resolved preview stage")
         if not isinstance(self.authority, ResolutionAuthority):
             raise ValueError("resolved preview values require a valid authority")
 
@@ -445,6 +454,10 @@ class ActionAffordance:
     debug_ground_truth: JsonValue = None
 
     def __post_init__(self) -> None:
+        _require_enum(self.kind, ActionKind, "affordance kind")
+        _require_enum(self.provenance, AffordanceProvenance, "affordance provenance")
+        if self.target_kind is not None:
+            _require_enum(self.target_kind, TargetKind, "affordance target_kind")
         if not self.action_id or not self.actor_id or not self.source_generation:
             raise ValueError("affordance identity fields cannot be empty")
         if not isinstance(self.provenance, AffordanceProvenance):
@@ -456,6 +469,8 @@ class ActionAffordance:
             raise ValueError("generic parameters require the extension namespace")
         if self.mode_variant == "":
             raise ValueError("mode_variant cannot be empty")
+        if self.ap_cost is None or self.fatigue_cost is None:
+            raise ValueError("every affordance requires resolved AP and fatigue costs")
         if self.kind is ActionKind.MOVE_TO:
             if not self.destination_tile_id or not self.resolved_path:
                 raise ValueError("MOVE_TO requires destination and resolved path")
@@ -573,6 +588,7 @@ class ActionAffordanceSet:
     actions: tuple[ActionAffordance, ...]
 
     def __post_init__(self) -> None:
+        _require_enum(self.completeness, AffordanceCompleteness, "completeness")
         if not self.actor_id:
             raise ValueError("affordance set actor_id cannot be empty")
         if not self.source_generation:
@@ -597,6 +613,11 @@ class TacticalState:
     action_affordances: ActionAffordanceSet
     ground_entities: tuple[GroundEntity, ...] = ()
     annotations: JsonValue = None
+
+    def __post_init__(self) -> None:
+        _require_enum(
+            self.information_profile, InformationProfile, "information_profile"
+        )
 
     def normalized(self) -> TacticalState:
         """Return a validated, deterministically ordered state with its semantic ID."""
@@ -1141,6 +1162,11 @@ def _walk_known_values(value: Any) -> tuple[KnownValue, ...]:
     if isinstance(value, tuple):
         return sum((_walk_known_values(child) for child in value), ())
     return ()
+
+
+def _require_enum(value: Any, enum_type: type[StrEnum], field_name: str) -> None:
+    if not isinstance(value, enum_type):
+        raise ValueError(f"{field_name} requires {enum_type.__name__}")
 
 
 def _jsonify(value: Any) -> JsonValue:
