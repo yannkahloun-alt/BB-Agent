@@ -21,6 +21,7 @@ from bb_agent.tactical_state import (
     ActionKind,
     AffordanceCompleteness,
     ContingentReaction,
+    HexCoord,
     InformationProfile,
     ItemState,
     KnowledgeClass,
@@ -34,6 +35,7 @@ from bb_agent.tactical_state import (
     SkillState,
     TacticalState,
     TargetKind,
+    Tile,
 )
 from bb_agent.transitions import evaluate_transition
 from test_tactical_state import _state
@@ -462,23 +464,26 @@ def test_safe_and_unsafe_move_never_repath_or_guess_aoo():
 
 def test_supported_lethal_contingent_aoo_interrupts_at_its_trigger_step():
     authority = _authority()
-    reaction = ContingentReaction(
-        "east",
-        "enemy",
-        "AOO",
-        skill_id="actives.chop",
-        hit_chance=ResolvedPreviewValue(
-            95,
-            ResolutionStage.PREVIEW_RESOLVED,
-            ResolutionAuthority.HANDCRAFTED_FIXTURE,
-        ),
+    reactions = tuple(
+        ContingentReaction(
+            "east",
+            actor_id,
+            "AOO",
+            skill_id="actives.chop",
+            hit_chance=ResolvedPreviewValue(
+                95,
+                ResolutionStage.PREVIEW_RESOLVED,
+                ResolutionAuthority.HANDCRAFTED_FIXTURE,
+            ),
+        )
+        for actor_id in ("enemy", "enemy-2")
     )
     move = replace(
         _wait(),
         kind=ActionKind.MOVE_TO,
-        destination_tile_id="east",
-        resolved_path=("east",),
-        contingent_reactions=(reaction,),
+        destination_tile_id="origin",
+        resolved_path=("east", "origin"),
+        contingent_reactions=reactions,
     )
     actors = tuple(
         replace(
@@ -529,7 +534,29 @@ def test_supported_lethal_contingent_aoo_interrupts_at_its_trigger_step():
         )
         for actor in _state().combatants
     )
-    state = _snapshot(authority, move, combatants=actors)
+    enemy = next(actor for actor in actors if actor.actor_id == "enemy")
+    actors += (
+        replace(enemy, actor_id="enemy-2", position=KnownValue.exact("southwest")),
+    )
+    tiles = tuple(
+        replace(
+            tile,
+            neighbors=("east", None, None, None, "southwest", None),
+        )
+        if tile.tile_id == "origin"
+        else tile
+        for tile in _state().tiles
+    ) + (
+        Tile(
+            "southwest",
+            HexCoord(-1, 1),
+            0,
+            KnownValue.exact("plain"),
+            (None, "origin", None, None, None, None),
+            "enemy-2",
+        ),
+    )
+    state = _snapshot(authority, move, combatants=actors, tiles=tiles)
 
     result = evaluate_transition(authority, state, state.action_affordances.actions[0])
 
@@ -540,6 +567,37 @@ def test_supported_lethal_contingent_aoo_interrupts_at_its_trigger_step():
     assert all(branch.destination_tile_id == "east" for branch in killed)
     assert all(branch.actor.position.value == "east" for branch in killed)
     assert all(branch.actor.life_state is LifeState.REMOVED for branch in killed)
+    assert all(branch.effects.count(("aoo", "enemy")) == 1 for branch in killed)
+    assert any(("aoo", "enemy-2") not in branch.effects for branch in killed), (
+        "a lethal first reaction must suppress the later reaction"
+    )
+
+
+def test_move_costs_fail_closed_when_resolved_resources_are_insufficient():
+    authority = _authority()
+    move = replace(
+        _wait(),
+        kind=ActionKind.MOVE_TO,
+        destination_tile_id="east",
+        resolved_path=("east",),
+        ap_cost=replace(_wait().ap_cost, value=10),
+    )
+    state = _snapshot(
+        authority,
+        move,
+        combatants=tuple(
+            replace(actor, relation=actor.relation.NEUTRAL)
+            if actor.actor_id == "enemy"
+            else actor
+            for actor in _state().combatants
+        ),
+    )
+
+    result = evaluate_transition(authority, state, state.action_affordances.actions[0])
+
+    assert result.status is ResultStatus.INCOMPLETE_COVERAGE
+    assert result.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
+    assert "costs exceed" in result.problems[0].message
 
 
 def test_displayed_damage_is_terminal_and_subsequent_mitigation_is_allowed():
