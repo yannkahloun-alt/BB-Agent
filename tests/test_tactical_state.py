@@ -10,6 +10,7 @@ from bb_agent.tactical_state import (
     AffordanceProvenance,
     BattleContext,
     Combatant,
+    ContingentReaction,
     DecisionContext,
     EffectState,
     Environment,
@@ -239,6 +240,18 @@ def _state(
         annotations={"expected_best": "attack:enemy"},
     )
     return TacticalState.create(**values)
+
+
+def test_contingent_reaction_requires_player_safe_resolved_input():
+    with pytest.raises(ValueError, match="supported or unsupported"):
+        ContingentReaction("east", "enemy", "AOO")
+    reaction = ContingentReaction(
+        "east",
+        "enemy",
+        "AOO",
+        unsupported_mechanic_id="mod.aoo",
+    )
+    assert reaction.unsupported_mechanic_id == "mod.aoo"
 
 
 def test_player_legal_preview_does_not_require_hidden_defense() -> None:
