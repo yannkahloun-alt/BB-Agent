@@ -77,6 +77,24 @@ def _enabled(tmp_path, *names):
 
 def _snapshot(authority, *actions, **changes):
     state = _state()
+    reload_declared = any(
+        action.skill_id == "actives.reload_bolt" for action in actions
+    )
+    reload_equipment = (
+        ItemState(
+            "crossbow",
+            KnownValue.exact("weapon.crossbow"),
+            KnownValue.exact("mainhand"),
+            KnownValue.exact(True),
+        ),
+        ItemState(
+            "bolts",
+            KnownValue.exact("ammo.bolts"),
+            KnownValue.exact("ammo"),
+            KnownValue.exact(True),
+            ammunition=KnownValue.exact(5),
+        ),
+    )
     actors = tuple(
         replace(
             actor,
@@ -88,6 +106,11 @@ def _snapshot(authority, *actions, **changes):
                     {action.skill_id for action in actions if action.skill_id}
                 )
             ),
+            # reload_bolt is item-bound in the pinned source. ItemState has no
+            # loaded/unloaded field, so the complete executable reload affordance
+            # is the source-authoritative current-action fact while the fixture
+            # still supplies the physical crossbow + nonempty bolt prerequisites.
+            equipment=reload_equipment if reload_declared else actor.equipment,
         )
         if actor.actor_id == "brother"
         else actor
@@ -530,12 +553,19 @@ def test_move_requires_aoo_dependency_and_has_transition_coverage(tmp_path):
 )
 def test_simple_resource_skill_declarations(tmp_path, family, skill):
     authority = _enabled(tmp_path, family)
-    action = _attack(skill, target_kind=TargetKind.SELF, target_actor_id=None)
-    result = authority.classify(_snapshot(authority, action))
+    action = _resource_action(skill)
+    state = _snapshot(authority, action)
+    result = authority.classify(state)
     assert result.status is ResultStatus.SUCCESS
     assert result.value.affordances[0].family_ids == (family,)
+
+    wrong_target = replace(
+        action,
+        target_kind=TargetKind.ACTOR,
+        target_actor_id="enemy",
+    )
     assert (
-        authority.classify(_snapshot(authority, _attack(skill))).status
+        authority.classify(_snapshot(authority, wrong_target)).status
         is ResultStatus.INCOMPLETE_COVERAGE
     )
 
@@ -588,13 +618,27 @@ def test_simple_resource_transitions_are_deterministic(
     action = _resource_action(skill)
     state = _snapshot(authority, action)
     action = state.action_affordances.actions[0]
+
+    if skill == "actives.reload_bolt":
+        actor = next(actor for actor in state.combatants if actor.actor_id == "brother")
+        crossbow = next(item for item in actor.equipment if item.item_id == "crossbow")
+        bolts = next(item for item in actor.equipment if item.item_id == "bolts")
+        assert crossbow.slot.value == "mainhand"
+        assert crossbow.membership.value is True
+        assert bolts.slot.value == "ammo"
+        assert bolts.membership.value is True
+        assert bolts.ammunition.value == 5
+        assert action.ammo_cost.value == 1
+
     result = evaluate_transition(authority, state, action)
     assert result.status is ResultStatus.SUCCESS
     branch = result.value.branches[0]
-    assert branch.effects[0][0] == effect
+    assert (effect, True) in branch.effects
     assert branch.probability == 1.0
     assert branch.actor.resources.action_points.value == expected_ap
     assert branch.actor.resources.fatigue.value == expected_fatigue
+    if skill == "actives.reload_bolt":
+        assert ("ammo_consumed", 1) in branch.effects
 
 
 def test_supported_equipment_transition_moves_declared_item_to_declared_slot():
