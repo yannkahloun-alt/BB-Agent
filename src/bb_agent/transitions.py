@@ -205,9 +205,13 @@ def _move(
                     ),
                 )
                 attack = evaluate_ordinary_attack(authority, variant, synthetic)
-                if attack.value is None:
+                if (
+                    attack.value is None
+                    or attack.value.epistemic_scenarios
+                    or not attack.value.branches
+                ):
                     raise ValueError(
-                        "contingent AOO is outside ordinary attack coverage"
+                        "contingent AOO cannot represent its outcome uncertainty"
                     )
                 for branch in attack.value.branches:
                     updated = replace(

@@ -600,6 +600,85 @@ def test_move_costs_fail_closed_when_resolved_resources_are_insufficient():
     assert "costs exceed" in result.problems[0].message
 
 
+def test_contingent_aoo_fails_closed_for_unrepresented_player_uncertainty():
+    authority = _authority()
+    move = replace(
+        _wait(),
+        kind=ActionKind.MOVE_TO,
+        destination_tile_id="east",
+        resolved_path=("east",),
+        contingent_reactions=(
+            ContingentReaction(
+                "east",
+                "enemy",
+                "AOO",
+                skill_id="actives.chop",
+                hit_chance=ResolvedPreviewValue(
+                    67,
+                    ResolutionStage.PREVIEW_RESOLVED,
+                    ResolutionAuthority.HANDCRAFTED_FIXTURE,
+                ),
+            ),
+        ),
+    )
+    actors = tuple(
+        replace(
+            actor,
+            perks=KnownValue.exact([]),
+            traits=KnownValue.exact([]),
+            resources=replace(
+                actor.resources,
+                action_points=KnownValue(
+                    Representation.EXACT,
+                    KnowledgeClass.DERIVED,
+                    value=0,
+                    basis=("zero-cost reaction",),
+                ),
+                fatigue=KnownValue(
+                    Representation.EXACT,
+                    KnowledgeClass.DERIVED,
+                    value=0,
+                    basis=("zero-cost reaction",),
+                ),
+                fatigue_capacity=KnownValue(
+                    Representation.EXACT,
+                    KnowledgeClass.DERIVED,
+                    value=100,
+                    basis=("zero-cost reaction",),
+                ),
+            ),
+            equipment=(
+                ItemState(
+                    "hand-axe",
+                    KnownValue.exact("weapon.hand_axe"),
+                    KnownValue.exact("mainhand"),
+                    KnownValue.exact(True),
+                ),
+            ),
+        )
+        if actor.actor_id == "enemy"
+        else replace(
+            actor,
+            perks=KnownValue.exact([]),
+            traits=KnownValue.exact([]),
+            resources=replace(
+                actor.resources,
+                hit_points=KnownValue.unknown(),
+                head_armor=KnownValue.unknown(),
+                body_armor=KnownValue.unknown(),
+            ),
+        )
+        for actor in _state().combatants
+    )
+    state = _snapshot(authority, move, combatants=actors)
+
+    result = evaluate_transition(authority, state, state.action_affordances.actions[0])
+
+    assert result.status is ResultStatus.INCOMPLETE_COVERAGE
+    assert result.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
+    assert "outcome uncertainty" in result.problems[0].message
+
+
 def test_displayed_damage_is_terminal_and_subsequent_mitigation_is_allowed():
     preview = ResolvedPreviewValue(
         (30, 45), ResolutionStage.PREVIEW_RESOLVED, ResolutionAuthority.PLAYER_UI
