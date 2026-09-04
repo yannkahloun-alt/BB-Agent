@@ -1,0 +1,130 @@
+# M1 implementation status
+
+This document is the durable handoff for BB-Agent's current M1 offline tactical decision-kernel work. It summarizes implementation state and active contract amendments. Detailed semantics remain authoritative in the referenced GitHub issues and repository contracts.
+
+## Current phase
+
+BB-Agent is in the M1 offline tactical decision-kernel implementation phase.
+
+M1 consumes a canonical tactical state plus a complete current `ActionAffordanceSet`, evaluates only explicitly supported mechanics, ranks them later with risk-sensitive logic, and emits deterministic/replayable traces. Live game capture, execution automation, generalized future-state legality/search, campaign automation, and ML remain outside M1.
+
+## Completed implementation tickets
+
+- #14 — project, test, CI, deterministic serialization/hash and version skeleton.
+- #15 — canonical tactical state and `ActionAffordance` contracts.
+- #16 — fixture loading, validation and replay input envelope.
+- #17 — mechanics coverage manifest and immutable local rules/content catalog substrate.
+- #18 — ordinary single-target attack outcome model.
+
+### #18 supported outcome boundary
+
+The packaged ordinary-attack model is deliberately narrow. The current production baseline supports the vanilla hand-axe / Chop family declared in the mechanics manifest.
+
+The model:
+
+- consumes resolved player-visible hit chance without reconstructing hidden enemy defense;
+- keeps preview-resolved values authoritative for the stages they already represent;
+- models independent regular-damage and armor-damage rolls from the pinned Battle Brothers scripts;
+- applies the pinned armor/direct-damage ordering and final HP rounding;
+- models the standard head/body split and Chop's head damage multiplier at the correct damage stage;
+- exposes immediate actor/target resource outcomes and kill probability;
+- separates aleatory combat RNG from epistemic uncertainty;
+- represents `SET`/`RANGE` player-legal uncertainty as an unweighted robustness domain unless a justified probability distribution exists;
+- keeps omniscient-debug truth separate from player-legal inputs;
+- fails unsupported perks, effects, equipment, variants or missing target knowledge visibly rather than approximating them.
+
+PR #33 merged the corrected #18 implementation into `main`. Issue #18 is closed.
+
+## Current implementation ticket: #19
+
+#19 — **Implement `MOVE_TO`, AOO, and simple deterministic action transitions** — is the current active ticket.
+
+It owns:
+
+- `MOVE_TO` using the supplied resolved path only;
+- resolved AP/FAT consumption exactly once;
+- hostile ZOC/disengagement detection;
+- supported AOO hit/damage/death/interruption branches;
+- safe movement with no invented AOO branch;
+- `WAIT`;
+- `END_TURN`;
+- Recover;
+- reload-like transitions;
+- supported `EQUIP_ITEM` transitions;
+- focused transition/mechanics tests.
+
+It must not introduce alternate-path search, generalized enemy legality, enemy future-turn simulation, or #20+ positioning/evaluator work.
+
+## #19 / #13 contingent-reaction amendment
+
+Implementation of #19 exposed a real gap in the frozen #13 contract: a current `MOVE_TO` command can trigger a hostile attack of opportunity, but the canonical state originally contained only the active actor's executable commands and therefore had no production-safe representation of the contingent enemy reaction needed for AOO outcome modelling.
+
+#19 is explicitly authorized to add the smallest canonical contingent-reaction representation necessary for movement AOOs. A post-freeze amendment to #13 records the same exception. All other #13 boundaries remain frozen.
+
+The contingent reaction context may carry, as applicable:
+
+- the movement path step / trigger point;
+- reacting actor identity;
+- reaction kind (`AOO` for #19);
+- reaction skill/content identity or an explicitly unsupported mechanic identity;
+- player-legal knowledge/provenance needed by the reaction outcome model;
+- legitimate resolved reaction preview/outcome inputs where the player can know them;
+- omniscient-debug/oracle truth separately.
+
+The representation is **not** a second enemy `ActionAffordanceSet` and is **not** a generalized enemy-turn action model.
+
+### No-cheat / uncertainty requirements
+
+- Do not synthesize exact enemy MAtk/MDef, hidden perks/resources, or an exact AOO hit chance from omniscient runtime state in `player_legal`.
+- If exact reaction odds are not legitimate player-visible input, use only a supported player-legal range/set/distribution/belief with explicit provenance, or mark the reaction `EVALUATION_UNSUPPORTED`.
+- `omniscient_debug` may carry exact reaction truth separately for paired diagnostics.
+- Unsupported reaction skills/equipment/effects make the movement candidate coverage-incomplete rather than being dropped or approximated.
+
+### #18 integration boundary
+
+#19 may make the smallest generalization to the #18 ordinary-attack outcome API needed to consume a supplied contingent reaction context instead of requiring every attack to originate as the active actor's `ActionAffordance`.
+
+This does not authorize broader ordinary-attack mechanics coverage. Existing #18 content/effect restrictions still apply.
+
+## Frozen M1 invariants
+
+1. Current executable commands come from `ActionAffordanceSet`; BB-Agent does not clone arbitrary Battle Brothers current-action legality/pathfinding.
+2. `player_legal` and `omniscient_debug` are explicit information profiles.
+3. Debug omniscience is diagnostic only and cannot silently influence production decisions.
+4. Unknown information remains unknown; hidden exact values are not substituted for convenience.
+5. Unsupported mechanics fail visibly with structured incomplete coverage.
+6. Preview-resolved/current values are applied once; later stages must not double-apply modifiers already represented in them.
+7. Decision behavior must remain deterministic and replayable from canonical inputs/configuration.
+8. Risk and uncertainty remain inspectable rather than collapsed into an opaque score.
+9. No network or LLM belongs in the tactical decision loop.
+10. BB-Save-Toolkit is not a tactical runtime dependency for M1.
+11. M1 is an offline decision kernel; live capture/execution is post-M1.
+12. Tests validate contracts; they do not redefine frozen semantics.
+
+## Remaining M1 sequence
+
+After #19:
+
+- #20 — tactical positioning, threat, formation and future-capacity features.
+- #21 — risk-sensitive evaluator, deterministic selection and explanation facts.
+- #22 — decision trace, deterministic replay and performance diagnostics.
+- #23 — validation harness and fixture expectation semantics.
+- #24 — core mechanics and safety-critical fixture corpus.
+- #25 — tactical-quality, uncertainty and no-cheat fixture corpus.
+- #26 — evaluator calibration against the gated corpus.
+- #27 — final M1 offline tactical decision-kernel validation/closure gate.
+
+Do not skip directly into live adapter/shadow execution work before #27 closes M1.
+
+## Fresh-agent startup
+
+A fresh implementation/review agent should begin with:
+
+1. root `AGENTS.md`;
+2. this `docs/M1_STATUS.md`;
+3. the current GitHub ticket and every frozen spec/dependency it references;
+4. the relevant implementation/tests on `main`.
+
+For #19 specifically, read the current amended #19 ticket and the post-freeze #13 amendment before editing.
+
+Repository/worktree ownership must be inspected before destructive cleanup. Preserve unrelated or inaccessible local artifacts rather than forcing removal.
