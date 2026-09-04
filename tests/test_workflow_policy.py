@@ -1,6 +1,6 @@
 """Regression coverage for the shared-workflow policy specialization."""
 
-from pathlib import Path
+from pathlib import Path  # noqa: I001
 
 
 ROOT = Path(__file__).resolve().parents[1]
