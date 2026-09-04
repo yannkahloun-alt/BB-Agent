@@ -163,6 +163,16 @@ class KnownValue:
                 raise ValueError("UNKNOWN cannot carry a hidden value")
         elif self.knowledge_class is KnowledgeClass.UNKNOWN:
             raise ValueError("known representations cannot use UNKNOWN knowledge")
+        if (
+            self.knowledge_class is KnowledgeClass.INFERRED
+            and self.representation
+            not in (
+                Representation.RANGE,
+                Representation.SET,
+                Representation.DISTRIBUTION,
+            )
+        ):
+            raise ValueError("INFERRED knowledge requires RANGE, SET, or DISTRIBUTION")
         if self.representation is Representation.RANGE:
             endpoints = (self.minimum, self.maximum)
             if any(

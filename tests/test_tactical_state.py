@@ -1160,6 +1160,64 @@ def test_knowledge_representations_reject_cross_payload_smuggling(
         )
 
 
+def test_inferred_knowledge_cannot_claim_an_exact_value() -> None:
+    with pytest.raises(ValueError, match="requires RANGE, SET, or DISTRIBUTION"):
+        KnownValue(
+            Representation.EXACT,
+            KnowledgeClass.INFERRED,
+            value=73,
+            basis=("evidence",),
+        )
+
+    derived = KnownValue(
+        Representation.EXACT,
+        KnowledgeClass.DERIVED,
+        value=3,
+        basis=("hex_distance",),
+    )
+    remembered = KnownValue(
+        Representation.EXACT,
+        KnowledgeClass.REMEMBERED,
+        value="east",
+        observed_at=ObservationPoint(1, 1),
+    )
+    assert derived.value == 3
+    assert remembered.value == "east"
+
+
+@pytest.mark.parametrize("field", ["position", "hit_points", "tactical_stat"])
+def test_full_state_rejects_hidden_hostile_exact_inferred_relabel(
+    field: str,
+) -> None:
+    payload = _state().to_dict()
+    enemy = payload["combatants"][1]  # type: ignore[index]
+    enemy["visible"] = False
+    enemy["position"] = {  # type: ignore[index]
+        "representation": "UNKNOWN",
+        "knowledge_class": "UNKNOWN",
+    }
+    for tile in payload["tiles"]:  # type: ignore[union-attr]
+        if tile["tile_id"] == "east":
+            tile["occupant_actor_id"] = None
+    exact_inferred = {
+        "representation": "EXACT",
+        "knowledge_class": "INFERRED",
+        "value": 7,
+        "basis": ["relabel"],
+    }
+    if field == "position":
+        enemy["position"] = exact_inferred | {"value": "east"}  # type: ignore[index]
+    elif field == "hit_points":
+        enemy["resources"]["hit_points"] = exact_inferred  # type: ignore[index]
+    else:
+        enemy["tactical_stats"] = [  # type: ignore[index]
+            {"stat_id": "melee_defense", "value": exact_inferred}
+        ]
+
+    with pytest.raises(ValueError, match="requires RANGE, SET, or DISTRIBUTION"):
+        TacticalState.from_dict(payload)
+
+
 @pytest.mark.parametrize(
     ("minimum", "maximum"),
     [
@@ -1187,7 +1245,7 @@ def test_confidence_requires_finite_float(confidence: object) -> None:
     with pytest.raises(ValueError, match="finite float"):
         KnownValue(
             Representation.EXACT,
-            KnowledgeClass.INFERRED,
+            KnowledgeClass.DERIVED,
             value=1,
             basis=("evidence",),
             confidence=confidence,  # type: ignore[arg-type]
