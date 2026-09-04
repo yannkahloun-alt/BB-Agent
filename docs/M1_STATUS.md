@@ -75,7 +75,8 @@ The supported boundary is:
 - any hit, lethal or nonlethal, interrupts the step and leaves the mover on the pre-step tile;
 - death may suppress later reactions because the mover is no longer a living target;
 - multi-step movement with contingent reactions is coverage-incomplete while the canonical contract contains only aggregate path cost and cannot represent an early interruption's partial AP/FAT cost without guessing;
-- transition regression fixtures use action-specific movement/Wait/resource costs and coherent empty movement destinations rather than mutating attack fixtures into impossible commands.
+- transition regression fixtures use action-specific movement/Wait/Recover/reload costs and coherent map states;
+- reload fixtures include the item-bound executable `reload_bolt` context, a mainhand crossbow and nonempty bolt ammunition. The current canonical `ItemState` does not encode a loaded/unloaded flag, so the complete executable reload affordance is authoritative for current usability while transition effects record `loaded` and `ammo_consumed` consequences.
 
 #20 must consume only movement semantics at or beyond this #37 boundary.
 
