@@ -529,6 +529,43 @@ def test_skill_affordance_requires_coherent_target_schema() -> None:
         )
 
 
+@pytest.mark.parametrize("direction", [1.5, "1"])
+def test_target_direction_requires_non_bool_integer(direction: object) -> None:
+    action = _state().action_affordances.actions[0]
+    with pytest.raises(ValueError, match="target_direction requires an integer"):
+        replace(
+            action,
+            target_kind=TargetKind.DIRECTION,
+            target_actor_id=None,
+            target_direction=direction,  # type: ignore[arg-type]
+        )
+
+
+def test_valid_direction_action_round_trips_in_full_state() -> None:
+    state = _state()
+    directional = replace(
+        state.action_affordances.actions[0],
+        target_kind=TargetKind.DIRECTION,
+        target_actor_id=None,
+        target_direction=2,
+    )
+    rebuilt = TacticalState.create(
+        **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
+        | {
+            "state_id": "",
+            "action_affordances": replace(
+                state.action_affordances,
+                captured_for_state_id="",
+                actions=(directional,),
+            ),
+        }
+    )
+
+    loaded = TacticalState.from_dict(rebuilt.to_dict())
+    assert loaded == rebuilt
+    assert loaded.action_affordances.actions[0].target_direction == 2
+
+
 def test_skill_target_references_must_resolve_in_snapshot() -> None:
     state = _state()
     action = state.action_affordances.actions[0]

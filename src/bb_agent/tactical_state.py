@@ -656,6 +656,10 @@ class ActionAffordance:
     def _validate_skill_target(self) -> None:
         if not self.skill_id or self.target_kind is None:
             raise ValueError("USE_SKILL requires skill_id and target_kind")
+        if self.target_direction is not None:
+            _require_int(self.target_direction, "target_direction")
+            if not 0 <= self.target_direction <= 5:
+                raise ValueError("target_direction must be in [0, 5]")
         actor = self.target_actor_id is not None
         tile = self.target_tile_id is not None
         direction = self.target_direction is not None
@@ -668,11 +672,6 @@ class ActionAffordance:
         }[self.target_kind]
         if (actor, tile, direction) != expected:
             raise ValueError("USE_SKILL target fields do not match target_kind")
-        if direction and (
-            isinstance(self.target_direction, bool)
-            or not 0 <= self.target_direction <= 5  # type: ignore[operator]
-        ):
-            raise ValueError("target_direction must be in [0, 5]")
 
 
 @dataclass(frozen=True, slots=True)
