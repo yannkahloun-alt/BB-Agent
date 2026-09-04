@@ -10,11 +10,22 @@ toolkit process, or reference refresh is involved.
 
 Every mandatory family is explicitly declared: ordinary attacks, movement,
 AOO/disengagement, Wait, End Turn, equipment, Recover, reload, and other special
-mechanics. **All shipped families remain `EVALUATION_UNSUPPORTED`** until the
-downstream outcome/transition tickets implement and test them. Model versions
-are null for unsupported families; their reason names the pending work.
-The test suite uses temporary declarations with `test-validation-stub.v1` to
-exercise positive coverage paths. These are not packaged production models.
+mechanics. Families remain `EVALUATION_UNSUPPORTED` until their downstream
+outcome/transition ticket implements and tests them; model versions are null
+for unsupported families and their reason names the pending work.
+Apart from the explicitly supported ordinary-attack model below, the test suite
+uses temporary declarations with `test-validation-stub.v1` to exercise positive
+coverage paths. These are not packaged production models.
+
+The packaged `ordinary_attack` family is the deliberately narrow vanilla
+`weapon.hand_axe` / `actives.chop` baseline. Its `ordinary-attack.v1` model uses
+the independent regular and armor rolls in pinned `skill.nut:onScheduledTargetHit`,
+then the armor/direct-damage sequence and final rounding in
+`actor.nut:onDamageReceived`. The standard 25% head location and Chop's 1.5x
+head multiplier come from the pinned scripts. Current displayed hit chance and
+AP/FAT costs remain affordance previews and are applied exactly once. Any
+unmodelled content, variant, effect, or unavailable target domain returns
+structured unsupported coverage rather than falling back to this baseline.
 
 `MechanicsAuthority.classify(state)` validates the state/freshness/completeness
 and its exact ruleset identity, then returns one classification for every
