@@ -1199,3 +1199,42 @@ def test_hidden_hostile_inferred_position_with_last_seen_round_trips() -> None:
         }
     )
     assert TacticalState.from_dict(rebuilt.to_dict()) == rebuilt
+
+
+@pytest.mark.parametrize("value", ["false", "true", 0, 1])
+def test_semantic_boolean_fields_reject_truthy_and_falsy_non_bools(
+    value: object,
+) -> None:
+    state = _state()
+    actor = state.combatants[0]
+    with pytest.raises(ValueError, match="is_player_controlled requires a boolean"):
+        replace(actor, is_player_controlled=value)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="visible requires a boolean"):
+        replace(actor, visible=value)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="actor_has_waited requires a boolean"):
+        replace(state.decision, actor_has_waited=value)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="actor_may_wait requires a boolean"):
+        replace(state.decision, actor_may_wait=value)  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("value", [float("nan"), float("inf"), float("-inf")])
+def test_nonfinite_floats_are_rejected_in_debug_and_annotation_payloads(
+    value: float,
+) -> None:
+    state = _state()
+    with pytest.raises(ValueError, match="non-finite"):
+        replace(state, annotations={"metric": value})
+    with pytest.raises(ValueError, match="non-finite"):
+        replace(
+            state.action_affordances.actions[0],
+            debug_ground_truth={"oracle_metric": value},
+        )
+
+
+def test_finite_debug_and_annotation_payloads_round_trip() -> None:
+    state = _state(InformationProfile.OMNISCIENT_DEBUG)
+    finite = replace(state, state_id="", annotations={"metric": 1.25})
+    normalized = finite.normalized()
+
+    assert normalized.annotations["metric"] == 1.25  # type: ignore[index]
+    assert TacticalState.from_dict(normalized.to_dict()) == normalized

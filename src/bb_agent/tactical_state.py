@@ -272,6 +272,10 @@ class ItemState:
     condition: KnownValue = field(default_factory=KnownValue.unknown)
     ammunition: KnownValue = field(default_factory=KnownValue.unknown)
 
+    def __post_init__(self) -> None:
+        if not self.item_id:
+            raise ValueError("item_id cannot be empty")
+
 
 @dataclass(frozen=True, slots=True)
 class EffectState:
@@ -280,6 +284,10 @@ class EffectState:
     membership: KnownValue
     stacks: KnownValue = field(default_factory=KnownValue.unknown)
     remaining_duration: KnownValue = field(default_factory=KnownValue.unknown)
+
+    def __post_init__(self) -> None:
+        if not self.effect_id:
+            raise ValueError("effect_id cannot be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -305,11 +313,19 @@ class SkillState:
     charges: KnownValue = field(default_factory=KnownValue.unknown)
     used_this_turn: KnownValue = field(default_factory=KnownValue.unknown)
 
+    def __post_init__(self) -> None:
+        if not self.skill_id:
+            raise ValueError("skill_id cannot be empty")
+
 
 @dataclass(frozen=True, slots=True)
 class TacticalStat:
     stat_id: str
     value: KnownValue
+
+    def __post_init__(self) -> None:
+        if not self.stat_id:
+            raise ValueError("stat_id cannot be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -357,6 +373,10 @@ class Combatant:
     last_seen: LastSeen | None = None
 
     def __post_init__(self) -> None:
+        if not self.actor_id:
+            raise ValueError("actor_id cannot be empty")
+        _require_bool(self.is_player_controlled, "is_player_controlled")
+        _require_bool(self.visible, "visible")
         _require_enum(self.relation, Relation, "combatant relation")
         _require_enum(self.life_state, LifeState, "combatant life_state")
 
@@ -367,6 +387,10 @@ class RulesetIdentity:
     content_fingerprint: str
     mods: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        if not self.game_version or not self.content_fingerprint:
+            raise ValueError("ruleset identity fields cannot be empty")
+
 
 @dataclass(frozen=True, slots=True)
 class BattleContext:
@@ -376,6 +400,10 @@ class BattleContext:
     hostile_faction_ids: tuple[str, ...] = ()
     allied_faction_ids: tuple[str, ...] = ()
     flags: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.battle_id or not self.player_faction_id or not self.phase:
+            raise ValueError("battle identity/context fields cannot be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -389,6 +417,10 @@ class DecisionContext:
     prior_action_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if not self.active_actor_id or not self.turn_phase:
+            raise ValueError("decision identity/context fields cannot be empty")
+        _require_bool(self.actor_has_waited, "actor_has_waited")
+        _require_bool(self.actor_may_wait, "actor_may_wait")
         _require_int(self.round, "decision round")
         _require_int(self.decision_index, "decision index")
 
@@ -398,6 +430,10 @@ class TurnEntry:
     actor_id: str
     done: KnownValue
     sequence: KnownValue = field(default_factory=KnownValue.unknown)
+
+    def __post_init__(self) -> None:
+        if not self.actor_id:
+            raise ValueError("turn entry actor_id cannot be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -410,6 +446,10 @@ class Environment:
     light: str
     weather: str | None = None
     effect_ids: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.light:
+            raise ValueError("environment light cannot be empty")
 
 
 @dataclass(frozen=True, slots=True)
@@ -1237,8 +1277,17 @@ def _require_int(value: Any, field_name: str) -> None:
         raise ValueError(f"{field_name} requires an integer")
 
 
+def _require_bool(value: Any, field_name: str) -> None:
+    if not isinstance(value, bool):
+        raise ValueError(f"{field_name} requires a boolean")
+
+
 def _freeze_json(value: Any) -> Any:
-    if value is None or isinstance(value, bool | int | float | str):
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ValueError("JSON payload cannot contain non-finite floats")
+        return value
+    if value is None or isinstance(value, bool | int | str):
         return value
     if isinstance(value, Mapping):
         if any(not isinstance(key, str) for key in value):
