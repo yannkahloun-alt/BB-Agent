@@ -869,6 +869,7 @@ class TacticalState:
             action.pop("debug_ground_truth", None)
             action.pop("source_generation", None)
             action.pop("provenance", None)
+            _strip_resolution_authorities(action)
         return value
 
     def _validate_structure(self) -> None:
@@ -1356,6 +1357,16 @@ def _freeze_json(value: Any) -> Any:
 
 def _canonical_payload_bytes(value: Any) -> bytes:
     return canonical_json_bytes(_jsonify(value))
+
+
+def _strip_resolution_authorities(value: Any) -> None:
+    if isinstance(value, dict):
+        value.pop("authority", None)
+        for child in value.values():
+            _strip_resolution_authorities(child)
+    elif isinstance(value, list):
+        for child in value:
+            _strip_resolution_authorities(child)
 
 
 def _jsonify(value: Any) -> JsonValue:

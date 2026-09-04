@@ -81,6 +81,14 @@ def _state(
     source_generation: str = "generation-1",
     provenance: AffordanceProvenance = AffordanceProvenance.HANDCRAFTED_FIXTURE,
 ) -> TacticalState:
+    provider_authority = {
+        AffordanceProvenance.HANDCRAFTED_FIXTURE: (
+            ResolutionAuthority.HANDCRAFTED_FIXTURE
+        ),
+        AffordanceProvenance.GAME_PLAYER_AFFORDANCE: (
+            ResolutionAuthority.GAME_PLAYER_AFFORDANCE
+        ),
+    }[provenance]
     set_values = ("z", "a", "z") if not reverse_sets else ("a", "z")
     distribution = ((2, 0.4), (1, 0.6))
     if reverse_sets:
@@ -176,21 +184,21 @@ def _state(
         ap_cost=ResolvedCost(
             4,
             ResolutionStage.PREVIEW_RESOLVED,
-            ResolutionAuthority.PLAYER_UI,
+            provider_authority,
         ),
         fatigue_cost=ResolvedCost(
             10,
             ResolutionStage.PREVIEW_RESOLVED,
-            ResolutionAuthority.PLAYER_UI,
+            provider_authority,
         ),
         preview=PlayerVisiblePreview(
             displayed_hit_chance=ResolvedPreviewValue(
-                67, ResolutionStage.PREVIEW_RESOLVED, ResolutionAuthority.PLAYER_UI
+                67, ResolutionStage.PREVIEW_RESOLVED, provider_authority
             ),
             affected_tile_ids=ResolvedPreviewValue(
                 ["east"],
                 ResolutionStage.PREVIEW_RESOLVED,
-                ResolutionAuthority.PLAYER_UI,
+                provider_authority,
             ),
         ),
         debug_ground_truth=(
@@ -371,6 +379,46 @@ def test_affordance_acquisition_metadata_does_not_change_semantic_identity() -> 
     assert captured.action_affordances.actions[0].provenance is (
         AffordanceProvenance.GAME_PLAYER_AFFORDANCE
     )
+    assert fixture.action_affordances.actions[0].ap_cost.authority is (
+        ResolutionAuthority.HANDCRAFTED_FIXTURE
+    )
+    assert captured.action_affordances.actions[0].ap_cost.authority is (
+        ResolutionAuthority.GAME_PLAYER_AFFORDANCE
+    )
+
+
+def test_resolved_value_and_stage_remain_part_of_semantic_identity() -> None:
+    state = _state()
+    action = state.action_affordances.actions[0]
+
+    def rebuild(changed: ActionAffordance) -> TacticalState:
+        return TacticalState.create(
+            **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
+            | {
+                "state_id": "",
+                "action_affordances": replace(
+                    state.action_affordances,
+                    captured_for_state_id="",
+                    actions=(changed,),
+                ),
+            }
+        )
+
+    changed_value = rebuild(
+        replace(
+            action,
+            ap_cost=replace(action.ap_cost, value=5),
+        )
+    )
+    changed_stage = rebuild(
+        replace(
+            action,
+            ap_cost=replace(action.ap_cost, stage=ResolutionStage.SOURCE_RESOLVED),
+        )
+    )
+
+    assert changed_value.state_id != state.state_id
+    assert changed_stage.state_id != state.state_id
 
 
 def test_player_legal_rejects_debug_knowledge() -> None:
