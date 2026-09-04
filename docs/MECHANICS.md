@@ -51,6 +51,16 @@ If broader interrupted multi-step support becomes necessary, the canonical
 contract must first gain sufficient per-step cost authority rather than deriving
 or guessing it inside the transition model.
 
+Recover/reload regression fixtures use the source-pinned resolved costs rather
+than inheriting attack costs. The reload fixture also carries a mainhand crossbow,
+a nonempty bolt-ammunition item, and the item-bound executable `reload_bolt`
+affordance. The current canonical `ItemState` has no loaded/unloaded field, so the
+complete executable affordance is authoritative for current reload usability.
+`transitions.v1` records the immediate reload consequences as `loaded` and
+`ammo_consumed` transition effects; it does not pretend that the current
+`ItemState` schema can express a loaded-state mutation that does not exist in the
+contract.
+
 `MechanicsAuthority.classify(state)` validates the state/freshness/completeness
 and its exact ruleset identity, then returns one structural classification for
 every affordance in stable action-ID order. A report records state/profile
