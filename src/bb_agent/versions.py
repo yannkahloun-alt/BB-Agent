@@ -20,6 +20,7 @@ class ContractVersions:
     mechanics_manifest: str
     outcome_model: str
     evaluation_config: str
+    fixture: str
 
     def as_mapping(self) -> Mapping[str, str]:
         """Return a read-only, serialization-friendly registry view."""
@@ -37,4 +38,5 @@ CURRENT_VERSIONS: Final = ContractVersions(
     mechanics_manifest="not-implemented",
     outcome_model="not-implemented",
     evaluation_config="not-implemented",
+    fixture="bb-agent-fixture.v1",
 )
