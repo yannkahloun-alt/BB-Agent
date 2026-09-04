@@ -13,7 +13,6 @@ from bb_agent.tactical_state import (
     DecisionContext,
     EffectState,
     Environment,
-    EpistemicMetadata,
     HexCoord,
     InformationProfile,
     ItemState,
@@ -87,10 +86,14 @@ def _state(
             "origin",
             HexCoord(0, 0),
             0,
-            "plain",
+            KnownValue.exact("plain"),
             ("east", None, None, None, None, None),
             "brother",
-            dynamic_effect_ids=set_values,
+            dynamic_effects=KnownValue(
+                Representation.SET,
+                KnowledgeClass.EXACT_OBSERVED,
+                candidates=set_values,
+            ),
             movement_cost=KnownValue(
                 Representation.DISTRIBUTION,
                 KnowledgeClass.INFERRED,
@@ -102,10 +105,14 @@ def _state(
             "east",
             HexCoord(1, 0),
             0,
-            "plain",
+            KnownValue.exact("plain"),
             (None, None, None, "origin", None, None),
             "enemy",
-            dynamic_effect_ids=tuple(reversed(set_values)),
+            dynamic_effects=KnownValue(
+                Representation.SET,
+                KnowledgeClass.EXACT_OBSERVED,
+                candidates=tuple(reversed(set_values)),
+            ),
         ),
     )
     actors = (
@@ -306,7 +313,7 @@ def test_set_like_collections_and_epistemic_sets_normalize_for_hashing() -> None
     assert first.battle.allied_faction_ids == ("a", "z")
     assert first.battle.flags == ("a", "z")
     assert first.environment.effect_ids == ("a", "z")
-    assert all(tile.dynamic_effect_ids == ("a", "z") for tile in first.tiles)
+    assert all(tile.dynamic_effects.candidates == ("a", "z") for tile in first.tiles)
     assert first.combatants[0].perks.candidates == ("perk.a", "perk.z")
     assert first.combatants[0].traits.candidates == ("trait.a", "trait.z")
     origin = next(tile for tile in first.tiles if tile.tile_id == "origin")
@@ -558,7 +565,15 @@ def test_hidden_hostile_stale_equipment_and_effects_round_trip() -> None:
     state = _state()
     enemy = state.combatants[1]
     seen = ObservationPoint(1, 1)
-    remembered = EpistemicMetadata(KnowledgeClass.REMEMBERED, observed_at=seen)
+
+    def remembered(value: object) -> KnownValue:
+        return KnownValue(
+            Representation.EXACT,
+            KnowledgeClass.REMEMBERED,
+            value=value,  # type: ignore[arg-type]
+            observed_at=seen,
+        )
+
     hidden = replace(
         enemy,
         visible=False,
@@ -567,24 +582,21 @@ def test_hidden_hostile_stale_equipment_and_effects_round_trip() -> None:
         equipment=(
             ItemState(
                 "enemy-weapon",
-                "item.spear",
-                "main_hand",
-                membership_knowledge=remembered,
-                content_knowledge=remembered,
-                slot_knowledge=remembered,
+                remembered("item.spear"),
+                remembered("main_hand"),
+                remembered(True),
             ),
         ),
         effects=(
             EffectState(
                 "enemy-effect",
-                "effect.example",
-                membership_knowledge=remembered,
-                content_knowledge=remembered,
+                remembered("effect.example"),
+                remembered(True),
             ),
         ),
         last_seen=LastSeen("east", seen),
-        identity_knowledge=remembered,
-        faction_knowledge=remembered,
+        content_identity=remembered("enemy.raider"),
+        faction=remembered("enemy"),
     )
     rebuilt = TacticalState.create(
         **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
@@ -605,7 +617,39 @@ def test_hidden_hostile_stale_equipment_and_effects_round_trip() -> None:
     assert TacticalState.from_dict(rebuilt.to_dict()) == rebuilt
 
 
-def test_semantic_duplicate_commands_with_different_ids_are_rejected() -> None:
+def test_hidden_hostile_skill_stats_perks_and_traits_must_be_stale() -> None:
+    state = _state()
+    enemy = state.combatants[1]
+    hidden = replace(
+        enemy,
+        visible=False,
+        position=KnownValue.unknown(),
+        resources=_unknown_resources(),
+        skills=(SkillState("skill.hidden", KnownValue.exact(True)),),
+        tactical_stats=(TacticalStat("melee_skill", KnownValue.exact(70)),),
+        perks=KnownValue(
+            Representation.SET,
+            KnowledgeClass.EXACT_OBSERVED,
+            candidates=("perk.hidden",),
+        ),
+        traits=KnownValue.exact(["trait.hidden"]),
+        last_seen=LastSeen("east", ObservationPoint(1, 1)),
+    )
+    hidden_state = replace(
+        state,
+        state_id="",
+        combatants=(state.combatants[0], hidden),
+        tiles=tuple(
+            replace(tile, occupant_actor_id=None) if tile.tile_id == "east" else tile
+            for tile in state.tiles
+        ),
+    )
+
+    with pytest.raises(ValueError, match="changeable state must be stale"):
+        hidden_state.normalized()
+
+
+def test_action_ids_are_canonicalized_from_semantic_command_intent() -> None:
     state = _state()
     action = state.action_affordances.actions[0]
     duplicate = replace(action, action_id="caller-chose-another-id")
@@ -617,8 +661,15 @@ def test_semantic_duplicate_commands_with_different_ids_are_rejected() -> None:
         ),
     )
 
-    with pytest.raises(ValueError, match="duplicate executable command"):
-        duplicated.normalized()
+    normalized = duplicated.normalized()
+    assert len(normalized.action_affordances.actions) == 1
+    assert normalized.action_affordances.actions[0].action_id.startswith("action:")
+    arbitrary_single = replace(
+        state,
+        state_id="",
+        action_affordances=replace(state.action_affordances, actions=(duplicate,)),
+    ).normalized()
+    assert arbitrary_single.action_affordances.actions[0].action_id == action.action_id
 
 
 def test_occupancy_and_neighbor_invariants_are_enforced() -> None:
@@ -648,9 +699,32 @@ def test_axial_directions_and_distance_are_frozen() -> None:
 
 
 def test_unknown_has_no_magic_payload() -> None:
-    with pytest.raises(ValueError, match="UNKNOWN cannot carry"):
+    with pytest.raises(ValueError, match="incompatible payload"):
         KnownValue(
             Representation.UNKNOWN,
             KnowledgeClass.UNKNOWN,
             minimum=-1,
+        )
+
+
+@pytest.mark.parametrize(
+    ("representation", "kwargs"),
+    [
+        (Representation.EXACT, {"value": 1, "candidates": (1,)}),
+        (Representation.RANGE, {"minimum": 1, "maximum": 2, "value": 1}),
+        (Representation.SET, {"candidates": (1,), "minimum": 0}),
+        (
+            Representation.DISTRIBUTION,
+            {"distribution": ((1, 1.0),), "value": 1},
+        ),
+    ],
+)
+def test_knowledge_representations_reject_cross_payload_smuggling(
+    representation: Representation, kwargs: dict[str, object]
+) -> None:
+    with pytest.raises(ValueError, match="incompatible payload"):
+        KnownValue(
+            representation,
+            KnowledgeClass.EXACT_OBSERVED,
+            **kwargs,  # type: ignore[arg-type]
         )

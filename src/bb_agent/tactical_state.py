@@ -91,23 +91,6 @@ class ObservationPoint:
 
 
 @dataclass(frozen=True, slots=True)
-class EpistemicMetadata:
-    knowledge_class: KnowledgeClass
-    observed_at: ObservationPoint | None = None
-    basis: tuple[str, ...] = ()
-
-    def __post_init__(self) -> None:
-        if (
-            self.knowledge_class is KnowledgeClass.REMEMBERED
-            and self.observed_at is None
-        ):
-            raise ValueError("REMEMBERED metadata requires observed_at")
-        if self.knowledge_class in (KnowledgeClass.DERIVED, KnowledgeClass.INFERRED):
-            if not self.basis:
-                raise ValueError("derived/inferred metadata requires basis")
-
-
-@dataclass(frozen=True, slots=True)
 class KnownValue:
     """An exact, uncertain, remembered, or deliberately unknown value."""
 
@@ -123,15 +106,23 @@ class KnownValue:
     confidence: float | None = None
 
     def __post_init__(self) -> None:
-        supplied = {
+        payloads = {
             Representation.EXACT: self.value is not None,
-            Representation.RANGE: self.minimum is not None and self.maximum is not None,
+            Representation.RANGE: self.minimum is not None or self.maximum is not None,
             Representation.SET: bool(self.candidates),
             Representation.DISTRIBUTION: bool(self.distribution),
-            Representation.UNKNOWN: self.value is None,
-        }[self.representation]
-        if not supplied:
+        }
+        expected = payloads.get(self.representation, False)
+        if self.representation is Representation.RANGE:
+            expected = self.minimum is not None and self.maximum is not None
+        if self.representation is not Representation.UNKNOWN and not expected:
             raise ValueError(f"missing payload for {self.representation}")
+        if any(
+            present
+            for representation, present in payloads.items()
+            if representation is not self.representation
+        ):
+            raise ValueError("knowledge representation contains incompatible payload")
         if self.representation is Representation.UNKNOWN:
             if self.knowledge_class is not KnowledgeClass.UNKNOWN:
                 raise ValueError("UNKNOWN representation requires UNKNOWN knowledge")
@@ -201,28 +192,19 @@ class Tile:
     tile_id: str
     coordinate: HexCoord
     elevation: int
-    terrain_id: str
+    terrain: KnownValue
     neighbors: tuple[str | None, ...]
     occupant_actor_id: str | None = None
-    blocking: bool = False
+    blocking: KnownValue = field(default_factory=KnownValue.unknown)
     visibility: KnowledgeClass = KnowledgeClass.EXACT_OBSERVED
-    dynamic_effect_ids: tuple[str, ...] = ()
+    dynamic_effects: KnownValue = field(default_factory=KnownValue.unknown)
     movement_cost: KnownValue = field(default_factory=KnownValue.unknown)
     traversable: KnownValue = field(default_factory=KnownValue.unknown)
     blocks_line_of_sight: KnownValue = field(default_factory=KnownValue.unknown)
-    terrain_knowledge: EpistemicMetadata = field(
-        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
-    )
-    blocking_knowledge: EpistemicMetadata = field(
-        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
-    )
-    dynamic_state_knowledge: EpistemicMetadata = field(
-        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
-    )
 
     def __post_init__(self) -> None:
-        if not self.tile_id or not self.terrain_id:
-            raise ValueError("tile and terrain IDs cannot be empty")
+        if not self.tile_id:
+            raise ValueError("tile ID cannot be empty")
         if len(self.neighbors) != 6:
             raise ValueError("tiles require six canonical neighbor slots")
 
@@ -230,33 +212,20 @@ class Tile:
 @dataclass(frozen=True, slots=True)
 class ItemState:
     item_id: str
-    content_id: str
-    slot: str
+    content: KnownValue
+    slot: KnownValue
+    membership: KnownValue
     condition: KnownValue = field(default_factory=KnownValue.unknown)
     ammunition: KnownValue = field(default_factory=KnownValue.unknown)
-    membership_knowledge: EpistemicMetadata = field(
-        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
-    )
-    content_knowledge: EpistemicMetadata = field(
-        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
-    )
-    slot_knowledge: EpistemicMetadata = field(
-        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
-    )
 
 
 @dataclass(frozen=True, slots=True)
 class EffectState:
     effect_id: str
-    content_id: str
+    content: KnownValue
+    membership: KnownValue
     stacks: KnownValue = field(default_factory=KnownValue.unknown)
     remaining_duration: KnownValue = field(default_factory=KnownValue.unknown)
-    membership_knowledge: EpistemicMetadata = field(
-        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
-    )
-    content_knowledge: EpistemicMetadata = field(
-        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -306,8 +275,8 @@ class Combatant:
     visible: bool
     position: KnownValue
     resources: ResourceState
-    faction_id: str | None = None
-    content_id: str | None = None
+    faction: KnownValue = field(default_factory=KnownValue.unknown)
+    content_identity: KnownValue = field(default_factory=KnownValue.unknown)
     equipment: tuple[ItemState, ...] = ()
     effects: tuple[EffectState, ...] = ()
     skills: tuple[SkillState, ...] = ()
@@ -315,12 +284,6 @@ class Combatant:
     perks: KnownValue = field(default_factory=KnownValue.unknown)
     traits: KnownValue = field(default_factory=KnownValue.unknown)
     last_seen: LastSeen | None = None
-    identity_knowledge: EpistemicMetadata = field(
-        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
-    )
-    faction_knowledge: EpistemicMetadata = field(
-        default_factory=lambda: EpistemicMetadata(KnowledgeClass.EXACT_OBSERVED)
-    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -617,13 +580,7 @@ class TacticalState:
                 self.environment,
                 effect_ids=tuple(sorted(set(self.environment.effect_ids))),
             ),
-            tiles=tuple(
-                replace(
-                    tile,
-                    dynamic_effect_ids=tuple(sorted(set(tile.dynamic_effect_ids))),
-                )
-                for tile in sorted(self.tiles, key=lambda tile: tile.tile_id)
-            ),
+            tiles=tuple(sorted(self.tiles, key=lambda tile: tile.tile_id)),
             combatants=tuple(
                 replace(
                     actor,
@@ -684,13 +641,7 @@ class TacticalState:
                 unlinked.environment,
                 effect_ids=tuple(sorted(set(unlinked.environment.effect_ids))),
             ),
-            tiles=tuple(
-                replace(
-                    tile,
-                    dynamic_effect_ids=tuple(sorted(set(tile.dynamic_effect_ids))),
-                )
-                for tile in sorted(unlinked.tiles, key=lambda tile: tile.tile_id)
-            ),
+            tiles=tuple(sorted(unlinked.tiles, key=lambda tile: tile.tile_id)),
             combatants=tuple(
                 replace(
                     actor,
@@ -794,6 +745,8 @@ class TacticalState:
                 raise ValueError("duplicate action_id")
             action_ids.add(action.action_id)
             intent = canonical_sha256(_command_intent(action))
+            if action.action_id != f"action:{intent}":
+                raise ValueError("action_id does not match canonical command intent")
             prior_action_id = command_intents.get(intent)
             if prior_action_id is not None and prior_action_id != action.action_id:
                 raise ValueError("duplicate executable command has different action_id")
@@ -906,7 +859,7 @@ def _reject_debug_knowledge(actor: Combatant) -> None:
 
 
 def _walk_knowledge_classes(value: Any) -> tuple[KnowledgeClass, ...]:
-    if isinstance(value, KnownValue | EpistemicMetadata):
+    if isinstance(value, KnownValue):
         return (value.knowledge_class,)
     if hasattr(value, "__dataclass_fields__"):
         result: tuple[KnowledgeClass, ...] = ()
@@ -925,29 +878,22 @@ def _validate_hidden_hostile_staleness(actor: Combatant) -> None:
     ]
     changeable.extend(
         (
-            actor.identity_knowledge.knowledge_class,
-            actor.faction_knowledge.knowledge_class,
+            actor.content_identity.knowledge_class,
+            actor.faction.knowledge_class,
+            actor.perks.knowledge_class,
+            actor.traits.knowledge_class,
         )
     )
+    changeable.extend(
+        value.knowledge_class
+        for skill in actor.skills
+        for value in _walk_known_values(skill)
+    )
+    changeable.extend(stat.value.knowledge_class for stat in actor.tactical_stats)
     for item in actor.equipment:
-        changeable.extend(
-            (
-                item.membership_knowledge.knowledge_class,
-                item.content_knowledge.knowledge_class,
-                item.condition.knowledge_class,
-                item.ammunition.knowledge_class,
-                item.slot_knowledge.knowledge_class,
-            )
-        )
+        changeable.extend(value.knowledge_class for value in _walk_known_values(item))
     for effect in actor.effects:
-        changeable.extend(
-            (
-                effect.membership_knowledge.knowledge_class,
-                effect.content_knowledge.knowledge_class,
-                effect.stacks.knowledge_class,
-                effect.remaining_duration.knowledge_class,
-            )
-        )
+        changeable.extend(value.knowledge_class for value in _walk_known_values(effect))
     if any(knowledge in prohibited for knowledge in changeable):
         raise ValueError("hidden hostile changeable state must be stale or uncertain")
 
@@ -1009,10 +955,14 @@ def _normalize_actions(
                 facts=tuple(sorted(action.preview.facts)),
             ),
         )
-        existing = unique.get(action.action_id)
+        normalized = replace(
+            normalized,
+            action_id=f"action:{canonical_sha256(_command_intent(normalized))}",
+        )
+        existing = unique.get(normalized.action_id)
         if existing is not None and existing != normalized:
             raise ValueError("conflicting affordances share an action_id")
-        unique[action.action_id] = normalized
+        unique[normalized.action_id] = normalized
     return tuple(unique[action_id] for action_id in sorted(unique))
 
 
@@ -1038,8 +988,6 @@ def _command_intent(action: ActionAffordance) -> dict[str, JsonValue]:
 
 
 def _normalize_epistemic(value: Any) -> Any:
-    if isinstance(value, EpistemicMetadata):
-        return replace(value, basis=tuple(sorted(set(value.basis))))
     if isinstance(value, KnownValue):
         candidates = value.candidates
         if value.representation is Representation.SET:
