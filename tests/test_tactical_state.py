@@ -52,7 +52,9 @@ def _state(
     profile: InformationProfile = InformationProfile.PLAYER_LEGAL,
     *,
     reverse: bool = False,
+    reverse_sets: bool = False,
 ) -> TacticalState:
+    set_values = ("z", "a", "z") if not reverse_sets else ("a", "z")
     tiles = (
         Tile(
             "origin",
@@ -61,6 +63,7 @@ def _state(
             "plain",
             ("east", None, None, None, None, None),
             "brother",
+            dynamic_effect_ids=set_values,
         ),
         Tile(
             "east",
@@ -69,6 +72,7 @@ def _state(
             "plain",
             (None, None, None, "origin", None, None),
             "enemy",
+            dynamic_effect_ids=tuple(reversed(set_values)),
         ),
     )
     actors = (
@@ -102,7 +106,11 @@ def _state(
         ap_cost=ResolvedCost(4, ResolutionStage.PREVIEW_RESOLVED, "fixture UI"),
         fatigue_cost=ResolvedCost(10, ResolutionStage.PREVIEW_RESOLVED, "fixture UI"),
         preview=PlayerVisiblePreview(displayed_hit_chance=67),
-        debug_ground_truth={"enemy_melee_defense": 12},
+        debug_ground_truth=(
+            {"enemy_melee_defense": 12}
+            if profile is InformationProfile.OMNISCIENT_DEBUG
+            else None
+        ),
     )
     values = dict(
         contract_version=CURRENT_VERSIONS.tactical_state,
@@ -110,10 +118,17 @@ def _state(
         raw_capture_id="capture-1",
         information_profile=profile,
         ruleset=RulesetIdentity("1.5", "catalog-sha", ("mod-b", "mod-a")),
-        battle=BattleContext("battle-1", "player", "COMBAT"),
+        battle=BattleContext(
+            "battle-1",
+            "player",
+            "COMBAT",
+            hostile_faction_ids=set_values,
+            allied_faction_ids=tuple(reversed(set_values)),
+            flags=set_values,
+        ),
         decision=DecisionContext("brother", 1, 2, False, True, "BEFORE_ACTION"),
         turn_state=TurnState(),
-        environment=Environment("DAY"),
+        environment=Environment("DAY", effect_ids=tuple(reversed(set_values))),
         tiles=tuple(reversed(tiles)) if reverse else tiles,
         combatants=tuple(reversed(actors)) if reverse else actors,
         action_affordances=ActionAffordanceSet(
@@ -130,12 +145,10 @@ def test_player_legal_preview_does_not_require_hidden_defense() -> None:
     action = state.action_affordances.actions[0]
 
     assert action.preview.displayed_hit_chance == 67
-    assert action.debug_ground_truth == {"enemy_melee_defense": 12}
+    assert action.debug_ground_truth is None
     assert enemy.resources.morale.representation is Representation.UNKNOWN
-    assert (
-        "debug_ground_truth"
-        not in state._identity_dict()["action_affordances"]["actions"][0]
-    )  # type: ignore[index]
+    serialized_action = state.to_dict()["action_affordances"]["actions"][0]  # type: ignore[index]
+    assert serialized_action["debug_ground_truth"] is None
 
 
 def test_round_trip_is_lossless_and_order_is_normalized() -> None:
@@ -148,6 +161,9 @@ def test_round_trip_is_lossless_and_order_is_normalized() -> None:
     assert [actor.actor_id for actor in reordered.combatants] == ["brother", "enemy"]
     debug = _state(InformationProfile.OMNISCIENT_DEBUG)
     assert TacticalState.from_dict(debug.to_dict()) == debug
+    assert debug.action_affordances.actions[0].debug_ground_truth == {
+        "enemy_melee_defense": 12
+    }
 
 
 def test_identical_affordances_are_deduplicated() -> None:
@@ -167,17 +183,46 @@ def test_identical_affordances_are_deduplicated() -> None:
 def test_annotations_and_debug_oracle_do_not_affect_hash() -> None:
     state = _state()
     changed_annotations = replace(state, state_id="", annotations={"anything": [1, 2]})
+    debug = _state(InformationProfile.OMNISCIENT_DEBUG)
     action = replace(
-        state.action_affordances.actions[0], debug_ground_truth={"different": True}
+        debug.action_affordances.actions[0], debug_ground_truth={"different": True}
     )
     changed_oracle = replace(
-        state,
+        debug,
         state_id="",
-        action_affordances=replace(state.action_affordances, actions=(action,)),
+        action_affordances=replace(debug.action_affordances, actions=(action,)),
     )
 
     assert changed_annotations.normalized().state_id == state.state_id
-    assert changed_oracle.normalized().state_id == state.state_id
+    assert changed_oracle.normalized().state_id == debug.state_id
+
+
+def test_player_legal_rejects_affordance_debug_oracle() -> None:
+    state = _state()
+    leaked_action = replace(
+        state.action_affordances.actions[0],
+        debug_ground_truth={"enemy_melee_defense": 12},
+    )
+    leaked = replace(
+        state,
+        state_id="",
+        action_affordances=replace(state.action_affordances, actions=(leaked_action,)),
+    )
+
+    with pytest.raises(ValueError, match="affordance DEBUG_GROUND_TRUTH"):
+        leaked.normalized()
+
+
+def test_set_like_collections_normalize_for_hashing() -> None:
+    first = _state()
+    reordered = _state(reverse_sets=True)
+
+    assert first.state_id == reordered.state_id
+    assert first.battle.hostile_faction_ids == ("a", "z")
+    assert first.battle.allied_faction_ids == ("a", "z")
+    assert first.battle.flags == ("a", "z")
+    assert first.environment.effect_ids == ("a", "z")
+    assert all(tile.dynamic_effect_ids == ("a", "z") for tile in first.tiles)
 
 
 def test_profile_changes_semantic_identity_for_same_raw_capture() -> None:
@@ -281,6 +326,20 @@ def test_stale_affordance_set_is_rejected() -> None:
 
     with pytest.raises(ValueError, match="stale affordance"):
         stale.normalized()
+
+
+def test_active_actor_requires_exact_placement() -> None:
+    state = _state()
+    active = replace(state.combatants[0], position=KnownValue.unknown())
+    unplaced = replace(
+        state,
+        state_id="",
+        combatants=(active, state.combatants[1]),
+        tiles=(replace(state.tiles[0], occupant_actor_id=None), state.tiles[1]),
+    )
+
+    with pytest.raises(ValueError, match="exact current position"):
+        unplaced.normalized()
 
 
 def test_occupancy_and_neighbor_invariants_are_enforced() -> None:

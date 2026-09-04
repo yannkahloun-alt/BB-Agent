@@ -386,7 +386,23 @@ class TacticalState:
         state = replace(
             self,
             state_id="",
-            tiles=tuple(sorted(self.tiles, key=lambda tile: tile.tile_id)),
+            battle=replace(
+                self.battle,
+                hostile_faction_ids=tuple(sorted(set(self.battle.hostile_faction_ids))),
+                allied_faction_ids=tuple(sorted(set(self.battle.allied_faction_ids))),
+                flags=tuple(sorted(set(self.battle.flags))),
+            ),
+            environment=replace(
+                self.environment,
+                effect_ids=tuple(sorted(set(self.environment.effect_ids))),
+            ),
+            tiles=tuple(
+                replace(
+                    tile,
+                    dynamic_effect_ids=tuple(sorted(set(tile.dynamic_effect_ids))),
+                )
+                for tile in sorted(self.tiles, key=lambda tile: tile.tile_id)
+            ),
             combatants=tuple(
                 replace(
                     actor,
@@ -427,7 +443,27 @@ class TacticalState:
         )
         normalized = replace(
             unlinked,
-            tiles=tuple(sorted(unlinked.tiles, key=lambda tile: tile.tile_id)),
+            battle=replace(
+                unlinked.battle,
+                hostile_faction_ids=tuple(
+                    sorted(set(unlinked.battle.hostile_faction_ids))
+                ),
+                allied_faction_ids=tuple(
+                    sorted(set(unlinked.battle.allied_faction_ids))
+                ),
+                flags=tuple(sorted(set(unlinked.battle.flags))),
+            ),
+            environment=replace(
+                unlinked.environment,
+                effect_ids=tuple(sorted(set(unlinked.environment.effect_ids))),
+            ),
+            tiles=tuple(
+                replace(
+                    tile,
+                    dynamic_effect_ids=tuple(sorted(set(tile.dynamic_effect_ids))),
+                )
+                for tile in sorted(unlinked.tiles, key=lambda tile: tile.tile_id)
+            ),
             combatants=tuple(
                 replace(
                     actor,
@@ -498,6 +534,8 @@ class TacticalState:
             raise ValueError("active actor must resolve to a living combatant")
         if not active.is_player_controlled:
             raise ValueError("active actor must be player-controlled")
+        if active.position.representation is not Representation.EXACT:
+            raise ValueError("active actor must have an exact current position")
         if self.action_affordances.completeness is not AffordanceCompleteness.COMPLETE:
             raise ValueError("M1 rankable state requires a complete affordance set")
         if self.action_affordances.actor_id != active.actor_id:
@@ -521,6 +559,13 @@ class TacticalState:
             if action.action_id in action_ids:
                 raise ValueError("duplicate action_id")
             action_ids.add(action.action_id)
+            if (
+                self.information_profile is InformationProfile.PLAYER_LEGAL
+                and action.debug_ground_truth is not None
+            ):
+                raise ValueError(
+                    "player_legal cannot contain affordance DEBUG_GROUND_TRUTH"
+                )
             if action.skill_id is not None and action.skill_id not in active.skill_ids:
                 raise ValueError("affordance skill_id is not possessed by active actor")
             if action.item_id is not None and action.item_id not in {
