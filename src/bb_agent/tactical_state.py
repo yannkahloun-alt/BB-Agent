@@ -80,6 +80,13 @@ class ResolutionStage(StrEnum):
     STATIC_RULE = "STATIC_RULE"
 
 
+class ResolutionAuthority(StrEnum):
+    PLAYER_UI = "PLAYER_UI"
+    GAME_PLAYER_AFFORDANCE = "GAME_PLAYER_AFFORDANCE"
+    HANDCRAFTED_FIXTURE = "HANDCRAFTED_FIXTURE"
+    DEBUG_ORACLE = "DEBUG_ORACLE"
+
+
 @dataclass(frozen=True, slots=True)
 class ObservationPoint:
     round: int
@@ -229,6 +236,20 @@ class EffectState:
 
 
 @dataclass(frozen=True, slots=True)
+class GroundEntity:
+    entity_id: str
+    content: KnownValue
+    state: tuple[tuple[str, KnownValue], ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.entity_id:
+            raise ValueError("ground entity ID cannot be empty")
+        keys = tuple(key for key, _ in self.state)
+        if len(keys) != len(set(keys)):
+            raise ValueError("duplicate ground entity state key")
+
+
+@dataclass(frozen=True, slots=True)
 class SkillState:
     skill_id: str
     possession: KnownValue
@@ -348,11 +369,11 @@ class ResolvedCost:
 class ResolvedPreviewValue:
     value: JsonValue
     stage: ResolutionStage
-    authority: str
+    authority: ResolutionAuthority
 
     def __post_init__(self) -> None:
-        if not self.authority:
-            raise ValueError("resolved preview values require authority")
+        if not isinstance(self.authority, ResolutionAuthority):
+            raise ValueError("resolved preview values require a valid authority")
 
 
 @dataclass(frozen=True, slots=True)
@@ -402,7 +423,7 @@ class ActionAffordance:
     kind: ActionKind
     provenance: AffordanceProvenance
     source_generation: str
-    parameters: tuple[tuple[str, JsonValue], ...] = ()
+    parameters: tuple[tuple[str, KnownValue], ...] = ()
     ap_cost: ResolvedCost | None = None
     fatigue_cost: ResolvedCost | None = None
     skill_id: str | None = None
@@ -562,7 +583,7 @@ class TacticalState:
     tiles: tuple[Tile, ...]
     combatants: tuple[Combatant, ...]
     action_affordances: ActionAffordanceSet
-    ground_entities: tuple[tuple[str, JsonValue], ...] = ()
+    ground_entities: tuple[GroundEntity, ...] = ()
     annotations: JsonValue = None
 
     def normalized(self) -> TacticalState:
@@ -603,7 +624,12 @@ class TacticalState:
                 self.action_affordances,
                 actions=_normalize_actions(self.action_affordances.actions),
             ),
-            ground_entities=tuple(sorted(self.ground_entities)),
+            ground_entities=tuple(
+                replace(entity, state=tuple(sorted(entity.state)))
+                for entity in sorted(
+                    self.ground_entities, key=lambda entity: entity.entity_id
+                )
+            ),
         )
         state = _normalize_epistemic(state)
         assert isinstance(state, TacticalState)
@@ -666,7 +692,12 @@ class TacticalState:
                 unlinked.action_affordances,
                 actions=_normalize_actions(unlinked.action_affordances.actions),
             ),
-            ground_entities=tuple(sorted(unlinked.ground_entities)),
+            ground_entities=tuple(
+                replace(entity, state=tuple(sorted(entity.state)))
+                for entity in sorted(
+                    unlinked.ground_entities, key=lambda entity: entity.entity_id
+                )
+            ),
         )
         normalized = _normalize_epistemic(normalized)
         assert isinstance(normalized, TacticalState)
@@ -713,6 +744,9 @@ class TacticalState:
         tiles = {tile.tile_id: tile for tile in self.tiles}
         if len(tiles) != len(self.tiles):
             raise ValueError("duplicate tile_id")
+        ground_entities = {entity.entity_id: entity for entity in self.ground_entities}
+        if len(ground_entities) != len(self.ground_entities):
+            raise ValueError("duplicate ground entity ID")
         active = actors.get(self.decision.active_actor_id)
         if active is None or active.life_state is not LifeState.ALIVE:
             raise ValueError("active actor must resolve to a living combatant")
@@ -758,6 +792,19 @@ class TacticalState:
                 raise ValueError(
                     "player_legal cannot contain affordance DEBUG_GROUND_TRUTH"
                 )
+            if self.information_profile is InformationProfile.PLAYER_LEGAL:
+                if any(
+                    value.knowledge_class is KnowledgeClass.DEBUG_GROUND_TRUTH
+                    for _, value in action.parameters
+                ):
+                    raise ValueError(
+                        "player_legal cannot contain extension DEBUG_GROUND_TRUTH"
+                    )
+                for preview_value in _preview_values(action.preview):
+                    if preview_value.authority is ResolutionAuthority.DEBUG_ORACLE:
+                        raise ValueError(
+                            "player_legal cannot consume DEBUG_ORACLE preview"
+                        )
             if action.skill_id is not None and action.skill_id not in {
                 skill.skill_id for skill in active.skills
             }:
@@ -811,6 +858,8 @@ class TacticalState:
                 raise ValueError("last_seen references unknown tile")
             if self.information_profile is InformationProfile.PLAYER_LEGAL:
                 _reject_debug_knowledge(actor)
+                if actor.relation is Relation.HOSTILE:
+                    _validate_hostile_player_legal(actor)
                 if actor.relation is Relation.HOSTILE and not actor.visible:
                     if actor.position.representation is Representation.EXACT:
                         raise ValueError(
@@ -850,6 +899,14 @@ class TacticalState:
                     )
                 if neighbor.neighbors[(direction + 3) % 6] != tile.tile_id:
                     raise ValueError("neighbor links must be symmetric")
+        for entity in self.ground_entities:
+            if self.information_profile is InformationProfile.PLAYER_LEGAL:
+                for knowledge in _walk_knowledge_classes(entity):
+                    if knowledge is KnowledgeClass.DEBUG_GROUND_TRUTH:
+                        raise ValueError(
+                            "player_legal cannot contain ground entity "
+                            "DEBUG_GROUND_TRUTH"
+                        )
 
 
 def _reject_debug_knowledge(actor: Combatant) -> None:
@@ -896,6 +953,33 @@ def _validate_hidden_hostile_staleness(actor: Combatant) -> None:
         changeable.extend(value.knowledge_class for value in _walk_known_values(effect))
     if any(knowledge in prohibited for knowledge in changeable):
         raise ValueError("hidden hostile changeable state must be stale or uncertain")
+
+
+def _validate_hostile_player_legal(actor: Combatant) -> None:
+    prohibited = {KnowledgeClass.EXACT_OBSERVED, KnowledgeClass.OBSERVED}
+    numeric_values = list(_walk_known_values(actor.resources))
+    numeric_values.extend(stat.value for stat in actor.tactical_stats)
+    if any(
+        value.representation is Representation.EXACT
+        and value.knowledge_class in prohibited
+        and isinstance(value.value, int | float)
+        and not isinstance(value.value, bool)
+        for value in numeric_values
+    ):
+        raise ValueError("player_legal hostile numeric state cannot be exact observed")
+
+
+def _preview_values(preview: PlayerVisiblePreview) -> tuple[ResolvedPreviewValue, ...]:
+    values = tuple(
+        value
+        for value in (
+            preview.displayed_hit_chance,
+            preview.affected_tile_ids,
+            preview.displayed_damage,
+        )
+        if value is not None
+    )
+    return values + tuple(value for _, value in preview.facts)
 
 
 def _validate_resources(resources: ResourceState) -> None:
@@ -970,7 +1054,9 @@ def _command_intent(action: ActionAffordance) -> dict[str, JsonValue]:
     return {
         "actor_id": action.actor_id,
         "kind": action.kind.value,
-        "parameters": _jsonify(action.parameters),
+        "parameters": _jsonify(
+            tuple((key, asdict(value)) for key, value in action.parameters)
+        ),
         "skill_id": action.skill_id,
         "item_id": action.item_id,
         "target_kind": action.target_kind.value if action.target_kind else None,

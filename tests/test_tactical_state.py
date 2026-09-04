@@ -13,6 +13,7 @@ from bb_agent.tactical_state import (
     DecisionContext,
     EffectState,
     Environment,
+    GroundEntity,
     HexCoord,
     InformationProfile,
     ItemState,
@@ -24,6 +25,7 @@ from bb_agent.tactical_state import (
     PlayerVisiblePreview,
     Relation,
     Representation,
+    ResolutionAuthority,
     ResolutionStage,
     ResolvedCost,
     ResolvedPreviewValue,
@@ -153,7 +155,11 @@ def _state(
             LifeState.ALIVE,
             True,
             KnownValue.exact("east"),
-            _resources(debug=profile is InformationProfile.OMNISCIENT_DEBUG),
+            (
+                _resources(debug=True)
+                if profile is InformationProfile.OMNISCIENT_DEBUG
+                else _unknown_resources()
+            ),
         ),
     )
     action = ActionAffordance(
@@ -169,10 +175,12 @@ def _state(
         fatigue_cost=ResolvedCost(10, ResolutionStage.PREVIEW_RESOLVED, "fixture UI"),
         preview=PlayerVisiblePreview(
             displayed_hit_chance=ResolvedPreviewValue(
-                67, ResolutionStage.PREVIEW_RESOLVED, "Battle Brothers UI"
+                67, ResolutionStage.PREVIEW_RESOLVED, ResolutionAuthority.PLAYER_UI
             ),
             affected_tile_ids=ResolvedPreviewValue(
-                ["east"], ResolutionStage.PREVIEW_RESOLVED, "Battle Brothers UI"
+                ["east"],
+                ResolutionStage.PREVIEW_RESOLVED,
+                ResolutionAuthority.PLAYER_UI,
             ),
         ),
         debug_ground_truth=(
@@ -525,7 +533,13 @@ def test_affordance_rejects_duplicate_parameters_and_incompatible_fields() -> No
     action = _state().action_affordances.actions[0]
 
     with pytest.raises(ValueError, match="duplicate affordance parameter key"):
-        replace(action, parameters=(("rule_fact", 1), ("rule_fact", 2)))
+        replace(
+            action,
+            parameters=(
+                ("rule_fact", KnownValue.exact(1)),
+                ("rule_fact", KnownValue.exact(2)),
+            ),
+        )
     with pytest.raises(ValueError, match="USE_SKILL contains incompatible"):
         replace(action, destination_tile_id="east")
     with pytest.raises(ValueError, match="END_TURN contains incompatible"):
@@ -546,6 +560,7 @@ def test_hidden_hostile_changeable_state_cannot_remain_current_observed_truth() 
         enemy,
         visible=False,
         position=KnownValue.unknown(),
+        resources=_resources(),
         last_seen=LastSeen("east", ObservationPoint(1, 1)),
     )
     hidden_state = replace(
@@ -557,8 +572,31 @@ def test_hidden_hostile_changeable_state_cannot_remain_current_observed_truth() 
             for tile in state.tiles
         ),
     )
-    with pytest.raises(ValueError, match="changeable state must be stale"):
+    with pytest.raises(ValueError, match="numeric state cannot be exact observed"):
         hidden_state.normalized()
+
+
+def test_visible_hostile_exact_numeric_resources_and_stats_are_rejected() -> None:
+    state = _state()
+    enemy = state.combatants[1]
+    leaked_resources = replace(enemy, resources=_resources())
+    with pytest.raises(ValueError, match="numeric state cannot be exact observed"):
+        replace(
+            state,
+            state_id="",
+            combatants=(state.combatants[0], leaked_resources),
+        ).normalized()
+
+    leaked_stat = replace(
+        enemy,
+        tactical_stats=(TacticalStat("melee_defense", KnownValue.exact(12)),),
+    )
+    with pytest.raises(ValueError, match="numeric state cannot be exact observed"):
+        replace(
+            state,
+            state_id="",
+            combatants=(state.combatants[0], leaked_stat),
+        ).normalized()
 
 
 def test_hidden_hostile_stale_equipment_and_effects_round_trip() -> None:
@@ -645,7 +683,7 @@ def test_hidden_hostile_skill_stats_perks_and_traits_must_be_stale() -> None:
         ),
     )
 
-    with pytest.raises(ValueError, match="changeable state must be stale"):
+    with pytest.raises(ValueError, match="numeric state cannot be exact observed"):
         hidden_state.normalized()
 
 
@@ -670,6 +708,85 @@ def test_action_ids_are_canonicalized_from_semantic_command_intent() -> None:
         action_affordances=replace(state.action_affordances, actions=(duplicate,)),
     ).normalized()
     assert arbitrary_single.action_affordances.actions[0].action_id == action.action_id
+
+
+def test_extension_values_are_epistemic_and_reject_debug_leaks() -> None:
+    state = _state()
+    leaked_action = replace(
+        state.action_affordances.actions[0],
+        parameters=(
+            (
+                "extension.hidden_fact",
+                KnownValue.exact(7, KnowledgeClass.DEBUG_GROUND_TRUTH),
+            ),
+        ),
+    )
+    with pytest.raises(ValueError, match="extension DEBUG_GROUND_TRUTH"):
+        replace(
+            state,
+            state_id="",
+            action_affordances=replace(
+                state.action_affordances, actions=(leaked_action,)
+            ),
+        ).normalized()
+
+
+def test_ground_entities_round_trip_normalize_and_reject_debug_leaks() -> None:
+    state = _state()
+    entity = GroundEntity(
+        "corpse-1",
+        KnownValue.exact("entity.corpse"),
+        state=(("usable", KnownValue.exact(True)),),
+    )
+    rebuilt = TacticalState.create(
+        **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
+        | {
+            "state_id": "",
+            "ground_entities": (entity,),
+            "action_affordances": replace(
+                state.action_affordances, captured_for_state_id=""
+            ),
+        }
+    )
+    assert TacticalState.from_dict(rebuilt.to_dict()) == rebuilt
+    with pytest.raises(ValueError, match="duplicate ground entity"):
+        replace(rebuilt, state_id="", ground_entities=(entity, entity)).normalized()
+
+    leaked = replace(
+        entity,
+        content=KnownValue.exact("entity.hidden", KnowledgeClass.DEBUG_GROUND_TRUTH),
+    )
+    with pytest.raises(ValueError, match="ground entity DEBUG_GROUND_TRUTH"):
+        replace(rebuilt, state_id="", ground_entities=(leaked,)).normalized()
+
+
+def test_preview_authority_is_closed_and_debug_authority_is_profile_gated() -> None:
+    with pytest.raises(ValueError, match="valid authority"):
+        ResolvedPreviewValue(
+            67,
+            ResolutionStage.PREVIEW_RESOLVED,
+            "runtime oracle",  # type: ignore[arg-type]
+        )
+
+    state = _state()
+    action = state.action_affordances.actions[0]
+    debug_preview = replace(
+        action.preview,
+        displayed_hit_chance=ResolvedPreviewValue(
+            67,
+            ResolutionStage.PREVIEW_RESOLVED,
+            ResolutionAuthority.DEBUG_ORACLE,
+        ),
+    )
+    with pytest.raises(ValueError, match="DEBUG_ORACLE preview"):
+        replace(
+            state,
+            state_id="",
+            action_affordances=replace(
+                state.action_affordances,
+                actions=(replace(action, preview=debug_preview),),
+            ),
+        ).normalized()
 
 
 def test_occupancy_and_neighbor_invariants_are_enforced() -> None:
