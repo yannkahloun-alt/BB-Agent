@@ -117,6 +117,14 @@ class KnownValue:
     confidence: float | None = None
 
     def __post_init__(self) -> None:
+        if self.observed_at is not None and not isinstance(
+            self.observed_at, ObservationPoint
+        ):
+            raise ValueError("observed_at requires an ObservationPoint")
+        if not isinstance(self.basis, tuple | list):
+            raise ValueError("basis requires a tuple or list of strings")
+        if any(not isinstance(entry, str) or not entry for entry in self.basis):
+            raise ValueError("basis entries must be nonempty strings")
         object.__setattr__(self, "value", _freeze_json(self.value))
         object.__setattr__(
             self, "candidates", tuple(_freeze_json(value) for value in self.candidates)

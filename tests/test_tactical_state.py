@@ -1224,6 +1224,76 @@ def test_inferred_knowledge_cannot_claim_an_exact_value() -> None:
     assert remembered.value == "east"
 
 
+@pytest.mark.parametrize("observed_at", ["round-1", {"round": 1, "decision": 1}])
+def test_known_value_observed_at_requires_observation_point(
+    observed_at: object,
+) -> None:
+    with pytest.raises(ValueError, match="observed_at requires an ObservationPoint"):
+        KnownValue(
+            Representation.EXACT,
+            KnowledgeClass.REMEMBERED,
+            value="east",
+            observed_at=observed_at,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize("basis", [7, "evidence", ("",), (7,)])
+def test_known_value_basis_requires_a_sequence_of_nonempty_strings(
+    basis: object,
+) -> None:
+    with pytest.raises(ValueError, match="basis (requires|entries)"):
+        KnownValue(
+            Representation.RANGE,
+            KnowledgeClass.INFERRED,
+            minimum=1,
+            maximum=2,
+            basis=basis,  # type: ignore[arg-type]
+        )
+
+
+def test_state_round_trip_preserves_valid_known_value_provenance() -> None:
+    state = _state()
+    actor = state.combatants[0]
+    changed_actor = replace(
+        actor,
+        perks=KnownValue(
+            Representation.SET,
+            KnowledgeClass.REMEMBERED,
+            candidates=("perk.a", "perk.z"),
+            observed_at=ObservationPoint(1, 1),
+        ),
+        tactical_stats=(
+            TacticalStat(
+                "melee_skill",
+                KnownValue(
+                    Representation.RANGE,
+                    KnowledgeClass.INFERRED,
+                    minimum=70,
+                    maximum=75,
+                    basis=["visible_character_sheet"],
+                ),
+            ),
+        ),
+    )
+    rebuilt = TacticalState.create(
+        **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
+        | {
+            "state_id": "",
+            "combatants": (changed_actor, state.combatants[1]),
+            "action_affordances": replace(
+                state.action_affordances, captured_for_state_id=""
+            ),
+        }
+    )
+
+    loaded = TacticalState.from_dict(rebuilt.to_dict())
+    assert loaded == rebuilt
+    assert loaded.combatants[0].perks.observed_at == ObservationPoint(1, 1)
+    assert loaded.combatants[0].tactical_stats[0].value.basis == (
+        "visible_character_sheet",
+    )
+
+
 @pytest.mark.parametrize("field", ["position", "hit_points", "tactical_stat"])
 def test_full_state_rejects_hidden_hostile_exact_inferred_relabel(
     field: str,
