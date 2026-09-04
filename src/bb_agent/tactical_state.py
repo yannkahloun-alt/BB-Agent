@@ -1215,6 +1215,11 @@ def _validate_action_authorities(
         allowed.add(ResolutionAuthority.DEBUG_ORACLE)
     authorities = [cost.authority for cost in _action_costs(action) if cost is not None]
     authorities.extend(value.authority for value in _preview_values(action.preview))
+    authorities.extend(
+        reaction.hit_chance.authority
+        for reaction in action.contingent_reactions
+        if reaction.hit_chance is not None
+    )
     if any(authority not in allowed for authority in authorities):
         raise ValueError("resolved authority does not match affordance provenance")
 

@@ -134,6 +134,8 @@ def _move(
     ):
         raise ValueError("unsupported contingent AOO mechanic")
     if action.contingent_reactions:
+        if len(action.contingent_reactions) != 1:
+            raise ValueError("multiple contingent AOO reactions are unsupported")
         reaction = action.contingent_reactions[0]
         zero = ResolvedCost(
             0, ResolutionStage.PREVIEW_RESOLVED, action.ap_cost.authority
@@ -157,10 +159,26 @@ def _move(
         attack = evaluate_ordinary_attack(authority, state, synthetic)
         if attack.value is None:
             raise ValueError("contingent AOO is outside ordinary attack coverage")
-        moved = replace(
-            _with_costs(mover, action),
-            position=KnownValue.exact(action.destination_tile_id),
-        )
+        moved = replace(_with_costs(mover, action))
+
+        def post_aoo(branch):
+            resources = replace(
+                moved.resources,
+                hit_points=KnownValue.exact(branch.target_hp),
+                head_armor=KnownValue.exact(int(branch.target_head_armor)),
+                body_armor=KnownValue.exact(int(branch.target_body_armor)),
+            )
+            return replace(
+                moved,
+                resources=resources,
+                life_state=LifeState.REMOVED if branch.killed else moved.life_state,
+                position=KnownValue.exact(
+                    reaction.path_step_tile_id
+                    if branch.killed
+                    else action.destination_tile_id
+                ),
+            )
+
         return TransitionOutcome(
             action.action_id,
             MODEL_VERSION,
@@ -169,10 +187,10 @@ def _move(
                     branch.probability,
                     not branch.killed,
                     branch.killed,
-                    replace(moved, life_state=LifeState.REMOVED)
-                    if branch.killed
-                    else moved,
-                    action.destination_tile_id if not branch.killed else None,
+                    post_aoo(branch),
+                    action.destination_tile_id
+                    if not branch.killed
+                    else reaction.path_step_tile_id,
                     effects=(
                         ("aoo", reaction.reacting_actor_id),
                         ("hp_damage", branch.hp_damage),
