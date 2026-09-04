@@ -121,13 +121,33 @@ def _move_aoo_attackers(
     return tuple(sorted(attackers))
 
 
+def _aoo_triggers(
+    state: TacticalState, mover: Combatant, action: ActionAffordance
+) -> set[tuple[str, str]]:
+    if mover.position.representation is not Representation.EXACT or not isinstance(
+        mover.position.value, str
+    ):
+        raise ValueError("mover position must be exact for movement")
+    previous = mover.position.value
+    triggers: set[tuple[str, str]] = set()
+    for step in action.resolved_path:
+        leaving = set(_hostile_zoc(state, mover, previous))
+        arriving = set(_hostile_zoc(state, mover, step))
+        triggers.update((step, actor_id) for actor_id in leaving - arriving)
+        previous = step
+    return triggers
+
+
 def _move(
     authority: MechanicsAuthority, state: TacticalState, action: ActionAffordance
 ) -> TransitionOutcome:
     mover = _actor(state, action)
-    attackers = _move_aoo_attackers(state, mover, action)
-    supplied = {reaction.reacting_actor_id for reaction in action.contingent_reactions}
-    if set(attackers) != supplied:
+    triggers = _aoo_triggers(state, mover, action)
+    supplied = {
+        (reaction.path_step_tile_id, reaction.reacting_actor_id)
+        for reaction in action.contingent_reactions
+    }
+    if len(supplied) != len(action.contingent_reactions) or triggers != supplied:
         raise ValueError("AOO trigger/reaction context mismatch")
     if any(
         reaction.unsupported_mechanic_id for reaction in action.contingent_reactions
@@ -139,7 +159,13 @@ def _move(
         )
         moved = replace(_with_costs(mover, action))
         pending = [(1.0, moved, (), None)]
-        for reaction in action.contingent_reactions:
+        for reaction in sorted(
+            action.contingent_reactions,
+            key=lambda item: (
+                action.resolved_path.index(item.path_step_tile_id),
+                item.reacting_actor_id,
+            ),
+        ):
             next_pending = []
             for probability, actor, effects, _ in pending:
                 if actor.life_state is not LifeState.ALIVE:
