@@ -15,12 +15,21 @@ from bb_agent.tactical_state import (
     ActionAffordance,
     ActionAffordanceSet,
     AffordanceCompleteness,
+    Combatant,
+    EffectState,
+    GroundEntity,
     InformationProfile,
+    ItemState,
     KnowledgeClass,
     KnownValue,
+    Representation,
     ResolvedCost,
     ResolvedPreviewValue,
+    SkillState,
+    TacticalStat,
     TacticalState,
+    TurnEntry,
+    TurnState,
 )
 from bb_agent.versions import CURRENT_VERSIONS
 
@@ -482,31 +491,30 @@ def _compare_cross_view(legal: Any, debug: Any, path: str) -> str | None:
         return f"paired fixtures differ at {path}"
     if isinstance(legal, KnownValue):
         if debug.knowledge_class is KnowledgeClass.DEBUG_GROUND_TRUTH:
-            if legal.knowledge_class in {
-                KnowledgeClass.UNKNOWN,
-                KnowledgeClass.INFERRED,
-                KnowledgeClass.REMEMBERED,
-            }:
+            if _debug_value_is_compatible(legal, debug):
                 return None
-            for name in (
-                "representation",
-                "value",
-                "minimum",
-                "maximum",
-                "candidates",
-                "distribution",
-            ):
-                if getattr(legal, name) != getattr(debug, name):
-                    return f"debug truth contradicts player-visible fact at {path}"
-            return None
+            return f"debug truth contradicts legal-view knowledge at {path}"
     if is_dataclass(legal):
         ignored = _cross_view_ignored_fields(legal)
         for item in fields(legal):
             if item.name in ignored:
                 continue
+            legal_value = getattr(legal, item.name)
+            debug_value = getattr(debug, item.name)
+            key_name = _keyed_collection_key(legal, item.name)
+            if key_name is not None:
+                mismatch = _compare_keyed_collection(
+                    legal_value,
+                    debug_value,
+                    key_name,
+                    f"{path}.{item.name}",
+                )
+                if mismatch is not None:
+                    return mismatch
+                continue
             mismatch = _compare_cross_view(
-                getattr(legal, item.name),
-                getattr(debug, item.name),
+                legal_value,
+                debug_value,
                 f"{path}.{item.name}",
             )
             if mismatch is not None:
@@ -523,6 +531,126 @@ def _compare_cross_view(legal: Any, debug: Any, path: str) -> str | None:
     if legal != debug:
         return f"paired fixtures differ at {path}"
     return None
+
+
+def _debug_value_is_compatible(legal: KnownValue, debug: KnownValue) -> bool:
+    if legal.representation is Representation.UNKNOWN:
+        return True
+    if legal.representation is Representation.EXACT:
+        return debug.representation is Representation.EXACT and _same_json(
+            legal.value, debug.value
+        )
+    if legal.representation is Representation.RANGE:
+        if debug.representation is Representation.EXACT:
+            return _within_range(debug.value, legal.minimum, legal.maximum)
+        if debug.representation is Representation.RANGE:
+            return _within_range(debug.minimum, legal.minimum, legal.maximum) and (
+                _within_range(debug.maximum, legal.minimum, legal.maximum)
+            )
+        return False
+    if legal.representation is Representation.SET:
+        allowed = legal.candidates
+        if debug.representation is Representation.EXACT:
+            return _json_member(debug.value, allowed)
+        if debug.representation is Representation.SET:
+            return all(_json_member(value, allowed) for value in debug.candidates)
+        return False
+    if legal.representation is Representation.DISTRIBUTION:
+        support = tuple(
+            value for value, probability in legal.distribution if probability > 0
+        )
+        if debug.representation is Representation.EXACT:
+            return _json_member(debug.value, support)
+        if debug.representation is Representation.DISTRIBUTION:
+            return all(
+                probability == 0 or _json_member(value, support)
+                for value, probability in debug.distribution
+            )
+        if debug.representation is Representation.SET:
+            return all(_json_member(value, support) for value in debug.candidates)
+    return False
+
+
+def _within_range(value: Any, minimum: Any, maximum: Any) -> bool:
+    return (
+        isinstance(value, int | float)
+        and not isinstance(value, bool)
+        and minimum <= value <= maximum
+    )
+
+
+def _same_json(first: JsonValue, second: JsonValue) -> bool:
+    return canonical_json_bytes(first) == canonical_json_bytes(second)
+
+
+def _json_member(value: JsonValue, candidates: Sequence[JsonValue]) -> bool:
+    return any(_same_json(value, candidate) for candidate in candidates)
+
+
+def _compare_keyed_collection(
+    legal: tuple[Any, ...],
+    debug: tuple[Any, ...],
+    key_name: str | int,
+    path: str,
+) -> str | None:
+    def key(value: Any) -> str:
+        return (
+            value[key_name] if isinstance(key_name, int) else getattr(value, key_name)
+        )
+
+    legal_by_key = {key(value): value for value in legal}
+    debug_by_key = {key(value): value for value in debug}
+    missing = sorted(set(legal_by_key) - set(debug_by_key))
+    if missing:
+        return f"debug view omits legal-view items at {path}: {missing}"
+    for item_key in sorted(legal_by_key):
+        mismatch = _compare_cross_view(
+            legal_by_key[item_key], debug_by_key[item_key], f"{path}[{item_key}]"
+        )
+        if mismatch is not None:
+            return mismatch
+    for item_key in sorted(set(debug_by_key) - set(legal_by_key)):
+        if not _is_debug_only_item(debug_by_key[item_key], key_name):
+            return f"unmarked debug-only item at {path}[{item_key}]"
+    return None
+
+
+def _keyed_collection_key(owner: Any, field_name: str) -> str | int | None:
+    keys: dict[tuple[type[Any], str], str | int] = {
+        (TacticalState, "combatants"): "actor_id",
+        (TacticalState, "ground_entities"): "entity_id",
+        (Combatant, "equipment"): "item_id",
+        (Combatant, "effects"): "effect_id",
+        (Combatant, "skills"): "skill_id",
+        (Combatant, "tactical_stats"): "stat_id",
+        (TurnState, "entries"): "actor_id",
+        (GroundEntity, "state"): 0,
+    }
+    return keys.get((type(owner), field_name))
+
+
+def _is_debug_only_item(value: Any, key_name: str | int) -> bool:
+    if isinstance(value, Combatant):
+        marker = (value.position, value.content_identity)
+    elif isinstance(value, GroundEntity):
+        marker = (value.content, value.position)
+    elif isinstance(value, ItemState | EffectState):
+        marker = (value.membership,)
+    elif isinstance(value, SkillState):
+        marker = (value.possession,)
+    elif isinstance(value, TacticalStat):
+        marker = (value.value,)
+    elif isinstance(value, TurnEntry):
+        marker = (value.done, value.sequence)
+    elif isinstance(value, tuple) and key_name == 0:
+        marker = (value[1],)
+    else:
+        return False
+    return any(
+        isinstance(item, KnownValue)
+        and item.knowledge_class is KnowledgeClass.DEBUG_GROUND_TRUTH
+        for item in marker
+    )
 
 
 def _cross_view_ignored_fields(value: Any) -> set[str]:

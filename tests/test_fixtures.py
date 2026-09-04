@@ -16,7 +16,10 @@ from bb_agent.results import ErrorCode, ResultStatus
 from bb_agent.tactical_state import (
     AffordanceCompleteness,
     InformationProfile,
+    KnowledgeClass,
     KnownValue,
+    Representation,
+    SkillState,
     TacticalState,
 )
 from test_tactical_state import _state
@@ -183,6 +186,85 @@ def test_pair_rejects_changed_player_visible_fact_but_allows_debug_enrichment() 
     assert rejected.status is ResultStatus.VALIDATION_FAILURE
     assert rejected.problems[0].code is ErrorCode.FIXTURE_PAIR_MISMATCH
     assert validate_fixture_pair(legal, debug).status is ResultStatus.SUCCESS
+
+
+def test_pair_accepts_contained_debug_truth_and_rejects_contradiction() -> None:
+    legal = _fixture()
+    debug = _fixture(InformationProfile.OMNISCIENT_DEBUG)
+
+    def with_enemy_hp(fixture: FixtureEnvelope, value: KnownValue) -> FixtureEnvelope:
+        enemy = next(
+            actor for actor in fixture.state.combatants if actor.actor_id == "enemy"
+        )
+        changed_enemy = replace(
+            enemy, resources=replace(enemy.resources, hit_points=value)
+        )
+        return _with_state(
+            fixture,
+            combatants=tuple(
+                changed_enemy if actor.actor_id == "enemy" else actor
+                for actor in fixture.state.combatants
+            ),
+        )
+
+    legal_range = with_enemy_hp(
+        legal,
+        KnownValue(
+            Representation.RANGE,
+            KnowledgeClass.OBSERVED,
+            minimum=40,
+            maximum=60,
+        ),
+    )
+    contained = with_enemy_hp(
+        debug,
+        KnownValue.exact(50, KnowledgeClass.DEBUG_GROUND_TRUTH),
+    )
+    outside = with_enemy_hp(
+        debug,
+        KnownValue.exact(30, KnowledgeClass.DEBUG_GROUND_TRUTH),
+    )
+
+    assert validate_fixture_pair(legal_range, contained).status is ResultStatus.SUCCESS
+    rejected = validate_fixture_pair(legal_range, outside)
+    assert rejected.status is ResultStatus.VALIDATION_FAILURE
+    assert rejected.problems[0].code is ErrorCode.FIXTURE_PAIR_MISMATCH
+
+
+def test_pair_allows_explicitly_marked_debug_only_hidden_skill() -> None:
+    legal = _fixture()
+    debug = _fixture(InformationProfile.OMNISCIENT_DEBUG)
+    enemy = next(actor for actor in debug.state.combatants if actor.actor_id == "enemy")
+    hidden_skill = SkillState(
+        "skill.hidden",
+        KnownValue.exact(True, KnowledgeClass.DEBUG_GROUND_TRUTH),
+        enabled=KnownValue.exact(True, KnowledgeClass.DEBUG_GROUND_TRUTH),
+    )
+    enriched_enemy = replace(enemy, skills=(*enemy.skills, hidden_skill))
+    enriched = _with_state(
+        debug,
+        combatants=tuple(
+            enriched_enemy if actor.actor_id == "enemy" else actor
+            for actor in debug.state.combatants
+        ),
+    )
+
+    assert validate_fixture_pair(legal, enriched).status is ResultStatus.SUCCESS
+
+    unmarked_enemy = replace(
+        enemy,
+        skills=(SkillState("skill.visible", KnownValue.exact(True)),),
+    )
+    unmarked = _with_state(
+        debug,
+        combatants=tuple(
+            unmarked_enemy if actor.actor_id == "enemy" else actor
+            for actor in debug.state.combatants
+        ),
+    )
+    rejected = validate_fixture_pair(legal, unmarked)
+    assert rejected.status is ResultStatus.VALIDATION_FAILURE
+    assert rejected.problems[0].code is ErrorCode.FIXTURE_PAIR_MISMATCH
 
 
 def test_loader_returns_structured_diagnostics_for_malformed_and_mismatched_data() -> (
