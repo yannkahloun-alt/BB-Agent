@@ -236,10 +236,29 @@ def _simple(state: TacticalState, action: ActionAffordance) -> TransitionOutcome
         ):
             raise ValueError("equipment source location is not exact")
         equipped = replace(item, slot=KnownValue.exact(action.target_slot))
+        displaced = None
+        if action.displaced_item_id is not None:
+            displaced = next(
+                candidate
+                for candidate in actor.equipment
+                if candidate.item_id == action.displaced_item_id
+            )
+            if (
+                displaced.slot.representation is not Representation.EXACT
+                or displaced.slot.value != action.target_slot
+            ):
+                raise ValueError("displaced item is not in the target slot")
+            displaced = replace(
+                displaced, slot=KnownValue.exact(action.displaced_item_destination)
+            )
         actor = replace(
             actor,
             equipment=tuple(
-                equipped if candidate.item_id == item.item_id else candidate
+                equipped
+                if candidate.item_id == item.item_id
+                else displaced
+                if displaced is not None and candidate.item_id == displaced.item_id
+                else candidate
                 for candidate in actor.equipment
             ),
         )

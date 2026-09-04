@@ -484,10 +484,6 @@ class MechanicsAuthority:
                 "slot"
             ):
                 unsupported("target slot outside declared item class", content_id)
-            if action.displaced_item_id is not None:
-                unsupported(
-                    "displaced item transition not declared", action.displaced_item_id
-                )
         if action.parameters or action.mode_variant is not None or action.preview.facts:
             unsupported(
                 "unmodelled extension, variant, or preview fact",

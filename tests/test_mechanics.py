@@ -635,7 +635,9 @@ def test_equipment_coverage_uses_content_and_declared_transition(tmp_path, case)
     )
     result = authority.classify(_snapshot(authority, action, combatants=actors))
     assert result.status is (
-        ResultStatus.SUCCESS if case == "known" else ResultStatus.INCOMPLETE_COVERAGE
+        ResultStatus.SUCCESS
+        if case in {"known", "displaced"}
+        else ResultStatus.INCOMPLETE_COVERAGE
     )
 
 
