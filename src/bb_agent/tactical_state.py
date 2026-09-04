@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import asdict, dataclass, field, fields, is_dataclass, replace
 from enum import StrEnum
 from types import UnionType
@@ -148,8 +149,17 @@ class KnownValue:
                 raise ValueError("UNKNOWN cannot carry a hidden value")
         elif self.knowledge_class is KnowledgeClass.UNKNOWN:
             raise ValueError("known representations cannot use UNKNOWN knowledge")
-        if self.representation is Representation.RANGE and self.minimum > self.maximum:  # type: ignore[operator]
-            raise ValueError("range minimum exceeds maximum")
+        if self.representation is Representation.RANGE:
+            endpoints = (self.minimum, self.maximum)
+            if any(
+                isinstance(endpoint, bool)
+                or not isinstance(endpoint, int | float)
+                or not math.isfinite(endpoint)
+                for endpoint in endpoints
+            ):
+                raise ValueError("range endpoints must be finite non-bool numbers")
+            if self.minimum > self.maximum:  # type: ignore[operator]
+                raise ValueError("range minimum exceeds maximum")
         if (
             self.knowledge_class is KnowledgeClass.REMEMBERED
             and self.observed_at is None
@@ -160,12 +170,25 @@ class KnownValue:
             and not self.basis
         ):
             raise ValueError("derived/inferred values require basis")
-        if self.confidence is not None and not 0 <= self.confidence <= 1:
-            raise ValueError("confidence must be in [0, 1]")
+        if self.confidence is not None:
+            if (
+                not isinstance(self.confidence, float)
+                or not math.isfinite(self.confidence)
+                or not 0 <= self.confidence <= 1
+            ):
+                raise ValueError("confidence must be a finite float in [0, 1]")
         if self.distribution:
-            total = sum(probability for _, probability in self.distribution)
-            if any(probability < 0 for _, probability in self.distribution):
-                raise ValueError("distribution probabilities cannot be negative")
+            probabilities = tuple(probability for _, probability in self.distribution)
+            if any(
+                not isinstance(probability, float)
+                or not math.isfinite(probability)
+                or probability < 0
+                for probability in probabilities
+            ):
+                raise ValueError(
+                    "distribution probabilities must be finite nonnegative floats"
+                )
+            total = sum(probabilities)
             if abs(total - 1.0) > 1e-9:
                 raise ValueError("distribution probabilities must sum to 1")
 

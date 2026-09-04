@@ -1010,3 +1010,89 @@ def test_knowledge_representations_reject_cross_payload_smuggling(
             KnowledgeClass.EXACT_OBSERVED,
             **kwargs,  # type: ignore[arg-type]
         )
+
+
+@pytest.mark.parametrize(
+    ("minimum", "maximum"),
+    [
+        (True, 2),
+        (1, False),
+        (float("nan"), 2),
+        (1, float("inf")),
+    ],
+)
+def test_range_endpoints_require_finite_non_bool_numbers(
+    minimum: object, maximum: object
+) -> None:
+    with pytest.raises(ValueError, match="finite non-bool numbers"):
+        KnownValue(
+            Representation.RANGE,
+            KnowledgeClass.INFERRED,
+            minimum=minimum,  # type: ignore[arg-type]
+            maximum=maximum,  # type: ignore[arg-type]
+            basis=("evidence",),
+        )
+
+
+@pytest.mark.parametrize("confidence", [True, 1, float("nan"), float("inf")])
+def test_confidence_requires_finite_float(confidence: object) -> None:
+    with pytest.raises(ValueError, match="finite float"):
+        KnownValue(
+            Representation.EXACT,
+            KnowledgeClass.INFERRED,
+            value=1,
+            basis=("evidence",),
+            confidence=confidence,  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    "probability",
+    [True, 1, float("nan"), float("inf"), float("-inf")],
+)
+def test_distribution_probabilities_require_finite_floats(
+    probability: object,
+) -> None:
+    with pytest.raises(ValueError, match="finite nonnegative floats"):
+        KnownValue(
+            Representation.DISTRIBUTION,
+            KnowledgeClass.INFERRED,
+            distribution=(("outcome", probability),),  # type: ignore[arg-type]
+            basis=("evidence",),
+        )
+
+
+def test_state_round_trip_preserves_valid_uncertainty_numeric_metadata() -> None:
+    state = _state()
+    enemy = replace(
+        state.combatants[1],
+        tactical_stats=(
+            TacticalStat(
+                "melee_defense",
+                KnownValue(
+                    Representation.RANGE,
+                    KnowledgeClass.INFERRED,
+                    minimum=8,
+                    maximum=18,
+                    basis=("observed_hit_chance",),
+                    confidence=0.75,
+                ),
+            ),
+        ),
+    )
+    rebuilt = TacticalState.create(
+        **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
+        | {
+            "state_id": "",
+            "combatants": (state.combatants[0], enemy),
+            "action_affordances": replace(
+                state.action_affordances, captured_for_state_id=""
+            ),
+        }
+    )
+
+    loaded = TacticalState.from_dict(rebuilt.to_dict())
+    assert loaded == rebuilt
+    assert loaded.combatants[1].tactical_stats[0].value.confidence == 0.75
+    origin = next(tile for tile in loaded.tiles if tile.tile_id == "origin")
+    assert origin.movement_cost.distribution == ((1, 0.6), (2, 0.4))
