@@ -7,7 +7,7 @@ from enum import StrEnum
 from types import UnionType
 from typing import Any, Self, get_args, get_origin, get_type_hints
 
-from bb_agent.serialization import JsonValue, canonical_sha256
+from bb_agent.serialization import JsonValue, canonical_json_bytes, canonical_sha256
 from bb_agent.versions import CURRENT_VERSIONS
 
 
@@ -182,6 +182,9 @@ class Tile:
     blocking: bool = False
     visibility: KnowledgeClass = KnowledgeClass.EXACT_OBSERVED
     dynamic_effect_ids: tuple[str, ...] = ()
+    movement_cost: KnownValue = field(default_factory=KnownValue.unknown)
+    traversable: KnownValue = field(default_factory=KnownValue.unknown)
+    blocks_line_of_sight: KnownValue = field(default_factory=KnownValue.unknown)
 
     def __post_init__(self) -> None:
         if not self.tile_id or not self.terrain_id:
@@ -208,6 +211,22 @@ class EffectState:
 
 
 @dataclass(frozen=True, slots=True)
+class SkillState:
+    skill_id: str
+    possession: KnownValue
+    enabled: KnownValue = field(default_factory=KnownValue.unknown)
+    cooldown: KnownValue = field(default_factory=KnownValue.unknown)
+    charges: KnownValue = field(default_factory=KnownValue.unknown)
+    used_this_turn: KnownValue = field(default_factory=KnownValue.unknown)
+
+
+@dataclass(frozen=True, slots=True)
+class TacticalStat:
+    stat_id: str
+    value: KnownValue
+
+
+@dataclass(frozen=True, slots=True)
 class ResourceState:
     hit_points: KnownValue
     maximum_hit_points: KnownValue
@@ -216,8 +235,11 @@ class ResourceState:
     fatigue: KnownValue
     fatigue_capacity: KnownValue
     head_armor: KnownValue = field(default_factory=KnownValue.unknown)
+    maximum_head_armor: KnownValue = field(default_factory=KnownValue.unknown)
     body_armor: KnownValue = field(default_factory=KnownValue.unknown)
+    maximum_body_armor: KnownValue = field(default_factory=KnownValue.unknown)
     morale: KnownValue = field(default_factory=KnownValue.unknown)
+    initiative: KnownValue = field(default_factory=KnownValue.unknown)
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,8 +261,10 @@ class Combatant:
     content_id: str | None = None
     equipment: tuple[ItemState, ...] = ()
     effects: tuple[EffectState, ...] = ()
-    skill_ids: tuple[str, ...] = ()
-    perk_ids: tuple[str, ...] = ()
+    skills: tuple[SkillState, ...] = ()
+    tactical_stats: tuple[TacticalStat, ...] = ()
+    perks: KnownValue = field(default_factory=KnownValue.unknown)
+    traits: KnownValue = field(default_factory=KnownValue.unknown)
     last_seen: LastSeen | None = None
 
 
@@ -412,8 +436,12 @@ class TacticalState:
                     effects=tuple(
                         sorted(actor.effects, key=lambda effect: effect.effect_id)
                     ),
-                    skill_ids=tuple(sorted(set(actor.skill_ids))),
-                    perk_ids=tuple(sorted(set(actor.perk_ids))),
+                    skills=tuple(
+                        sorted(actor.skills, key=lambda skill: skill.skill_id)
+                    ),
+                    tactical_stats=tuple(
+                        sorted(actor.tactical_stats, key=lambda stat: stat.stat_id)
+                    ),
                 )
                 for actor in sorted(self.combatants, key=lambda actor: actor.actor_id)
             ),
@@ -423,6 +451,8 @@ class TacticalState:
             ),
             ground_entities=tuple(sorted(self.ground_entities)),
         )
+        state = _normalize_epistemic(state)
+        assert isinstance(state, TacticalState)
         state._validate_structure()
         state_id = canonical_sha256(state._identity_dict())
         if self.state_id and self.state_id != state_id:
@@ -473,8 +503,12 @@ class TacticalState:
                     effects=tuple(
                         sorted(actor.effects, key=lambda effect: effect.effect_id)
                     ),
-                    skill_ids=tuple(sorted(set(actor.skill_ids))),
-                    perk_ids=tuple(sorted(set(actor.perk_ids))),
+                    skills=tuple(
+                        sorted(actor.skills, key=lambda skill: skill.skill_id)
+                    ),
+                    tactical_stats=tuple(
+                        sorted(actor.tactical_stats, key=lambda stat: stat.stat_id)
+                    ),
                 )
                 for actor in sorted(
                     unlinked.combatants, key=lambda actor: actor.actor_id
@@ -486,6 +520,8 @@ class TacticalState:
             ),
             ground_entities=tuple(sorted(unlinked.ground_entities)),
         )
+        normalized = _normalize_epistemic(normalized)
+        assert isinstance(normalized, TacticalState)
         state_id = canonical_sha256(normalized._identity_dict())
         return replace(
             provisional,
@@ -566,7 +602,9 @@ class TacticalState:
                 raise ValueError(
                     "player_legal cannot contain affordance DEBUG_GROUND_TRUTH"
                 )
-            if action.skill_id is not None and action.skill_id not in active.skill_ids:
+            if action.skill_id is not None and action.skill_id not in {
+                skill.skill_id for skill in active.skills
+            }:
                 raise ValueError("affordance skill_id is not possessed by active actor")
             if action.item_id is not None and action.item_id not in {
                 item.item_id for item in active.equipment
@@ -575,9 +613,28 @@ class TacticalState:
             for tile_id in (*action.resolved_path, *action.preview.affected_tile_ids):
                 if tile_id not in tiles:
                     raise ValueError(f"affordance references unknown tile {tile_id}")
+            if action.kind is ActionKind.MOVE_TO:
+                origin = active.position.value
+                assert isinstance(origin, str)
+                prior = origin
+                for step in action.resolved_path:
+                    if step not in tiles[prior].neighbors:
+                        raise ValueError(
+                            "MOVE_TO resolved path contains a non-adjacent step"
+                        )
+                    prior = step
         exact_positions: dict[str, str] = {}
         for actor in self.combatants:
             _validate_resources(actor.resources)
+            for values, label in (
+                ((item.item_id for item in actor.equipment), "item_id"),
+                ((effect.effect_id for effect in actor.effects), "effect_id"),
+                ((skill.skill_id for skill in actor.skills), "skill_id"),
+                ((stat.stat_id for stat in actor.tactical_stats), "stat_id"),
+            ):
+                identifiers = tuple(values)
+                if len(identifiers) != len(set(identifiers)):
+                    raise ValueError(f"duplicate combatant {label}")
             if actor.last_seen is not None and actor.last_seen.tile_id not in tiles:
                 raise ValueError("last_seen references unknown tile")
             if self.information_profile is InformationProfile.PLAYER_LEGAL:
@@ -597,6 +654,12 @@ class TacticalState:
                 if tiles[tile_id].occupant_actor_id != actor.actor_id:
                     raise ValueError("actor position and tile occupancy disagree")
         for tile in self.tiles:
+            if self.information_profile is InformationProfile.PLAYER_LEGAL:
+                for value in _walk_known_values(tile):
+                    if value.knowledge_class is KnowledgeClass.DEBUG_GROUND_TRUTH:
+                        raise ValueError(
+                            "player_legal cannot contain DEBUG_GROUND_TRUTH"
+                        )
             if tile.occupant_actor_id is not None:
                 if tile.occupant_actor_id not in actors:
                     raise ValueError("tile occupancy references unknown actor")
@@ -631,7 +694,10 @@ def _validate_resources(resources: ResourceState) -> None:
         resources.fatigue,
         resources.fatigue_capacity,
         resources.head_armor,
+        resources.maximum_head_armor,
         resources.body_armor,
+        resources.maximum_body_armor,
+        resources.initiative,
     )
     for value in non_negative:
         candidates: tuple[Any, ...] = ()
@@ -645,6 +711,8 @@ def _validate_resources(resources: ResourceState) -> None:
         (resources.hit_points, resources.maximum_hit_points, "hit points"),
         (resources.action_points, resources.maximum_action_points, "action points"),
         (resources.fatigue, resources.fatigue_capacity, "fatigue"),
+        (resources.head_armor, resources.maximum_head_armor, "head armor"),
+        (resources.body_armor, resources.maximum_body_armor, "body armor"),
     ):
         if (
             current.representation is Representation.EXACT
@@ -673,6 +741,40 @@ def _normalize_actions(
             raise ValueError("conflicting affordances share an action_id")
         unique[action.action_id] = normalized
     return tuple(unique[action_id] for action_id in sorted(unique))
+
+
+def _normalize_epistemic(value: Any) -> Any:
+    if isinstance(value, KnownValue):
+        candidates = value.candidates
+        if value.representation is Representation.SET:
+            unique_candidates = {
+                canonical_json_bytes(candidate): candidate for candidate in candidates
+            }
+            candidates = tuple(
+                unique_candidates[key] for key in sorted(unique_candidates)
+            )
+        distribution = value.distribution
+        if value.representation is Representation.DISTRIBUTION:
+            distribution = tuple(
+                sorted(distribution, key=lambda entry: canonical_json_bytes(entry[0]))
+            )
+        return replace(
+            value,
+            candidates=candidates,
+            distribution=distribution,
+            basis=tuple(sorted(set(value.basis))),
+        )
+    if is_dataclass(value):
+        return replace(
+            value,
+            **{
+                item.name: _normalize_epistemic(getattr(value, item.name))
+                for item in fields(value)
+            },
+        )
+    if isinstance(value, tuple):
+        return tuple(_normalize_epistemic(child) for child in value)
+    return value
 
 
 def _walk_known_values(value: Any) -> tuple[KnownValue, ...]:

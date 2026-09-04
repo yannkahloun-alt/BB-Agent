@@ -26,6 +26,8 @@ from bb_agent.tactical_state import (
     ResolvedCost,
     ResourceState,
     RulesetIdentity,
+    SkillState,
+    TacticalStat,
     TacticalState,
     Tile,
     TurnEntry,
@@ -45,6 +47,11 @@ def _resources(*, debug: bool = False) -> ResourceState:
         maximum_action_points=KnownValue.exact(9, knowledge),
         fatigue=KnownValue.exact(0, knowledge),
         fatigue_capacity=KnownValue.exact(100, knowledge),
+        head_armor=KnownValue.exact(40, knowledge),
+        maximum_head_armor=KnownValue.exact(50, knowledge),
+        body_armor=KnownValue.exact(70, knowledge),
+        maximum_body_armor=KnownValue.exact(80, knowledge),
+        initiative=KnownValue.exact(105, knowledge),
     )
 
 
@@ -55,6 +62,9 @@ def _state(
     reverse_sets: bool = False,
 ) -> TacticalState:
     set_values = ("z", "a", "z") if not reverse_sets else ("a", "z")
+    distribution = ((2, 0.4), (1, 0.6))
+    if reverse_sets:
+        distribution = tuple(reversed(distribution))
     tiles = (
         Tile(
             "origin",
@@ -64,6 +74,12 @@ def _state(
             ("east", None, None, None, None, None),
             "brother",
             dynamic_effect_ids=set_values,
+            movement_cost=KnownValue(
+                Representation.DISTRIBUTION,
+                KnowledgeClass.INFERRED,
+                distribution=distribution,
+                basis=set_values,
+            ),
         ),
         Tile(
             "east",
@@ -84,7 +100,27 @@ def _state(
             True,
             KnownValue.exact("origin"),
             _resources(),
-            skill_ids=("skill.attack", "skill.attack"),
+            skills=(
+                SkillState(
+                    "skill.attack",
+                    KnownValue.exact(True),
+                    enabled=KnownValue.exact(True),
+                ),
+            ),
+            tactical_stats=(
+                TacticalStat("melee_skill", KnownValue.exact(73)),
+                TacticalStat("melee_defense", KnownValue.exact(18)),
+            ),
+            perks=KnownValue(
+                Representation.SET,
+                KnowledgeClass.EXACT_OBSERVED,
+                candidates=tuple(f"perk.{value}" for value in set_values),
+            ),
+            traits=KnownValue(
+                Representation.SET,
+                KnowledgeClass.EXACT_OBSERVED,
+                candidates=tuple(f"trait.{value}" for value in reversed(set_values)),
+            ),
         ),
         Combatant(
             "enemy",
@@ -166,6 +202,24 @@ def test_round_trip_is_lossless_and_order_is_normalized() -> None:
     }
 
 
+def test_extended_combat_and_tile_state_preserves_knowledge_fidelity() -> None:
+    state = _state()
+    active = state.combatants[0]
+
+    assert active.resources.maximum_head_armor.value == 50
+    assert active.resources.maximum_body_armor.value == 80
+    assert active.resources.initiative.value == 105
+    assert active.skills[0].enabled.value is True
+    assert (
+        active.tactical_stats[0].value.knowledge_class is KnowledgeClass.EXACT_OBSERVED
+    )
+    assert active.perks.representation is Representation.SET
+    assert active.traits.representation is Representation.SET
+    origin = next(tile for tile in state.tiles if tile.tile_id == "origin")
+    assert origin.movement_cost.representation is Representation.DISTRIBUTION
+    assert TacticalState.from_dict(state.to_dict()) == state
+
+
 def test_identical_affordances_are_deduplicated() -> None:
     state = _state()
     duplicated = replace(
@@ -213,7 +267,7 @@ def test_player_legal_rejects_affordance_debug_oracle() -> None:
         leaked.normalized()
 
 
-def test_set_like_collections_normalize_for_hashing() -> None:
+def test_set_like_collections_and_epistemic_sets_normalize_for_hashing() -> None:
     first = _state()
     reordered = _state(reverse_sets=True)
 
@@ -223,6 +277,11 @@ def test_set_like_collections_normalize_for_hashing() -> None:
     assert first.battle.flags == ("a", "z")
     assert first.environment.effect_ids == ("a", "z")
     assert all(tile.dynamic_effect_ids == ("a", "z") for tile in first.tiles)
+    assert first.combatants[0].perks.candidates == ("perk.a", "perk.z")
+    assert first.combatants[0].traits.candidates == ("trait.a", "trait.z")
+    origin = next(tile for tile in first.tiles if tile.tile_id == "origin")
+    assert origin.movement_cost.distribution == ((1, 0.6), (2, 0.4))
+    assert origin.movement_cost.basis == ("a", "z")
 
 
 def test_profile_changes_semantic_identity_for_same_raw_capture() -> None:
@@ -265,6 +324,18 @@ def test_player_legal_rejects_debug_knowledge_outside_combatants() -> None:
     tile_leak = replace(state, state_id="", tiles=(debug_tile, state.tiles[1]))
     with pytest.raises(ValueError, match="DEBUG_GROUND_TRUTH"):
         tile_leak.normalized()
+
+    movement_leak = replace(
+        state.tiles[0],
+        traversable=KnownValue.exact(True, KnowledgeClass.DEBUG_GROUND_TRUTH),
+    )
+    dynamic_tile_leak = replace(
+        state,
+        state_id="",
+        tiles=(movement_leak, state.tiles[1]),
+    )
+    with pytest.raises(ValueError, match="DEBUG_GROUND_TRUTH"):
+        dynamic_tile_leak.normalized()
 
 
 def test_snapshot_local_references_are_validated() -> None:
@@ -340,6 +411,26 @@ def test_active_actor_requires_exact_placement() -> None:
 
     with pytest.raises(ValueError, match="exact current position"):
         unplaced.normalized()
+
+
+def test_move_to_path_cannot_teleport_between_non_adjacent_steps() -> None:
+    state = _state()
+    move = replace(
+        state.action_affordances.actions[0],
+        action_id="move:east",
+        kind=ActionKind.MOVE_TO,
+        skill_id=None,
+        destination_tile_id="east",
+        resolved_path=("origin", "east"),
+    )
+    teleport = replace(
+        state,
+        state_id="",
+        action_affordances=replace(state.action_affordances, actions=(move,)),
+    )
+
+    with pytest.raises(ValueError, match="non-adjacent"):
+        teleport.normalized()
 
 
 def test_occupancy_and_neighbor_invariants_are_enforced() -> None:
