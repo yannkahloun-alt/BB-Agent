@@ -34,3 +34,6 @@ quote-style = "double"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+bb_agent = ["data/*.json"]

@@ -38,6 +38,10 @@ See [`docs/AGENT_WORKFLOW_DEPENDENCY.md`](docs/AGENT_WORKFLOW_DEPENDENCY.md) for
 The versioned offline fixture envelope and replay-input boundary are documented
 in [`docs/FIXTURES.md`](docs/FIXTURES.md).
 
+The local catalog, mechanics coverage declarations and resolution-stage boundary
+are documented in [`docs/MECHANICS.md`](docs/MECHANICS.md). The shipped manifest
+declares pending outcome/transition families explicitly unsupported.
+
 ## M1 implementation sequence
 
 1. Project/test/version skeleton — #14

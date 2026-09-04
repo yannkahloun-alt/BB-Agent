@@ -1,0 +1,18 @@
+{
+  "schema_version": "bb-agent-catalog.v1",
+  "game_version": "scripts-162f498ac7c49b4c317bbf54718a595ecef6a65a",
+  "mods": [],
+  "provenance": {
+    "repository": "https://github.com/ninkjin/Battle-Brothers-Scripts",
+    "revision": "162f498ac7c49b4c317bbf54718a595ecef6a65a",
+    "paths": ["scripts/skills/actives/chop.nut", "scripts/skills/actives/recover_skill.nut", "scripts/skills/actives/reload_bolt.nut", "scripts/items/weapons/hand_axe.nut"],
+    "derivation_version": "bb-agent-hand-reviewed-static-subset.v1"
+  },
+  "entries": [
+    {"content_id": "actives.chop", "family_id": "ordinary_attack", "category": "skill", "facts": {"source_path": "scripts/skills/actives/chop.nut", "source_blob": "08654032d17c1c9df4031d900b63dbce9ac6be1b", "base_ap_cost": 4, "base_fatigue_cost": 13, "direct_damage_multiplier": 0.3, "additional_head_damage_multiplier": 0.5}},
+    {"content_id": "actives.recover", "family_id": "recover", "category": "skill", "facts": {"source_path": "scripts/skills/actives/recover_skill.nut", "source_blob": "152f1cfad2de502345f5162021db30cb102f7950", "base_ap_cost": 9, "base_fatigue_cost": 0, "fatigue_divisor": 2}},
+    {"content_id": "actives.reload_bolt", "family_id": "reload", "category": "skill", "facts": {"source_path": "scripts/skills/actives/reload_bolt.nut", "source_blob": "1d820de0b704027fa64babb8a2000ae2ca176743", "base_ap_cost": 4, "base_fatigue_cost": 20, "sets_loaded": true}},
+    {"content_id": "weapon.hand_axe", "family_id": "equip", "category": "item", "facts": {"source_path": "scripts/items/weapons/hand_axe.nut", "source_blob": "d942cc00669475946f88e84b35dc3d2e960b3d6e", "damage_min": 30, "damage_max": 45, "armor_damage_multiplier": 1.2, "direct_damage_multiplier": 0.3, "stamina_modifier": -10, "slot": "mainhand"}}
+  ],
+  "content_fingerprint": "4c4b714832d1989740a6f07dce058c11aa1e9123056966ede06ce42d1df182bd"
+}
