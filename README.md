@@ -35,6 +35,9 @@ The project-specific quality and CI contract is in [`docs/TESTING.md`](docs/TEST
 
 See [`docs/AGENT_WORKFLOW_DEPENDENCY.md`](docs/AGENT_WORKFLOW_DEPENDENCY.md) for the behavioral dependency and upgrade policy.
 
+The versioned offline fixture envelope and replay-input boundary are documented
+in [`docs/FIXTURES.md`](docs/FIXTURES.md).
+
 ## M1 implementation sequence
 
 1. Project/test/version skeleton — #14

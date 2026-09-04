@@ -18,6 +18,7 @@ def test_version_registry_references_frozen_contracts() -> None:
         "mechanics_manifest",
         "outcome_model",
         "evaluation_config",
+        "fixture",
     }
 
 
