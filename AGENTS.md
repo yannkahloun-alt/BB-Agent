@@ -14,7 +14,7 @@ still take precedence.
 
 - Workflow submodule path: `.agent-workflow`
 - Workflow upstream: `yannkahloun-alt/codex-agent-workflow`
-- Current pin: `v1.1.2` (`4171010e1a17643876036b3dfd463b2e3a615c5f`)
+- Current pin: `v1.1.3` (`ff0647d3dc205a47734d569ae5247ee4ba9109e9`)
 - Approved stable selector: greatest non-prerelease SemVer tag in the `v1.x`
   series
 
@@ -95,14 +95,17 @@ Before editing for an M1 issue:
 5. inspect existing implementation and tests before choosing a design.
 
 Keep one coherent task per branch/worktree. Add focused regression tests for
-behavioral fixes, run the repository's documented gates, review the complete
-diff, and keep commits scoped to the issue.
+behavioral fixes, ensure the repository's documented deterministic gates pass
+on the exact PR head in authoritative CI, review the complete diff, and keep
+commits scoped to the issue. Routine autonomous work does not duplicate
+CI-equivalent pytest, Ruff, Pyflakes, or static-analysis execution locally;
+local automated validation is reserved for checks unavailable in CI or an
+explicit user instruction.
 
 ## Validation and CI
 
-M1's initial CI/runtime baseline is Python 3.12. Pull requests to `main` are
-expected to converge on the stable required checks `tests`, `ruff`, and
-`pyflakes` as implemented by #14.
+M1's initial CI/runtime baseline is Python 3.12. Pull requests to `main` run
+the stable required checks `tests`, `ruff`, and `pyflakes`.
 
 Decision tests and promoted M1 fixtures must be deterministic, network-free,
 machine-independent, and must not depend on a local Battle Brothers installation,
