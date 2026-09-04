@@ -14,14 +14,18 @@ from bb_agent.mechanics import (
     load_catalog,
     load_manifest,
 )
+from bb_agent.outcomes import HitResult, evaluate_ordinary_attack
 from bb_agent.results import ErrorCode, ResultStatus
 from bb_agent.serialization import canonical_sha256
 from bb_agent.tactical_state import (
     ActionKind,
     AffordanceCompleteness,
+    InformationProfile,
     ItemState,
+    KnowledgeClass,
     KnownValue,
     PlayerVisiblePreview,
+    Representation,
     ResolutionAuthority,
     ResolutionStage,
     ResolvedPreviewValue,
@@ -94,6 +98,49 @@ def _attack(skill_id="actives.chop", **changes):
     return replace(action, skill_id=skill_id, **changes)
 
 
+def _ordinary_attack_state(authority, *, hit_points=60, head_armor=40, body_armor=70):
+    state = _snapshot(authority, _attack())
+    actors = []
+    for actor in state.combatants:
+        if actor.actor_id == "brother":
+            actors.append(
+                replace(
+                    actor,
+                    perks=KnownValue.exact([]),
+                    traits=KnownValue.exact([]),
+                    equipment=(
+                        ItemState(
+                            "hand-axe",
+                            KnownValue.exact("weapon.hand_axe"),
+                            KnownValue.exact("mainhand"),
+                            KnownValue.exact(True),
+                        ),
+                    ),
+                )
+            )
+        else:
+            actors.append(
+                replace(
+                    actor,
+                    perks=KnownValue.exact([]),
+                    traits=KnownValue.exact([]),
+                    resources=replace(
+                        actor.resources,
+                        hit_points=KnownValue.exact(hit_points),
+                        head_armor=KnownValue.exact(head_armor),
+                        body_armor=KnownValue.exact(body_armor),
+                    ),
+                )
+            )
+    values = {field.name: getattr(state, field.name) for field in fields(state)}
+    values.update(
+        state_id="",
+        information_profile=InformationProfile.OMNISCIENT_DEBUG,
+        combatants=tuple(actors),
+    )
+    return TacticalState.create(**values)
+
+
 def _wait(kind=ActionKind.WAIT):
     return replace(
         _attack(),
@@ -110,9 +157,13 @@ def test_builtin_is_pinned_immutable_and_honest():
     assert {
         family.family_id for family in authority.manifest.families
     } == MANDATORY_FAMILIES
+    assert (
+        authority.manifest.family("ordinary_attack").status is CoverageStatus.SUPPORTED
+    )
     assert all(
         family.status is CoverageStatus.EVALUATION_UNSUPPORTED
         for family in authority.manifest.families
+        if family.family_id != "ordinary_attack"
     )
     assert (
         authority.catalog.provenance.revision
@@ -126,6 +177,93 @@ def test_builtin_is_pinned_immutable_and_honest():
     result = authority.classify(_snapshot(authority, _attack(), _wait()))
     assert result.status is ResultStatus.INCOMPLETE_COVERAGE
     assert len(result.value.affordances) == 2
+
+
+def test_ordinary_attack_uses_independent_rolls_and_pinned_damage_formula():
+    authority = _authority()
+    state = _ordinary_attack_state(
+        authority, hit_points=60, head_armor=40, body_armor=70
+    )
+    action = state.action_affordances.actions[0]
+
+    result = evaluate_ordinary_attack(authority, state, action)
+
+    assert result.status is ResultStatus.SUCCESS
+    assert result.value is not None
+    outcome = result.value
+    assert outcome.probability_mass == pytest.approx(1)
+    assert outcome.epistemic is False
+    assert outcome.branches[0].result is HitResult.MISS
+    assert outcome.branches[0].probability == pytest.approx(0.33)
+    head = next(
+        branch
+        for branch in outcome.branches
+        if branch.result is HitResult.HEAD
+        and branch.damage == 30
+        and branch.armor_damage == pytest.approx(36)
+    )
+    assert head.hp_damage == 13
+    assert head.target_head_armor == pytest.approx(4)
+    assert head.actor_action_points == 5
+    assert head.actor_fatigue == 10
+
+
+def test_ordinary_attack_envelope_does_not_invent_set_prior():
+    authority = _authority()
+    state = _ordinary_attack_state(authority)
+    target = next(actor for actor in state.combatants if actor.actor_id == "enemy")
+    uncertain_target = replace(
+        target,
+        resources=replace(
+            target.resources,
+            hit_points=KnownValue(
+                Representation.SET,
+                KnowledgeClass.INFERRED,
+                candidates=(10, 60),
+                basis=("visible-wound",),
+            ),
+            head_armor=KnownValue(
+                Representation.RANGE,
+                KnowledgeClass.INFERRED,
+                minimum=40,
+                maximum=40,
+                basis=("visible-helmet",),
+            ),
+            body_armor=KnownValue(
+                Representation.RANGE,
+                KnowledgeClass.INFERRED,
+                minimum=70,
+                maximum=70,
+                basis=("visible-body-armor",),
+            ),
+        ),
+    )
+    values = {field.name: getattr(state, field.name) for field in fields(state)}
+    values.update(
+        state_id="",
+        information_profile=InformationProfile.PLAYER_LEGAL,
+        combatants=tuple(
+            uncertain_target if actor.actor_id == "enemy" else actor
+            for actor in state.combatants
+        ),
+    )
+    player_legal = TacticalState.create(**values)
+
+    result = evaluate_ordinary_attack(
+        authority, player_legal, player_legal.action_affordances.actions[0]
+    )
+
+    assert result.status is ResultStatus.SUCCESS
+    assert result.value is not None
+    assert result.value.probability_mass is None
+    assert {scenario.target_hp for scenario in result.value.epistemic_scenarios} == {
+        10,
+        60,
+    }
+    assert all(
+        scenario.probability_mass == pytest.approx(1)
+        for scenario in result.value.epistemic_scenarios
+    )
 
 
 def test_supported_stub_and_unknown_special_propagate_complete_report(tmp_path):
@@ -342,7 +480,7 @@ def test_manifest_rejects_invalid_coverage_claims(tmp_path, change):
     if change == "aoo":
         data["families"][1]["requires"] = []
     if change == "model":
-        data["families"][0].update(status="SUPPORTED", reason=None)
+        data["families"][0].update(model_version=None)
     result = load_manifest(_write(tmp_path, "manifest.json", data), authority.catalog)
     assert result.status is ResultStatus.VALIDATION_FAILURE
     assert result.problems[0].code is ErrorCode.MANIFEST_INVALID
