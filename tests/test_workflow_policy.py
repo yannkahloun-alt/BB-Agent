@@ -1,7 +1,7 @@
 """Regression coverage for the shared-workflow policy specialization."""
 
 from pathlib import Path
-import subprocess
+from subprocess import run
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -18,7 +18,7 @@ def test_workflow_pin_is_synchronized_across_git_policy_and_verifier() -> None:
     agents = _read("AGENTS.md")
     dependency = _read("docs/AGENT_WORKFLOW_DEPENDENCY.md")
     verifier = _read("tools/verify_workflow_dependency.py")
-    recorded = subprocess.run(
+    recorded = run(
         ["git", "rev-parse", "HEAD:.agent-workflow"],
         cwd=ROOT,
         check=True,
