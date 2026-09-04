@@ -79,6 +79,9 @@ new architecture in code merely to complete the implementation ticket.
     agent belongs in M1 unless the specification is explicitly reopened.
 12. **Tests must not redefine semantics.** Fix the implementation or reopen the
     specification; do not change frozen behavior solely to make a test pass.
+13. **CI policy is part of merge readiness.** Apply `docs/TESTING.md`. Required
+    deterministic CI must pass before merge, but a green CI run never overrides
+    a failed frozen-spec, safety-critical fixture, or mechanics-coverage gate.
 
 ## Required context before implementation
 
@@ -88,12 +91,26 @@ Before editing for an M1 issue:
 2. read issue #12 (M1 freeze gate) and issue #13 (action-affordance/mechanics
    boundary);
 3. read every frozen spec issue named by the assigned ticket;
-4. read `README.md` and `docs/AGENT_WORKFLOW_DEPENDENCY.md`;
+4. read `README.md`, `docs/AGENT_WORKFLOW_DEPENDENCY.md`, and `docs/TESTING.md`;
 5. inspect existing implementation and tests before choosing a design.
 
 Keep one coherent task per branch/worktree. Add focused regression tests for
 behavioral fixes, run the repository's documented gates, review the complete
 diff, and keep commits scoped to the issue.
+
+## Validation and CI
+
+M1's initial CI/runtime baseline is Python 3.12. Pull requests to `main` are
+expected to converge on the stable required checks `tests`, `ruff`, and
+`pyflakes` as implemented by #14.
+
+Decision tests and promoted M1 fixtures must be deterministic, network-free,
+machine-independent, and must not depend on a local Battle Brothers installation,
+private saves, a live game process, BB-Save-Toolkit tactical execution, or
+LLM/API calls.
+
+Do not use blind retry-to-green for unexplained deterministic-test failures. Fix
+the source of nondeterminism or explicitly escalate/quarantine it with evidence.
 
 ## Implementation sequencing
 
