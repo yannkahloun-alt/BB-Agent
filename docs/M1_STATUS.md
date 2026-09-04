@@ -1,20 +1,23 @@
 # M1 implementation status
 
-This document is the durable handoff for BB-Agent's current M1 offline tactical decision-kernel work. It summarizes implementation state and active contract amendments. Detailed semantics remain authoritative in the referenced GitHub issues and repository contracts.
+This document is the durable handoff for BB-Agent's M1 offline tactical decision-kernel work. It records durable implementation state and active contract amendments. GitHub issues remain authoritative for the currently assigned ticket and detailed acceptance criteria.
 
 ## Current phase
 
 BB-Agent is in the M1 offline tactical decision-kernel implementation phase.
 
-M1 consumes a canonical tactical state plus a complete current `ActionAffordanceSet`, evaluates only explicitly supported mechanics, ranks them later with risk-sensitive logic, and emits deterministic/replayable traces. Live game capture, execution automation, generalized future-state legality/search, campaign automation, and ML remain outside M1.
+M1 consumes a canonical tactical state plus a complete current `ActionAffordanceSet`, evaluates only explicitly supported mechanics, later ranks them with risk-sensitive logic, and emits deterministic/replayable traces. Live game capture, execution automation, generalized future-state legality/search, campaign automation, and ML remain outside M1.
 
-## Completed implementation tickets
+## Implemented through #19
+
+Completed implementation tickets:
 
 - #14 — project, test, CI, deterministic serialization/hash and version skeleton.
 - #15 — canonical tactical state and `ActionAffordance` contracts.
 - #16 — fixture loading, validation and replay input envelope.
 - #17 — mechanics coverage manifest and immutable local rules/content catalog substrate.
 - #18 — ordinary single-target attack outcome model.
+- #19 — `MOVE_TO`, contingent AOO representation, and simple deterministic action transitions.
 
 ### #18 supported outcome boundary
 
@@ -33,58 +36,47 @@ The model:
 - keeps omniscient-debug truth separate from player-legal inputs;
 - fails unsupported perks, effects, equipment, variants or missing target knowledge visibly rather than approximating them.
 
-PR #33 merged the corrected #18 implementation into `main`. Issue #18 is closed.
-
-## Current implementation ticket: #19
-
-#19 — **Implement `MOVE_TO`, AOO, and simple deterministic action transitions** — is the current active ticket.
-
-It owns:
-
-- `MOVE_TO` using the supplied resolved path only;
-- resolved AP/FAT consumption exactly once;
-- hostile ZOC/disengagement detection;
-- supported AOO hit/damage/death/interruption branches;
-- safe movement with no invented AOO branch;
-- `WAIT`;
-- `END_TURN`;
-- Recover;
-- reload-like transitions;
-- supported `EQUIP_ITEM` transitions;
-- focused transition/mechanics tests.
-
-It must not introduce alternate-path search, generalized enemy legality, enemy future-turn simulation, or #20+ positioning/evaluator work.
+PR #33 merged the corrected #18 implementation into `main`; issue #18 is closed.
 
 ## #19 / #13 contingent-reaction amendment
 
-Implementation of #19 exposed a real gap in the frozen #13 contract: a current `MOVE_TO` command can trigger a hostile attack of opportunity, but the canonical state originally contained only the active actor's executable commands and therefore had no production-safe representation of the contingent enemy reaction needed for AOO outcome modelling.
+Implementation of #19 exposed a real gap in the frozen #13 contract: a current `MOVE_TO` command can trigger a hostile attack of opportunity, while the original canonical state contained only the active actor's executable commands and no production-safe representation of the contingent enemy reaction.
 
-#19 is explicitly authorized to add the smallest canonical contingent-reaction representation necessary for movement AOOs. A post-freeze amendment to #13 records the same exception. All other #13 boundaries remain frozen.
+#19 added the smallest canonical contingent-reaction representation necessary for movement AOOs. A post-freeze amendment to #13 records the same exception. All other #13 boundaries remain frozen.
 
 The contingent reaction context may carry, as applicable:
 
 - the movement path step / trigger point;
 - reacting actor identity;
-- reaction kind (`AOO` for #19);
+- reaction kind (`AOO` for the current implementation);
 - reaction skill/content identity or an explicitly unsupported mechanic identity;
 - player-legal knowledge/provenance needed by the reaction outcome model;
-- legitimate resolved reaction preview/outcome inputs where the player can know them;
+- legitimate resolved reaction inputs where the player can know them;
 - omniscient-debug/oracle truth separately.
 
 The representation is **not** a second enemy `ActionAffordanceSet` and is **not** a generalized enemy-turn action model.
 
 ### No-cheat / uncertainty requirements
 
-- Do not synthesize exact enemy MAtk/MDef, hidden perks/resources, or an exact AOO hit chance from omniscient runtime state in `player_legal`.
-- If exact reaction odds are not legitimate player-visible input, use only a supported player-legal range/set/distribution/belief with explicit provenance, or mark the reaction `EVALUATION_UNSUPPORTED`.
-- `omniscient_debug` may carry exact reaction truth separately for paired diagnostics.
-- Unsupported reaction skills/equipment/effects make the movement candidate coverage-incomplete rather than being dropped or approximated.
+- Do not synthesize exact enemy MAtk/MDef, hidden perks/resources, or exact reaction odds from omniscient runtime state in `player_legal`.
+- `omniscient_debug` may carry exact truth separately for paired diagnostics.
+- Unsupported reaction skills/equipment/effects or insufficient player-legal knowledge make the movement candidate coverage-incomplete rather than being dropped or approximated.
 
-### #18 integration boundary
+## Active hardening before #20
 
-#19 may make the smallest generalization to the #18 ordinary-attack outcome API needed to consume a supplied contingent reaction context instead of requiring every attack to originate as the active actor's `ActionAffordance`.
+Post-merge review of #19 found source-level disengagement/AOO correctness gaps. Issue #37 is the dedicated hardening ticket and blocks #20 until complete.
 
-This does not authorize broader ordinary-attack mechanics coverage. Existing #18 content/effect restrictions still apply.
+The intended corrected boundary is:
+
+- contingent reactions come from the fixture/future adapter; BB-Agent does not infer enemy AOO capability merely from adjacency;
+- for a supported single-step disengagement, the resolved movement cost belongs to the attempted step;
+- all supplied AOOs for that movement attempt may resolve;
+- only the all-miss branch reaches the destination;
+- any hit, lethal or nonlethal, interrupts the step and leaves the mover on the pre-step tile;
+- death may suppress later reactions;
+- multi-step movement with contingent reactions remains coverage-incomplete until the canonical contract contains enough per-step cost information to model early interruption without guessing.
+
+Do not build #20 positioning/exposure features on movement outcomes until #37 closes.
 
 ## Frozen M1 invariants
 
@@ -103,7 +95,7 @@ This does not authorize broader ordinary-attack mechanics coverage. Existing #18
 
 ## Remaining M1 sequence
 
-After #19:
+After the #37 hardening gate:
 
 - #20 — tactical positioning, threat, formation and future-capacity features.
 - #21 — risk-sensitive evaluator, deterministic selection and explanation facts.
@@ -124,7 +116,5 @@ A fresh implementation/review agent should begin with:
 2. this `docs/M1_STATUS.md`;
 3. the current GitHub ticket and every frozen spec/dependency it references;
 4. the relevant implementation/tests on `main`.
-
-For #19 specifically, read the current amended #19 ticket and the post-freeze #13 amendment before editing.
 
 Repository/worktree ownership must be inspected before destructive cleanup. Preserve unrelated or inaccessible local artifacts rather than forcing removal.
