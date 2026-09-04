@@ -21,6 +21,18 @@ The specification freeze is recorded in issue **#12**. The adversarial review is
 - **Separate from BB-Save-Toolkit.** BB-Save-Toolkit may later provide explicit strategic enrichment, but it is not a synchronous dependency of the tactical decision loop.
 - **Codex implements M1.** Issues **#14–#26** form the implementation/validation backlog; **#27** is the M1 closure gate.
 
+## Codex development workflow
+
+BB-Agent uses `yannkahloun-alt/codex-agent-workflow` as its shared behavioral workflow through the `.agent-workflow` Git submodule. The repository root `AGENTS.md` specializes that shared workflow with BB-Agent's frozen M1 invariants and escalation rules.
+
+The workflow is currently pinned to **v1.1.1** (`ecdf075c7baf35414c131db54f9409e5c82b3a6e`). Fresh clones/worktrees should initialize it with:
+
+```powershell
+git submodule update --init --recursive
+```
+
+The shared workflow governs **how Codex works**; BB-Agent's `AGENTS.md` and frozen specification issues govern **what it may build**. See `docs/AGENT_WORKFLOW_DEPENDENCY.md` for the dependency/update policy.
+
 ## M1 implementation sequence
 
 1. Project/test/version skeleton — #14
