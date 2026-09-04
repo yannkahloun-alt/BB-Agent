@@ -194,13 +194,8 @@ def evaluate_ordinary_attack(
     try:
         if action.kind is not ActionKind.USE_SKILL or action.skill_id != "actives.chop":
             raise ValueError("action is not a supported ordinary attack")
-        coverage = authority.classify(state)
-        covered = next(
-            item
-            for item in (coverage.value.affordances if coverage.value else ())
-            if item.action_id == action.action_id
-        )
-        if covered.status is not CoverageStatus.SUPPORTED:
+        family = authority.manifest.family("ordinary_attack")
+        if family.status is not CoverageStatus.SUPPORTED:
             raise ValueError("ordinary attack is not covered by the active manifest")
         actor = next(
             item for item in state.combatants if item.actor_id == action.actor_id

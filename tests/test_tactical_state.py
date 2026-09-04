@@ -10,6 +10,7 @@ from bb_agent.tactical_state import (
     AffordanceProvenance,
     BattleContext,
     Combatant,
+    ContingentReaction,
     DecisionContext,
     EffectState,
     Environment,
@@ -239,6 +240,18 @@ def _state(
         annotations={"expected_best": "attack:enemy"},
     )
     return TacticalState.create(**values)
+
+
+def test_contingent_reaction_requires_player_safe_resolved_input():
+    with pytest.raises(ValueError, match="supported or unsupported"):
+        ContingentReaction("east", "enemy", "AOO")
+    reaction = ContingentReaction(
+        "east",
+        "enemy",
+        "AOO",
+        unsupported_mechanic_id="mod.aoo",
+    )
+    assert reaction.unsupported_mechanic_id == "mod.aoo"
 
 
 def test_player_legal_preview_does_not_require_hidden_defense() -> None:
@@ -973,6 +986,56 @@ def test_preview_authority_is_closed_and_debug_authority_is_profile_gated() -> N
                 actions=(replace(action, preview=debug_preview),),
             ),
         ).normalized()
+
+
+def test_contingent_reaction_debug_preview_is_profile_gated() -> None:
+    state = _state()
+    action = state.action_affordances.actions[0]
+    move = replace(
+        action,
+        kind=ActionKind.MOVE_TO,
+        skill_id=None,
+        target_kind=None,
+        target_actor_id=None,
+        destination_tile_id="east",
+        resolved_path=("east",),
+        preview=PlayerVisiblePreview(),
+        contingent_reactions=(
+            ContingentReaction(
+                "east",
+                "enemy",
+                "AOO",
+                skill_id="actives.chop",
+                hit_chance=ResolvedPreviewValue(
+                    67,
+                    ResolutionStage.PREVIEW_RESOLVED,
+                    ResolutionAuthority.DEBUG_ORACLE,
+                ),
+            ),
+        ),
+    )
+    with pytest.raises(ValueError, match="resolved authority"):
+        replace(
+            state,
+            state_id="",
+            action_affordances=replace(state.action_affordances, actions=(move,)),
+        ).normalized()
+
+    debug = _state(InformationProfile.OMNISCIENT_DEBUG)
+    debug_transition = TacticalState.create(
+        **{field.name: getattr(debug, field.name) for field in fields(TacticalState)}
+        | {
+            "state_id": "",
+            "action_affordances": replace(
+                debug.action_affordances,
+                captured_for_state_id="",
+                actions=(move,),
+            ),
+        }
+    )
+    assert debug_transition.action_affordances.actions[0].contingent_reactions == (
+        move.contingent_reactions
+    )
 
 
 def test_cost_authority_is_closed_and_debug_authority_is_profile_gated() -> None:
