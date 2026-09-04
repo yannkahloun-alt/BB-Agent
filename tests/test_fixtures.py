@@ -1,5 +1,5 @@
 import json
-from dataclasses import replace
+from dataclasses import fields, replace
 from pathlib import Path
 
 from bb_agent.fixtures import (
@@ -16,6 +16,8 @@ from bb_agent.results import ErrorCode, ResultStatus
 from bb_agent.tactical_state import (
     AffordanceCompleteness,
     InformationProfile,
+    KnownValue,
+    TacticalState,
 )
 from test_tactical_state import _state
 
@@ -43,6 +45,21 @@ def _fixture(
             "acceptable_top1": [state.action_affordances.actions[0].action_id]
         },
         oracle_annotations={"note": "not a decision input"},
+    )
+
+
+def _with_state(fixture: FixtureEnvelope, **changes: object) -> FixtureEnvelope:
+    values = {
+        item.name: getattr(fixture.state, item.name) for item in fields(TacticalState)
+    }
+    values.update(changes)
+    values["state_id"] = ""
+    state = TacticalState.create(**values)
+    return FixtureEnvelope.create(
+        metadata=fixture.metadata,
+        state=state,
+        expectations=fixture.expectations,
+        oracle_annotations=fixture.oracle_annotations,
     )
 
 
@@ -110,6 +127,62 @@ def test_pair_rejects_different_raw_capture() -> None:
 
     assert result.status is ResultStatus.VALIDATION_FAILURE
     assert result.problems[0].code is ErrorCode.FIXTURE_PAIR_MISMATCH
+
+
+def test_pair_rejects_unrelated_capture_stable_identity() -> None:
+    legal = _fixture()
+    debug = _fixture(InformationProfile.OMNISCIENT_DEBUG)
+
+    changed_battle = _with_state(
+        debug, battle=replace(debug.state.battle, battle_id="other-battle")
+    )
+    changed_decision = _with_state(
+        debug,
+        decision=replace(debug.state.decision, decision_index=999),
+    )
+    changed_generation = "other-generation"
+    changed_actions = tuple(
+        replace(action, source_generation=changed_generation)
+        for action in debug.state.action_affordances.actions
+    )
+    changed_source = _with_state(
+        debug,
+        action_affordances=replace(
+            debug.state.action_affordances,
+            captured_for_state_id="",
+            source_generation=changed_generation,
+            actions=changed_actions,
+        ),
+    )
+
+    for changed in (changed_battle, changed_decision, changed_source):
+        result = validate_fixture_pair(legal, changed)
+        assert result.status is ResultStatus.VALIDATION_FAILURE
+        assert result.problems[0].code is ErrorCode.FIXTURE_PAIR_MISMATCH
+
+
+def test_pair_rejects_changed_player_visible_fact_but_allows_debug_enrichment() -> None:
+    legal = _fixture()
+    debug = _fixture(InformationProfile.OMNISCIENT_DEBUG)
+    active = next(
+        actor for actor in debug.state.combatants if actor.actor_id == "brother"
+    )
+    changed_active = replace(
+        active,
+        resources=replace(active.resources, hit_points=KnownValue.exact(59)),
+    )
+    changed_visible = _with_state(
+        debug,
+        combatants=tuple(
+            changed_active if actor.actor_id == "brother" else actor
+            for actor in debug.state.combatants
+        ),
+    )
+
+    rejected = validate_fixture_pair(legal, changed_visible)
+    assert rejected.status is ResultStatus.VALIDATION_FAILURE
+    assert rejected.problems[0].code is ErrorCode.FIXTURE_PAIR_MISMATCH
+    assert validate_fixture_pair(legal, debug).status is ResultStatus.SUCCESS
 
 
 def test_loader_returns_structured_diagnostics_for_malformed_and_mismatched_data() -> (

@@ -22,6 +22,11 @@ Canonical omniscient-debug action data remains present in debug replay states;
 player-legal state validation forbids it. Use `validate_fixture_pair` for
 `player_legal` / `omniscient_debug`
 views that must share a nonempty `raw_capture_id` and retain distinct state IDs.
+Pair validation also requires the same battle/decision identity, active actor,
+affordance generation and command set, and player-visible state/action facts.
+Differences are accepted only where the debug view supplies explicitly marked
+`DEBUG_GROUND_TRUTH` enrichment for an uncertain legal-view `KnownValue` (plus
+separate action debug-oracle payloads and resolution authority provenance).
 
 The handcrafted examples in `tests/fixtures/ticket_16` demonstrate a
 player-legal state with unknown enemy resources but a legitimate resolved hit

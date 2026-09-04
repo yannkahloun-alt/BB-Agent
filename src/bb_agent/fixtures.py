@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, is_dataclass, replace
 from enum import StrEnum
 from pathlib import Path
 from typing import Any, Self
@@ -12,8 +12,14 @@ from typing import Any, Self
 from bb_agent.results import ErrorCode, Problem, Result
 from bb_agent.serialization import JsonValue, canonical_json_bytes, canonical_sha256
 from bb_agent.tactical_state import (
+    ActionAffordance,
+    ActionAffordanceSet,
     AffordanceCompleteness,
     InformationProfile,
+    KnowledgeClass,
+    KnownValue,
+    ResolvedCost,
+    ResolvedPreviewValue,
     TacticalState,
 )
 from bb_agent.versions import CURRENT_VERSIONS
@@ -456,9 +462,79 @@ def validate_fixture_pair(
         reasons.append("paired profile views must have distinct state IDs")
     if legal.state.ruleset != debug.state.ruleset:
         reasons.append("paired fixtures do not share ruleset identity")
+    incompatibility = _cross_view_incompatibility(legal.state, debug.state)
+    if incompatibility is not None:
+        reasons.append(incompatibility)
     if reasons:
         return _failure(ErrorCode.FIXTURE_PAIR_MISMATCH, "; ".join(reasons), "$.state")
     return Result.success((legal, debug))
+
+
+def _cross_view_incompatibility(
+    legal: TacticalState, debug: TacticalState
+) -> str | None:
+    """Return the first debug-view divergence that is not legitimate enrichment."""
+    return _compare_cross_view(legal, debug, "$.state")
+
+
+def _compare_cross_view(legal: Any, debug: Any, path: str) -> str | None:
+    if type(legal) is not type(debug):
+        return f"paired fixtures differ at {path}"
+    if isinstance(legal, KnownValue):
+        if debug.knowledge_class is KnowledgeClass.DEBUG_GROUND_TRUTH:
+            if legal.knowledge_class in {
+                KnowledgeClass.UNKNOWN,
+                KnowledgeClass.INFERRED,
+                KnowledgeClass.REMEMBERED,
+            }:
+                return None
+            for name in (
+                "representation",
+                "value",
+                "minimum",
+                "maximum",
+                "candidates",
+                "distribution",
+            ):
+                if getattr(legal, name) != getattr(debug, name):
+                    return f"debug truth contradicts player-visible fact at {path}"
+            return None
+    if is_dataclass(legal):
+        ignored = _cross_view_ignored_fields(legal)
+        for item in fields(legal):
+            if item.name in ignored:
+                continue
+            mismatch = _compare_cross_view(
+                getattr(legal, item.name),
+                getattr(debug, item.name),
+                f"{path}.{item.name}",
+            )
+            if mismatch is not None:
+                return mismatch
+        return None
+    if isinstance(legal, tuple):
+        if len(legal) != len(debug):
+            return f"paired fixtures differ at {path}"
+        for index, (legal_child, debug_child) in enumerate(zip(legal, debug)):
+            mismatch = _compare_cross_view(legal_child, debug_child, f"{path}[{index}]")
+            if mismatch is not None:
+                return mismatch
+        return None
+    if legal != debug:
+        return f"paired fixtures differ at {path}"
+    return None
+
+
+def _cross_view_ignored_fields(value: Any) -> set[str]:
+    if isinstance(value, TacticalState):
+        return {"state_id", "raw_capture_id", "information_profile", "annotations"}
+    if isinstance(value, ActionAffordance):
+        return {"provenance", "debug_ground_truth"}
+    if isinstance(value, ActionAffordanceSet):
+        return {"captured_for_state_id"}
+    if isinstance(value, ResolvedCost | ResolvedPreviewValue):
+        return {"authority"}
+    return set()
 
 
 def _read_source(source: str | bytes | bytearray | Path) -> str | bytes:
