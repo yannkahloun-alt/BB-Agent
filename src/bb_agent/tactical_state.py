@@ -1148,6 +1148,10 @@ def _validate_resources(resources: ResourceState) -> None:
             candidates = (value.value,)
         elif value.representation is Representation.RANGE:
             candidates = (value.minimum, value.maximum)
+        elif value.representation is Representation.SET:
+            candidates = value.candidates
+        elif value.representation is Representation.DISTRIBUTION:
+            candidates = tuple(outcome for outcome, _ in value.distribution)
         if any(
             isinstance(item, bool) or not isinstance(item, int) or item < 0
             for item in candidates

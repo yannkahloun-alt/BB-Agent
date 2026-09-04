@@ -1098,6 +1098,66 @@ def test_state_round_trip_preserves_valid_uncertainty_numeric_metadata() -> None
     assert origin.movement_cost.distribution == ((1, 0.6), (2, 0.4))
 
 
+@pytest.mark.parametrize("invalid", ["7", 7.5, True, -1])
+@pytest.mark.parametrize(
+    "representation", [Representation.SET, Representation.DISTRIBUTION]
+)
+def test_resource_set_and_distribution_require_nonnegative_integer_outcomes(
+    invalid: object, representation: Representation
+) -> None:
+    if representation is Representation.SET:
+        value = KnownValue(
+            representation,
+            KnowledgeClass.INFERRED,
+            candidates=(invalid,),  # type: ignore[arg-type]
+            basis=("evidence",),
+        )
+    else:
+        value = KnownValue(
+            representation,
+            KnowledgeClass.INFERRED,
+            distribution=((invalid, 1.0),),  # type: ignore[arg-type]
+            basis=("evidence",),
+        )
+    with pytest.raises(ValueError, match="non-negative integers"):
+        replace(_unknown_resources(), hit_points=value)
+
+
+def test_valid_resource_set_and_distribution_round_trip() -> None:
+    state = _state()
+    enemy = state.combatants[1]
+    uncertain_resources = replace(
+        enemy.resources,
+        hit_points=KnownValue(
+            Representation.SET,
+            KnowledgeClass.INFERRED,
+            candidates=(20, 30),
+            basis=("visible_bar",),
+        ),
+        fatigue=KnownValue(
+            Representation.DISTRIBUTION,
+            KnowledgeClass.INFERRED,
+            distribution=((10, 0.4), (20, 0.6)),
+            basis=("observed_actions",),
+        ),
+    )
+    rebuilt = TacticalState.create(
+        **{item.name: getattr(state, item.name) for item in fields(TacticalState)}
+        | {
+            "state_id": "",
+            "combatants": (
+                state.combatants[0],
+                replace(enemy, resources=uncertain_resources),
+            ),
+            "action_affordances": replace(
+                state.action_affordances, captured_for_state_id=""
+            ),
+        }
+    )
+
+    assert TacticalState.from_dict(rebuilt.to_dict()) == rebuilt
+
+
 def test_json_payloads_are_deep_frozen_against_caller_mutation() -> None:
     source = [{"tile": "east"}]
     known = KnownValue.exact(source)
