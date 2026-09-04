@@ -1,7 +1,7 @@
 """Regression coverage for the shared-workflow policy specialization."""
 
-import subprocess
 from pathlib import Path
+import subprocess
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -39,7 +39,7 @@ def test_workflow_pin_is_synchronized_across_git_policy_and_verifier() -> None:
 
 def test_ci_owned_validation_policy_does_not_restore_routine_local_gates() -> None:
     agents = _read("AGENTS.md")
-    testing = _read("docs/TESTING.md")
+    testing = _read("docs/TESTING.md").replace("\n", " ")
 
     assert "does **not** run CI-equivalent" in testing
     assert (
@@ -64,8 +64,8 @@ def test_current_ci_contract_replaces_issue_14_bootstrap_wording() -> None:
 
 
 def test_ticket_and_review_lifecycle_stays_single_pr_and_subagent_first() -> None:
-    dependency = _read("docs/AGENT_WORKFLOW_DEPENDENCY.md")
-    testing = _read("docs/TESTING.md")
+    dependency = _read("docs/AGENT_WORKFLOW_DEPENDENCY.md").replace("\n", " ")
+    testing = _read("docs/TESTING.md").replace("\n", " ")
 
     assert "one ticket branch/worktree and one implementation PR" in dependency
     assert "continue on that same PR" in dependency
