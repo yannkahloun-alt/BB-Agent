@@ -1,6 +1,6 @@
 # M1 implementation status
 
-This document is the durable handoff for BB-Agent's M1 offline tactical decision-kernel work. It records durable implementation state and active contract amendments. GitHub issues remain authoritative for the currently assigned ticket and detailed acceptance criteria.
+This document is the durable handoff for BB-Agent's M1 offline tactical decision-kernel work. It records durable implementation state and contract amendments. GitHub issues remain authoritative for detailed acceptance criteria and live work status.
 
 ## Current phase
 
@@ -62,21 +62,22 @@ The representation is **not** a second enemy `ActionAffordanceSet` and is **not*
 - `omniscient_debug` may carry exact truth separately for paired diagnostics.
 - Unsupported reaction skills/equipment/effects or insufficient player-legal knowledge make the movement candidate coverage-incomplete rather than being dropped or approximated.
 
-## Active hardening before #20
+## Post-#19 movement hardening — #37
 
-Post-merge review of #19 found source-level disengagement/AOO correctness gaps. Issue #37 is the dedicated hardening ticket and blocks #20 until complete.
+Issue #37 hardens the merged #19 transition model before positioning/exposure features consume its results.
 
-The intended corrected boundary is:
+The supported boundary is:
 
 - contingent reactions come from the fixture/future adapter; BB-Agent does not infer enemy AOO capability merely from adjacency;
 - for a supported single-step disengagement, the resolved movement cost belongs to the attempted step;
 - all supplied AOOs for that movement attempt may resolve;
 - only the all-miss branch reaches the destination;
 - any hit, lethal or nonlethal, interrupts the step and leaves the mover on the pre-step tile;
-- death may suppress later reactions;
-- multi-step movement with contingent reactions remains coverage-incomplete until the canonical contract contains enough per-step cost information to model early interruption without guessing.
+- death may suppress later reactions because the mover is no longer a living target;
+- multi-step movement with contingent reactions is coverage-incomplete while the canonical contract contains only aggregate path cost and cannot represent an early interruption's partial AP/FAT cost without guessing;
+- transition regression fixtures use action-specific movement/Wait/resource costs and coherent empty movement destinations rather than mutating attack fixtures into impossible commands.
 
-Do not build #20 positioning/exposure features on movement outcomes until #37 closes.
+#20 must consume only movement semantics at or beyond this #37 boundary.
 
 ## Frozen M1 invariants
 
@@ -95,7 +96,7 @@ Do not build #20 positioning/exposure features on movement outcomes until #37 cl
 
 ## Remaining M1 sequence
 
-After the #37 hardening gate:
+After the #37 movement-hardening boundary is present on `main`:
 
 - #20 — tactical positioning, threat, formation and future-capacity features.
 - #21 — risk-sensitive evaluator, deterministic selection and explanation facts.
