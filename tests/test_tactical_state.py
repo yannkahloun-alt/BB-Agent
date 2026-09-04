@@ -909,6 +909,51 @@ def test_every_affordance_requires_explicit_resolved_costs() -> None:
     assert wait.ap_cost.value == end_turn.fatigue_cost.value == 0
 
 
+@pytest.mark.parametrize("value", [True, 1.5])
+def test_resolved_cost_requires_non_bool_integer(value: object) -> None:
+    with pytest.raises(ValueError, match="resolved cost value requires an integer"):
+        ResolvedCost(
+            value,  # type: ignore[arg-type]
+            ResolutionStage.PREVIEW_RESOLVED,
+            ResolutionAuthority.PLAYER_UI,
+        )
+
+
+@pytest.mark.parametrize("value", [True, 1.5])
+def test_integral_snapshot_fields_reject_bool_and_float(value: object) -> None:
+    with pytest.raises(ValueError, match="observation round requires an integer"):
+        ObservationPoint(value, 1)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="hex q requires an integer"):
+        HexCoord(value, 0)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="tile elevation requires an integer"):
+        replace(_state().tiles[0], elevation=value)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="decision round requires an integer"):
+        replace(_state().decision, round=value)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="non-negative integers"):
+        replace(_resources(), hit_points=KnownValue.exact(value))  # type: ignore[arg-type]
+
+
+def test_integral_fields_deserialize_with_same_domain_and_round_trip() -> None:
+    state = _state()
+    assert TacticalState.from_dict(state.to_dict()) == state
+    invalid = state.to_dict()
+    invalid["decision"]["round"] = 1.5  # type: ignore[index]
+    with pytest.raises(TypeError, match="expected int"):
+        TacticalState.from_dict(invalid)
+
+
+@pytest.mark.parametrize("value", [True, 67.5])
+def test_displayed_hit_chance_requires_non_bool_integer(value: object) -> None:
+    with pytest.raises(ValueError, match="integer in"):
+        PlayerVisiblePreview(
+            displayed_hit_chance=ResolvedPreviewValue(
+                value,  # type: ignore[arg-type]
+                ResolutionStage.PREVIEW_RESOLVED,
+                ResolutionAuthority.PLAYER_UI,
+            )
+        )
+
+
 def test_occupancy_and_neighbor_invariants_are_enforced() -> None:
     state = _state()
     bad_tile = replace(state.tiles[0], neighbors=(None,) * 6)

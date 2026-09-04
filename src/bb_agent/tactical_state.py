@@ -93,6 +93,8 @@ class ObservationPoint:
     decision: int
 
     def __post_init__(self) -> None:
+        _require_int(self.round, "observation round")
+        _require_int(self.decision, "observation decision")
         if self.round < 0 or self.decision < 0:
             raise ValueError("observation coordinates must be non-negative")
 
@@ -185,6 +187,10 @@ class HexCoord:
 
     _DIRECTIONS = ((1, 0), (1, -1), (0, -1), (-1, 0), (-1, 1), (0, 1))
 
+    def __post_init__(self) -> None:
+        _require_int(self.q, "hex q")
+        _require_int(self.r, "hex r")
+
     def neighbor(self, direction: int) -> HexCoord:
         if not 0 <= direction < 6:
             raise ValueError("hex direction must be in [0, 5]")
@@ -212,6 +218,7 @@ class Tile:
     blocks_line_of_sight: KnownValue = field(default_factory=KnownValue.unknown)
 
     def __post_init__(self) -> None:
+        _require_int(self.elevation, "tile elevation")
         _require_enum(self.visibility, KnowledgeClass, "tile visibility")
         if not self.tile_id:
             raise ValueError("tile ID cannot be empty")
@@ -283,6 +290,9 @@ class ResourceState:
     morale: KnownValue = field(default_factory=KnownValue.unknown)
     initiative: KnownValue = field(default_factory=KnownValue.unknown)
 
+    def __post_init__(self) -> None:
+        _validate_resources(self)
+
 
 @dataclass(frozen=True, slots=True)
 class LastSeen:
@@ -341,6 +351,10 @@ class DecisionContext:
     turn_phase: str
     prior_action_ids: tuple[str, ...] = ()
 
+    def __post_init__(self) -> None:
+        _require_int(self.round, "decision round")
+        _require_int(self.decision_index, "decision index")
+
 
 @dataclass(frozen=True, slots=True)
 class TurnEntry:
@@ -369,6 +383,7 @@ class ResolvedCost:
 
     def __post_init__(self) -> None:
         _require_enum(self.stage, ResolutionStage, "resolved cost stage")
+        _require_int(self.value, "resolved cost value")
         if self.value < 0:
             raise ValueError("resolved costs require a non-negative value")
         if not isinstance(self.authority, ResolutionAuthority):
@@ -1046,8 +1061,11 @@ def _validate_resources(resources: ResourceState) -> None:
             candidates = (value.value,)
         elif value.representation is Representation.RANGE:
             candidates = (value.minimum, value.maximum)
-        if any(not isinstance(item, int | float) or item < 0 for item in candidates):
-            raise ValueError("combat resource values must be non-negative numbers")
+        if any(
+            isinstance(item, bool) or not isinstance(item, int) or item < 0
+            for item in candidates
+        ):
+            raise ValueError("combat resource values must be non-negative integers")
     for current, maximum, name in (
         (resources.hit_points, resources.maximum_hit_points, "hit points"),
         (resources.action_points, resources.maximum_action_points, "action points"),
@@ -1167,6 +1185,11 @@ def _walk_known_values(value: Any) -> tuple[KnownValue, ...]:
 def _require_enum(value: Any, enum_type: type[StrEnum], field_name: str) -> None:
     if not isinstance(value, enum_type):
         raise ValueError(f"{field_name} requires {enum_type.__name__}")
+
+
+def _require_int(value: Any, field_name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{field_name} requires an integer")
 
 
 def _jsonify(value: Any) -> JsonValue:
