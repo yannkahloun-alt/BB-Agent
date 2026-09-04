@@ -134,69 +134,94 @@ def _move(
     ):
         raise ValueError("unsupported contingent AOO mechanic")
     if action.contingent_reactions:
-        if len(action.contingent_reactions) != 1:
-            raise ValueError("multiple contingent AOO reactions are unsupported")
-        reaction = action.contingent_reactions[0]
         zero = ResolvedCost(
             0, ResolutionStage.PREVIEW_RESOLVED, action.ap_cost.authority
         )
-        synthetic = ActionAffordance(
-            "contingent-aoo",
-            reaction.reacting_actor_id,
-            ActionKind.USE_SKILL,
-            action.provenance,
-            action.source_generation,
-            ap_cost=zero,
-            fatigue_cost=zero,
-            charge_cost=zero,
-            ammo_cost=zero,
-            item_action_cost=zero,
-            skill_id=reaction.skill_id,
-            target_kind=TargetKind.ACTOR,
-            target_actor_id=mover.actor_id,
-            preview=PlayerVisiblePreview(displayed_hit_chance=reaction.hit_chance),
-        )
-        attack = evaluate_ordinary_attack(authority, state, synthetic)
-        if attack.value is None:
-            raise ValueError("contingent AOO is outside ordinary attack coverage")
         moved = replace(_with_costs(mover, action))
-
-        def post_aoo(branch):
-            resources = replace(
-                moved.resources,
-                hit_points=KnownValue.exact(branch.target_hp),
-                head_armor=KnownValue.exact(int(branch.target_head_armor)),
-                body_armor=KnownValue.exact(int(branch.target_body_armor)),
-            )
-            return replace(
-                moved,
-                resources=resources,
-                life_state=LifeState.REMOVED if branch.killed else moved.life_state,
-                position=KnownValue.exact(
-                    reaction.path_step_tile_id
-                    if branch.killed
-                    else action.destination_tile_id
-                ),
-            )
-
+        pending = [(1.0, moved, (), None)]
+        for reaction in action.contingent_reactions:
+            next_pending = []
+            for probability, actor, effects, _ in pending:
+                if actor.life_state is not LifeState.ALIVE:
+                    next_pending.append(
+                        (probability, actor, effects, reaction.path_step_tile_id)
+                    )
+                    continue
+                synthetic = ActionAffordance(
+                    "contingent-aoo",
+                    reaction.reacting_actor_id,
+                    ActionKind.USE_SKILL,
+                    action.provenance,
+                    action.source_generation,
+                    ap_cost=zero,
+                    fatigue_cost=zero,
+                    charge_cost=zero,
+                    ammo_cost=zero,
+                    item_action_cost=zero,
+                    skill_id=reaction.skill_id,
+                    target_kind=TargetKind.ACTOR,
+                    target_actor_id=mover.actor_id,
+                    preview=PlayerVisiblePreview(
+                        displayed_hit_chance=reaction.hit_chance
+                    ),
+                )
+                variant = replace(
+                    state,
+                    combatants=tuple(
+                        actor if item.actor_id == actor.actor_id else item
+                        for item in state.combatants
+                    ),
+                )
+                attack = evaluate_ordinary_attack(authority, variant, synthetic)
+                if attack.value is None:
+                    raise ValueError(
+                        "contingent AOO is outside ordinary attack coverage"
+                    )
+                for branch in attack.value.branches:
+                    updated = replace(
+                        actor,
+                        resources=replace(
+                            actor.resources,
+                            hit_points=KnownValue.exact(branch.target_hp),
+                            head_armor=KnownValue.exact(int(branch.target_head_armor)),
+                            body_armor=KnownValue.exact(int(branch.target_body_armor)),
+                        ),
+                        life_state=LifeState.REMOVED
+                        if branch.killed
+                        else actor.life_state,
+                    )
+                    next_pending.append(
+                        (
+                            probability * branch.probability,
+                            updated,
+                            effects
+                            + (
+                                ("aoo", reaction.reacting_actor_id),
+                                ("hp_damage", branch.hp_damage),
+                            ),
+                            reaction.path_step_tile_id,
+                        )
+                    )
+            pending = next_pending
         return TransitionOutcome(
             action.action_id,
             MODEL_VERSION,
             tuple(
                 TransitionBranch(
-                    branch.probability,
-                    not branch.killed,
-                    branch.killed,
-                    post_aoo(branch),
+                    probability,
+                    actor.life_state is LifeState.ALIVE,
+                    actor.life_state is not LifeState.ALIVE,
+                    replace(
+                        actor, position=KnownValue.exact(action.destination_tile_id)
+                    )
+                    if actor.life_state is LifeState.ALIVE
+                    else actor,
                     action.destination_tile_id
-                    if not branch.killed
-                    else reaction.path_step_tile_id,
-                    effects=(
-                        ("aoo", reaction.reacting_actor_id),
-                        ("hp_damage", branch.hp_damage),
-                    ),
+                    if actor.life_state is LifeState.ALIVE
+                    else tile_id,
+                    effects=effects,
                 )
-                for branch in attack.value.branches
+                for probability, actor, effects, tile_id in pending
             ),
         )
     moved = replace(
