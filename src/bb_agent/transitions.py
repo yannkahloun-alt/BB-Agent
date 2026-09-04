@@ -207,6 +207,7 @@ def _move(
                 attack = evaluate_ordinary_attack(authority, variant, synthetic)
                 if (
                     attack.value is None
+                    or attack.value.epistemic
                     or attack.value.epistemic_scenarios
                     or not attack.value.branches
                 ):

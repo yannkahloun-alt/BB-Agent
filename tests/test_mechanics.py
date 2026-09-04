@@ -600,7 +600,21 @@ def test_move_costs_fail_closed_when_resolved_resources_are_insufficient():
     assert "costs exceed" in result.problems[0].message
 
 
-def test_contingent_aoo_fails_closed_for_unrepresented_player_uncertainty():
+@pytest.mark.parametrize(
+    "target_value",
+    [
+        KnownValue.unknown(),
+        KnownValue(
+            Representation.DISTRIBUTION,
+            KnowledgeClass.INFERRED,
+            distribution=((1, 0.5), (2, 0.5)),
+            basis=("player-visible uncertainty",),
+        ),
+    ],
+)
+def test_contingent_aoo_fails_closed_for_unrepresented_player_uncertainty(
+    target_value: KnownValue,
+):
     authority = _authority()
     move = replace(
         _wait(),
@@ -663,9 +677,9 @@ def test_contingent_aoo_fails_closed_for_unrepresented_player_uncertainty():
             traits=KnownValue.exact([]),
             resources=replace(
                 actor.resources,
-                hit_points=KnownValue.unknown(),
-                head_armor=KnownValue.unknown(),
-                body_armor=KnownValue.unknown(),
+                hit_points=target_value,
+                head_armor=target_value,
+                body_armor=target_value,
             ),
         )
         for actor in _state().combatants
