@@ -17,10 +17,12 @@ from bb_agent.fixtures import (
 from bb_agent.results import ErrorCode, ResultStatus
 from bb_agent.tactical_state import (
     AffordanceCompleteness,
+    AffordanceProvenance,
     InformationProfile,
     KnowledgeClass,
     KnownValue,
     Representation,
+    ResolutionAuthority,
     SkillState,
     TacticalState,
 )
@@ -80,6 +82,19 @@ def _with_enemy_hit_points(
         combatants=tuple(
             changed_enemy if actor.actor_id == "enemy" else actor
             for actor in fixture.state.combatants
+        ),
+    )
+
+
+def _with_actions(
+    fixture: FixtureEnvelope, actions: tuple[object, ...]
+) -> FixtureEnvelope:
+    return _with_state(
+        fixture,
+        action_affordances=replace(
+            fixture.state.action_affordances,
+            captured_for_state_id="",
+            actions=actions,
         ),
     )
 
@@ -366,6 +381,74 @@ def test_pair_allows_explicitly_marked_debug_only_hidden_skill() -> None:
     rejected = validate_fixture_pair(legal, unmarked)
     assert rejected.status is ResultStatus.VALIDATION_FAILURE
     assert rejected.problems[0].code is ErrorCode.FIXTURE_PAIR_MISMATCH
+
+
+def test_pair_rejects_changed_action_provenance_and_resolution_authority() -> None:
+    legal = _fixture()
+    debug = _fixture(InformationProfile.OMNISCIENT_DEBUG)
+    action = debug.state.action_affordances.actions[0]
+
+    changed_cost = _with_actions(
+        debug,
+        (
+            replace(
+                action,
+                ap_cost=replace(
+                    action.ap_cost, authority=ResolutionAuthority.DEBUG_ORACLE
+                ),
+            ),
+        ),
+    )
+    assert action.preview.displayed_hit_chance is not None
+    changed_preview = _with_actions(
+        debug,
+        (
+            replace(
+                action,
+                preview=replace(
+                    action.preview,
+                    displayed_hit_chance=replace(
+                        action.preview.displayed_hit_chance,
+                        authority=ResolutionAuthority.DEBUG_ORACLE,
+                    ),
+                ),
+            ),
+        ),
+    )
+    game_authority = ResolutionAuthority.GAME_PLAYER_AFFORDANCE
+    changed_provenance = _with_actions(
+        debug,
+        (
+            replace(
+                action,
+                provenance=AffordanceProvenance.GAME_PLAYER_AFFORDANCE,
+                ap_cost=replace(action.ap_cost, authority=game_authority),
+                fatigue_cost=replace(action.fatigue_cost, authority=game_authority),
+                charge_cost=replace(action.charge_cost, authority=game_authority),
+                ammo_cost=replace(action.ammo_cost, authority=game_authority),
+                item_action_cost=replace(
+                    action.item_action_cost, authority=game_authority
+                ),
+                preview=replace(
+                    action.preview,
+                    displayed_hit_chance=replace(
+                        action.preview.displayed_hit_chance, authority=game_authority
+                    ),
+                    affected_tile_ids=replace(
+                        action.preview.affected_tile_ids, authority=game_authority
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    for changed in (changed_cost, changed_preview, changed_provenance):
+        result = validate_fixture_pair(legal, changed)
+        assert result.status is ResultStatus.VALIDATION_FAILURE
+        assert result.problems[0].code is ErrorCode.FIXTURE_PAIR_MISMATCH
+
+    assert action.debug_ground_truth is not None
+    assert validate_fixture_pair(legal, debug).status is ResultStatus.SUCCESS
 
 
 def test_loader_returns_structured_diagnostics_for_malformed_and_mismatched_data() -> (

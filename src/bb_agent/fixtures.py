@@ -23,8 +23,6 @@ from bb_agent.tactical_state import (
     KnowledgeClass,
     KnownValue,
     Representation,
-    ResolvedCost,
-    ResolvedPreviewValue,
     SkillState,
     TacticalStat,
     TacticalState,
@@ -658,11 +656,9 @@ def _cross_view_ignored_fields(value: Any) -> set[str]:
     if isinstance(value, TacticalState):
         return {"state_id", "raw_capture_id", "information_profile", "annotations"}
     if isinstance(value, ActionAffordance):
-        return {"provenance", "debug_ground_truth"}
+        return {"debug_ground_truth"}
     if isinstance(value, ActionAffordanceSet):
         return {"captured_for_state_id"}
-    if isinstance(value, ResolvedCost | ResolvedPreviewValue):
-        return {"authority"}
     return set()
 
 

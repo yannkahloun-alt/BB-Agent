@@ -37,6 +37,10 @@ ground entities/state require every legal item to have a compatible debug
 counterpart, while permitting additional items only when their visibility or
 membership is explicitly debug-ground-truth. Intrinsically ordered topology,
 paths, and the complete current command set remain exact across the pair.
+That exact command comparison includes action provenance and every resolved
+cost/preview stage and authority. Debug-only facts belong in the dedicated
+`debug_ground_truth` field; they must not be smuggled into a player-visible
+preview by changing its authority to `DEBUG_ORACLE`.
 
 The handcrafted examples in `tests/fixtures/ticket_16` demonstrate a
 player-legal state with unknown enemy resources but a legitimate resolved hit
