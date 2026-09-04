@@ -176,12 +176,12 @@ def _state(
         ap_cost=ResolvedCost(
             4,
             ResolutionStage.PREVIEW_RESOLVED,
-            ResolutionAuthority.HANDCRAFTED_FIXTURE,
+            ResolutionAuthority.PLAYER_UI,
         ),
         fatigue_cost=ResolvedCost(
             10,
             ResolutionStage.PREVIEW_RESOLVED,
-            ResolutionAuthority.HANDCRAFTED_FIXTURE,
+            ResolutionAuthority.PLAYER_UI,
         ),
         preview=PlayerVisiblePreview(
             displayed_hit_chance=ResolvedPreviewValue(
@@ -802,6 +802,7 @@ def test_ground_entities_round_trip_normalize_and_reject_debug_leaks() -> None:
     entity = GroundEntity(
         "corpse-1",
         KnownValue.exact("entity.corpse"),
+        position=KnownValue.exact("east"),
         state=(("usable", KnownValue.exact(True)),),
     )
     rebuilt = TacticalState.create(
@@ -824,6 +825,31 @@ def test_ground_entities_round_trip_normalize_and_reject_debug_leaks() -> None:
     )
     with pytest.raises(ValueError, match="ground entity DEBUG_GROUND_TRUTH"):
         replace(rebuilt, state_id="", ground_entities=(leaked,)).normalized()
+
+
+@pytest.mark.parametrize(
+    "position",
+    [
+        KnownValue.exact("missing"),
+        KnownValue(
+            Representation.SET,
+            KnowledgeClass.INFERRED,
+            candidates=("east", "missing"),
+            basis=("evidence",),
+        ),
+        KnownValue(
+            Representation.DISTRIBUTION,
+            KnowledgeClass.INFERRED,
+            distribution=(("east", 0.5), ("missing", 0.5)),
+            basis=("evidence",),
+        ),
+    ],
+)
+def test_ground_entity_position_references_snapshot_tiles(position: KnownValue) -> None:
+    state = _state()
+    entity = GroundEntity("hazard-1", KnownValue.exact("hazard.fire"), position)
+    with pytest.raises(ValueError, match="position references unknown tile"):
+        replace(state, state_id="", ground_entities=(entity,)).normalized()
 
 
 def test_preview_authority_is_closed_and_debug_authority_is_profile_gated() -> None:
@@ -877,6 +903,43 @@ def test_cost_authority_is_closed_and_debug_authority_is_profile_gated() -> None
             state,
             state_id="",
             action_affordances=replace(state.action_affordances, actions=(action,)),
+        ).normalized()
+
+
+def test_resolution_authority_must_match_affordance_provider() -> None:
+    state = _state()
+    action = state.action_affordances.actions[0]
+    game_cost = ResolvedCost(
+        4,
+        ResolutionStage.PREVIEW_RESOLVED,
+        ResolutionAuthority.GAME_PLAYER_AFFORDANCE,
+    )
+    with pytest.raises(ValueError, match="does not match affordance provenance"):
+        replace(
+            state,
+            state_id="",
+            action_affordances=replace(
+                state.action_affordances,
+                actions=(replace(action, ap_cost=game_cost),),
+            ),
+        ).normalized()
+
+    mismatched_preview = replace(
+        action.preview,
+        displayed_hit_chance=ResolvedPreviewValue(
+            67,
+            ResolutionStage.PREVIEW_RESOLVED,
+            ResolutionAuthority.GAME_PLAYER_AFFORDANCE,
+        ),
+    )
+    with pytest.raises(ValueError, match="does not match affordance provenance"):
+        replace(
+            state,
+            state_id="",
+            action_affordances=replace(
+                state.action_affordances,
+                actions=(replace(action, preview=mismatched_preview),),
+            ),
         ).normalized()
 
 
@@ -1095,6 +1158,19 @@ def test_distribution_probabilities_require_finite_floats(
             Representation.DISTRIBUTION,
             KnowledgeClass.INFERRED,
             distribution=(("outcome", probability),),  # type: ignore[arg-type]
+            basis=("evidence",),
+        )
+
+
+def test_distribution_rejects_duplicate_semantic_outcomes() -> None:
+    with pytest.raises(ValueError, match="duplicate semantic outcomes"):
+        KnownValue(
+            Representation.DISTRIBUTION,
+            KnowledgeClass.INFERRED,
+            distribution=(
+                ({"a": 1, "b": 2}, 0.5),
+                ({"b": 2, "a": 1}, 0.5),
+            ),
             basis=("evidence",),
         )
 

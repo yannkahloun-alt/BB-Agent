@@ -192,6 +192,11 @@ class KnownValue:
             ):
                 raise ValueError("confidence must be a finite float in [0, 1]")
         if self.distribution:
+            outcome_ids = tuple(
+                _canonical_payload_bytes(outcome) for outcome, _ in self.distribution
+            )
+            if len(outcome_ids) != len(set(outcome_ids)):
+                raise ValueError("distribution contains duplicate semantic outcomes")
             probabilities = tuple(probability for _, probability in self.distribution)
             if any(
                 not isinstance(probability, float)
@@ -294,6 +299,7 @@ class EffectState:
 class GroundEntity:
     entity_id: str
     content: KnownValue
+    position: KnownValue = field(default_factory=KnownValue.unknown)
     state: tuple[tuple[str, KnownValue], ...] = ()
 
     def __post_init__(self) -> None:
@@ -945,6 +951,7 @@ class TacticalState:
                         raise ValueError(
                             "player_legal cannot consume DEBUG_ORACLE cost"
                         )
+            _validate_action_authorities(action, self.information_profile)
             if action.skill_id is not None and action.skill_id not in {
                 skill.skill_id for skill in active.skills
             }:
@@ -1045,6 +1052,7 @@ class TacticalState:
                 if neighbor.neighbors[(direction + 3) % 6] != tile.tile_id:
                     raise ValueError("neighbor links must be symmetric")
         for entity in self.ground_entities:
+            _validate_ground_entity_position(entity, tiles)
             if self.information_profile is InformationProfile.PLAYER_LEGAL:
                 for knowledge in _walk_knowledge_classes(entity):
                     if knowledge is KnowledgeClass.DEBUG_GROUND_TRUTH:
@@ -1125,6 +1133,46 @@ def _preview_values(preview: PlayerVisiblePreview) -> tuple[ResolvedPreviewValue
         if value is not None
     )
     return values + tuple(value for _, value in preview.facts)
+
+
+def _validate_action_authorities(
+    action: ActionAffordance, profile: InformationProfile
+) -> None:
+    provider_authority = {
+        AffordanceProvenance.HANDCRAFTED_FIXTURE: (
+            ResolutionAuthority.HANDCRAFTED_FIXTURE
+        ),
+        AffordanceProvenance.GAME_PLAYER_AFFORDANCE: (
+            ResolutionAuthority.GAME_PLAYER_AFFORDANCE
+        ),
+    }[action.provenance]
+    allowed = {provider_authority, ResolutionAuthority.PLAYER_UI}
+    if profile is InformationProfile.OMNISCIENT_DEBUG:
+        allowed.add(ResolutionAuthority.DEBUG_ORACLE)
+    authorities = [action.ap_cost.authority, action.fatigue_cost.authority]  # type: ignore[union-attr]
+    authorities.extend(value.authority for value in _preview_values(action.preview))
+    if any(authority not in allowed for authority in authorities):
+        raise ValueError("resolved authority does not match affordance provenance")
+
+
+def _validate_ground_entity_position(
+    entity: GroundEntity, tiles: dict[str, Tile]
+) -> None:
+    position = entity.position
+    if position.representation is Representation.UNKNOWN:
+        return
+    if position.representation is Representation.EXACT:
+        tile_ids = (position.value,)
+    elif position.representation is Representation.SET:
+        tile_ids = position.candidates
+    elif position.representation is Representation.DISTRIBUTION:
+        tile_ids = tuple(outcome for outcome, _ in position.distribution)
+    else:
+        raise ValueError("ground entity position cannot use RANGE representation")
+    if any(
+        not isinstance(tile_id, str) or tile_id not in tiles for tile_id in tile_ids
+    ):
+        raise ValueError("ground entity position references unknown tile")
 
 
 def _validate_resources(resources: ResourceState) -> None:
@@ -1228,7 +1276,8 @@ def _normalize_epistemic(value: Any) -> Any:
         candidates = value.candidates
         if value.representation is Representation.SET:
             unique_candidates = {
-                canonical_json_bytes(candidate): candidate for candidate in candidates
+                _canonical_payload_bytes(candidate): candidate
+                for candidate in candidates
             }
             candidates = tuple(
                 unique_candidates[key] for key in sorted(unique_candidates)
@@ -1236,7 +1285,9 @@ def _normalize_epistemic(value: Any) -> Any:
         distribution = value.distribution
         if value.representation is Representation.DISTRIBUTION:
             distribution = tuple(
-                sorted(distribution, key=lambda entry: canonical_json_bytes(entry[0]))
+                sorted(
+                    distribution, key=lambda entry: _canonical_payload_bytes(entry[0])
+                )
             )
         return replace(
             value,
@@ -1301,6 +1352,10 @@ def _freeze_json(value: Any) -> Any:
     if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
         return tuple(_freeze_json(child) for child in value)
     raise TypeError(f"unsupported JSON payload: {type(value).__name__}")
+
+
+def _canonical_payload_bytes(value: Any) -> bytes:
+    return canonical_json_bytes(_jsonify(value))
 
 
 def _jsonify(value: Any) -> JsonValue:
