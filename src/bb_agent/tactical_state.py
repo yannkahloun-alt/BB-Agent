@@ -447,6 +447,8 @@ class ActionAffordance:
     def __post_init__(self) -> None:
         if not self.action_id or not self.actor_id or not self.source_generation:
             raise ValueError("affordance identity fields cannot be empty")
+        if not isinstance(self.provenance, AffordanceProvenance):
+            raise ValueError("affordance requires an allowed provenance")
         parameter_keys = tuple(key for key, _ in self.parameters)
         if len(parameter_keys) != len(set(parameter_keys)):
             raise ValueError("duplicate affordance parameter key")
@@ -739,8 +741,11 @@ class TacticalState:
         affordances = value["action_affordances"]
         assert isinstance(affordances, dict)
         affordances.pop("captured_for_state_id", None)
+        affordances.pop("source_generation", None)
         for action in affordances["actions"]:  # type: ignore[union-attr]
             action.pop("debug_ground_truth", None)
+            action.pop("source_generation", None)
+            action.pop("provenance", None)
         return value
 
     def _validate_structure(self) -> None:

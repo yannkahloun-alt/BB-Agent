@@ -78,6 +78,8 @@ def _state(
     *,
     reverse: bool = False,
     reverse_sets: bool = False,
+    source_generation: str = "generation-1",
+    provenance: AffordanceProvenance = AffordanceProvenance.HANDCRAFTED_FIXTURE,
 ) -> TacticalState:
     set_values = ("z", "a", "z") if not reverse_sets else ("a", "z")
     distribution = ((2, 0.4), (1, 0.6))
@@ -166,8 +168,8 @@ def _state(
         "attack:enemy",
         "brother",
         ActionKind.USE_SKILL,
-        AffordanceProvenance.HANDCRAFTED_FIXTURE,
-        "generation-1",
+        provenance,
+        source_generation,
         skill_id="skill.attack",
         target_kind=TargetKind.ACTOR,
         target_actor_id="enemy",
@@ -217,7 +219,7 @@ def _state(
         tiles=tuple(reversed(tiles)) if reverse else tiles,
         combatants=tuple(reversed(actors)) if reverse else actors,
         action_affordances=ActionAffordanceSet(
-            "brother", "", "generation-1", AffordanceCompleteness.COMPLETE, (action,)
+            "brother", "", source_generation, AffordanceCompleteness.COMPLETE, (action,)
         ),
         annotations={"expected_best": "attack:enemy"},
     )
@@ -350,6 +352,25 @@ def test_raw_capture_linkage_does_not_change_semantic_identity() -> None:
     another_capture = replace(state, state_id="", raw_capture_id="capture-2")
 
     assert another_capture.normalized().state_id == state.state_id
+
+
+def test_affordance_acquisition_metadata_does_not_change_semantic_identity() -> None:
+    fixture = _state()
+    captured = _state(
+        source_generation="game-capture-generation-99",
+        provenance=AffordanceProvenance.GAME_PLAYER_AFFORDANCE,
+    )
+
+    assert fixture.state_id == captured.state_id
+    assert fixture.action_affordances.source_generation != (
+        captured.action_affordances.source_generation
+    )
+    assert fixture.action_affordances.actions[0].provenance is (
+        AffordanceProvenance.HANDCRAFTED_FIXTURE
+    )
+    assert captured.action_affordances.actions[0].provenance is (
+        AffordanceProvenance.GAME_PLAYER_AFFORDANCE
+    )
 
 
 def test_player_legal_rejects_debug_knowledge() -> None:
