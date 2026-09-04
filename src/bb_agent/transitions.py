@@ -1,9 +1,9 @@
 """Deterministic post-command transitions for the narrow M1 mechanics subset.
 
-This module deliberately consumes only an already supplied affordance.  It is
-not a command generator or pathfinder.  AOO-capable paths are detected from
-the canonical path/state and fail closed until an attacker-specific outcome
-primitive can be supplied by the catalog.
+This module deliberately consumes only an already supplied affordance. It is
+not a command generator, pathfinder, or enemy-legality engine. Contingent AOO
+reactions are supplied by the fixture/future adapter and are validated here only
+against the canonical path and actor geometry needed to resolve the transition.
 """
 
 from __future__ import annotations
@@ -12,7 +12,7 @@ from dataclasses import dataclass, replace
 from math import floor
 
 from bb_agent.mechanics import CoverageStatus, MechanicsAuthority
-from bb_agent.outcomes import evaluate_ordinary_attack
+from bb_agent.outcomes import HitResult, evaluate_ordinary_attack
 from bb_agent.results import ErrorCode, Problem, Result
 from bb_agent.tactical_state import (
     ActionAffordance,
@@ -21,6 +21,7 @@ from bb_agent.tactical_state import (
     KnownValue,
     LifeState,
     PlayerVisiblePreview,
+    Relation,
     Representation,
     ResolutionStage,
     ResolvedCost,
@@ -89,96 +90,100 @@ def _with_costs(actor: Combatant, action: ActionAffordance) -> Combatant:
     )
 
 
-def _hostile_zoc(
-    state: TacticalState, mover: Combatant, tile_id: str
-) -> tuple[str, ...]:
-    tile = next(tile for tile in state.tiles if tile.tile_id == tile_id)
-    adjacent = {neighbor for neighbor in tile.neighbors if neighbor is not None}
-    return tuple(
-        actor.actor_id
-        for actor in state.combatants
-        if actor.relation.value == "HOSTILE"
-        and actor.life_state is LifeState.ALIVE
-        and actor.position.representation is Representation.EXACT
-        and actor.position.value in adjacent
-    )
-
-
-def _move_aoo_attackers(
-    state: TacticalState, mover: Combatant, action: ActionAffordance
-) -> tuple[str, ...]:
+def _reaction_origin_tile(
+    state: TacticalState,
+    mover: Combatant,
+    action: ActionAffordance,
+    path_step_tile_id: str,
+) -> str:
+    """Return the tile the mover is attempting to leave for one supplied reaction."""
     if mover.position.representation is not Representation.EXACT or not isinstance(
         mover.position.value, str
     ):
         raise ValueError("mover position must be exact for movement")
-    previous = mover.position.value
-    attackers: set[str] = set()
-    for step in action.resolved_path:
-        leaving = set(_hostile_zoc(state, mover, previous))
-        arriving = set(_hostile_zoc(state, mover, step))
-        attackers.update(leaving - arriving)
-        previous = step
-    return tuple(sorted(attackers))
+    matches = [
+        index
+        for index, tile_id in enumerate(action.resolved_path)
+        if tile_id == path_step_tile_id
+    ]
+    if len(matches) != 1:
+        raise ValueError("reaction trigger must identify one unique path step")
+    index = matches[0]
+    return mover.position.value if index == 0 else action.resolved_path[index - 1]
 
 
-def _aoo_triggers(
-    state: TacticalState, mover: Combatant, action: ActionAffordance
-) -> set[tuple[str, str]]:
-    if mover.position.representation is not Representation.EXACT or not isinstance(
-        mover.position.value, str
-    ):
-        raise ValueError("mover position must be exact for movement")
-    previous = mover.position.value
-    triggers: set[tuple[str, str]] = set()
-    for step in action.resolved_path:
-        leaving = set(_hostile_zoc(state, mover, previous))
-        arriving = set(_hostile_zoc(state, mover, step))
-        triggers.update((step, actor_id) for actor_id in leaving - arriving)
-        previous = step
-    return triggers
+def _validate_reaction_geometry(
+    state: TacticalState,
+    mover: Combatant,
+    action: ActionAffordance,
+) -> None:
+    seen: set[tuple[str, str]] = set()
+    actors = {actor.actor_id: actor for actor in state.combatants}
+    tiles = {tile.tile_id: tile for tile in state.tiles}
+    for reaction in action.contingent_reactions:
+        identity = (reaction.path_step_tile_id, reaction.reacting_actor_id)
+        if identity in seen:
+            raise ValueError("duplicate contingent AOO reaction")
+        seen.add(identity)
+        origin_tile_id = _reaction_origin_tile(
+            state, mover, action, reaction.path_step_tile_id
+        )
+        reactor = actors.get(reaction.reacting_actor_id)
+        if (
+            reactor is None
+            or reactor.relation is not Relation.HOSTILE
+            or reactor.life_state is not LifeState.ALIVE
+            or reactor.position.representation is not Representation.EXACT
+            or not isinstance(reactor.position.value, str)
+        ):
+            raise ValueError("contingent AOO reactor is not a known living hostile")
+        if reactor.position.value not in {
+            neighbor
+            for neighbor in tiles[origin_tile_id].neighbors
+            if neighbor is not None
+        }:
+            raise ValueError("contingent AOO reactor is not adjacent to trigger origin")
 
 
 def _move(
     authority: MechanicsAuthority, state: TacticalState, action: ActionAffordance
 ) -> TransitionOutcome:
     mover = _actor(state, action)
-    triggers = _aoo_triggers(state, mover, action)
-    supplied = {
-        (reaction.path_step_tile_id, reaction.reacting_actor_id)
-        for reaction in action.contingent_reactions
-    }
-    if len(supplied) != len(action.contingent_reactions) or triggers != supplied:
-        raise ValueError("AOO trigger/reaction context mismatch")
+    _validate_reaction_geometry(state, mover, action)
     if any(
         reaction.unsupported_mechanic_id for reaction in action.contingent_reactions
     ):
         raise ValueError("unsupported contingent AOO mechanic")
+
+    if action.contingent_reactions and len(action.resolved_path) != 1:
+        raise ValueError(
+            "contingent AOO on multi-step movement requires per-step resolved costs"
+        )
+
     if action.contingent_reactions:
+        if mover.position.representation is not Representation.EXACT or not isinstance(
+            mover.position.value, str
+        ):
+            raise ValueError("mover position must be exact for movement")
+        origin_tile_id = mover.position.value
         zero = ResolvedCost(
             0, ResolutionStage.PREVIEW_RESOLVED, action.ap_cost.authority
         )
-        moved = replace(_with_costs(mover, action))
-        # A path-scoped reaction resolves after the mover reaches its declared
-        # trigger step.  Carry that position through each branch: an
-        # interruption leaves the mover where it was interrupted, rather than
-        # rewinding it to the action's origin or a later path step.
-        pending = [(1.0, moved, ())]
+        paid = _with_costs(mover, action)
+        # Battle Brothers resolves disengagement while the mover is attempting to
+        # leave the controlled hex. All applicable reactions on that attempt may
+        # resolve; any hit interrupts the step, while only the all-miss branch
+        # reaches the destination. Death suppresses later reactions.
+        pending = [(1.0, paid, False, ())]
         for reaction in sorted(
             action.contingent_reactions,
-            key=lambda item: (
-                action.resolved_path.index(item.path_step_tile_id),
-                item.reacting_actor_id,
-            ),
+            key=lambda item: item.reacting_actor_id,
         ):
             next_pending = []
-            for probability, actor, effects in pending:
+            for probability, actor, interrupted, effects in pending:
                 if actor.life_state is not LifeState.ALIVE:
-                    # Death interrupts movement and suppresses later reactions.
-                    next_pending.append((probability, actor, effects))
+                    next_pending.append((probability, actor, True, effects))
                     continue
-                actor = replace(
-                    actor, position=KnownValue.exact(reaction.path_step_tile_id)
-                )
                 synthetic = ActionAffordance(
                     "contingent-aoo",
                     reaction.reacting_actor_id,
@@ -215,6 +220,7 @@ def _move(
                         "contingent AOO cannot represent its outcome uncertainty"
                     )
                 for branch in attack.value.branches:
+                    hit = branch.result is not HitResult.MISS
                     updated = replace(
                         actor,
                         resources=replace(
@@ -231,9 +237,11 @@ def _move(
                         (
                             probability * branch.probability,
                             updated,
+                            interrupted or hit,
                             effects
                             + (
                                 ("aoo", reaction.reacting_actor_id),
+                                ("aoo_result", branch.result.value),
                                 ("hp_damage", branch.hp_damage),
                             ),
                         )
@@ -245,21 +253,22 @@ def _move(
             tuple(
                 TransitionBranch(
                     probability,
-                    actor.life_state is LifeState.ALIVE,
-                    actor.life_state is not LifeState.ALIVE,
+                    actor.life_state is LifeState.ALIVE and not interrupted,
+                    interrupted or actor.life_state is not LifeState.ALIVE,
                     replace(
                         actor, position=KnownValue.exact(action.destination_tile_id)
                     )
-                    if actor.life_state is LifeState.ALIVE
-                    else actor,
+                    if actor.life_state is LifeState.ALIVE and not interrupted
+                    else replace(actor, position=KnownValue.exact(origin_tile_id)),
                     action.destination_tile_id
-                    if actor.life_state is LifeState.ALIVE
-                    else actor.position.value,
+                    if actor.life_state is LifeState.ALIVE and not interrupted
+                    else origin_tile_id,
                     effects=effects,
                 )
-                for probability, actor, effects in pending
+                for probability, actor, interrupted, effects in pending
             ),
         )
+
     moved = replace(
         _with_costs(mover, action),
         position=KnownValue.exact(action.destination_tile_id),
