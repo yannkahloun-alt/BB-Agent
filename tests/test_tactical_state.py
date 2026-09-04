@@ -29,6 +29,7 @@ from bb_agent.tactical_state import (
     SkillState,
     TacticalStat,
     TacticalState,
+    TargetKind,
     Tile,
     TurnEntry,
     TurnState,
@@ -139,6 +140,8 @@ def _state(
         AffordanceProvenance.HANDCRAFTED_FIXTURE,
         "generation-1",
         skill_id="skill.attack",
+        target_kind=TargetKind.ACTOR,
+        target_actor_id="enemy",
         ap_cost=ResolvedCost(4, ResolutionStage.PREVIEW_RESOLVED, "fixture UI"),
         fatigue_cost=ResolvedCost(10, ResolutionStage.PREVIEW_RESOLVED, "fixture UI"),
         preview=PlayerVisiblePreview(displayed_hit_chance=67),
@@ -377,6 +380,10 @@ def test_snapshot_local_references_are_validated() -> None:
         kind=ActionKind.EQUIP_ITEM,
         skill_id=None,
         item_id="missing",
+        target_kind=None,
+        target_actor_id=None,
+        source_location="bag:0",
+        target_slot="main_hand",
     )
     with pytest.raises(ValueError, match="item_id is not owned"):
         replace(
@@ -420,6 +427,8 @@ def test_move_to_path_cannot_teleport_between_non_adjacent_steps() -> None:
         action_id="move:east",
         kind=ActionKind.MOVE_TO,
         skill_id=None,
+        target_kind=None,
+        target_actor_id=None,
         destination_tile_id="east",
         resolved_path=("origin", "east"),
     )
@@ -431,6 +440,69 @@ def test_move_to_path_cannot_teleport_between_non_adjacent_steps() -> None:
 
     with pytest.raises(ValueError, match="non-adjacent"):
         teleport.normalized()
+
+
+def test_skill_affordance_requires_coherent_target_schema() -> None:
+    action = _state().action_affordances.actions[0]
+
+    with pytest.raises(ValueError, match="requires skill_id and target_kind"):
+        replace(action, target_kind=None, target_actor_id=None)
+    with pytest.raises(ValueError, match="target fields do not match"):
+        replace(action, target_tile_id="east")
+    with pytest.raises(ValueError, match="target_direction must be"):
+        replace(
+            action,
+            target_kind=TargetKind.DIRECTION,
+            target_actor_id=None,
+            target_direction=6,
+        )
+
+
+def test_skill_target_references_must_resolve_in_snapshot() -> None:
+    state = _state()
+    action = state.action_affordances.actions[0]
+    unknown_actor = replace(action, target_actor_id="missing")
+    with pytest.raises(ValueError, match="target_actor_id references unknown"):
+        replace(
+            state,
+            state_id="",
+            action_affordances=replace(
+                state.action_affordances, actions=(unknown_actor,)
+            ),
+        ).normalized()
+
+    unknown_tile = replace(
+        action,
+        target_kind=TargetKind.TILE,
+        target_actor_id=None,
+        target_tile_id="missing",
+    )
+    with pytest.raises(ValueError, match="target_tile_id references unknown"):
+        replace(
+            state,
+            state_id="",
+            action_affordances=replace(
+                state.action_affordances, actions=(unknown_tile,)
+            ),
+        ).normalized()
+
+
+def test_affordance_rejects_duplicate_parameters_and_incompatible_fields() -> None:
+    action = _state().action_affordances.actions[0]
+
+    with pytest.raises(ValueError, match="duplicate affordance parameter key"):
+        replace(action, parameters=(("rule_fact", 1), ("rule_fact", 2)))
+    with pytest.raises(ValueError, match="USE_SKILL contains incompatible"):
+        replace(action, destination_tile_id="east")
+    with pytest.raises(ValueError, match="END_TURN contains incompatible"):
+        replace(
+            action,
+            kind=ActionKind.END_TURN,
+            skill_id=None,
+            target_kind=None,
+            target_actor_id=None,
+            destination_tile_id="east",
+        )
 
 
 def test_occupancy_and_neighbor_invariants_are_enforced() -> None:

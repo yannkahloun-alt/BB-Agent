@@ -56,6 +56,14 @@ class ActionKind(StrEnum):
     END_TURN = "END_TURN"
 
 
+class TargetKind(StrEnum):
+    SELF = "SELF"
+    ACTOR = "ACTOR"
+    TILE = "TILE"
+    DIRECTION = "DIRECTION"
+    AREA = "AREA"
+
+
 class AffordanceCompleteness(StrEnum):
     COMPLETE = "COMPLETE"
     INCOMPLETE = "INCOMPLETE"
@@ -358,14 +366,30 @@ class ActionAffordance:
     fatigue_cost: ResolvedCost | None = None
     skill_id: str | None = None
     item_id: str | None = None
+    target_kind: TargetKind | None = None
+    target_actor_id: str | None = None
+    target_tile_id: str | None = None
+    target_direction: int | None = None
+    mode_variant: str | None = None
     destination_tile_id: str | None = None
     resolved_path: tuple[str, ...] = ()
+    source_location: str | None = None
+    target_slot: str | None = None
+    displaced_item_id: str | None = None
+    displaced_item_destination: str | None = None
     preview: PlayerVisiblePreview = field(default_factory=PlayerVisiblePreview)
     debug_ground_truth: JsonValue = None
 
     def __post_init__(self) -> None:
         if not self.action_id or not self.actor_id or not self.source_generation:
             raise ValueError("affordance identity fields cannot be empty")
+        parameter_keys = tuple(key for key, _ in self.parameters)
+        if len(parameter_keys) != len(set(parameter_keys)):
+            raise ValueError("duplicate affordance parameter key")
+        if any(not key.startswith("extension.") for key in parameter_keys):
+            raise ValueError("generic parameters require the extension namespace")
+        if self.mode_variant == "":
+            raise ValueError("mode_variant cannot be empty")
         if self.kind is ActionKind.MOVE_TO:
             if not self.destination_tile_id or not self.resolved_path:
                 raise ValueError("MOVE_TO requires destination and resolved path")
@@ -373,10 +397,105 @@ class ActionAffordance:
                 raise ValueError("MOVE_TO path must end at destination")
             if self.ap_cost is None or self.fatigue_cost is None:
                 raise ValueError("MOVE_TO requires resolved AP and fatigue costs")
-        if self.kind is ActionKind.USE_SKILL and not self.skill_id:
-            raise ValueError("USE_SKILL requires skill_id")
-        if self.kind is ActionKind.EQUIP_ITEM and not self.item_id:
-            raise ValueError("EQUIP_ITEM requires item_id")
+            if any(
+                value is not None
+                for value in (
+                    self.skill_id,
+                    self.item_id,
+                    self.target_kind,
+                    self.target_actor_id,
+                    self.target_tile_id,
+                    self.target_direction,
+                    self.mode_variant,
+                    self.source_location,
+                    self.target_slot,
+                    self.displaced_item_id,
+                    self.displaced_item_destination,
+                )
+            ):
+                raise ValueError("MOVE_TO contains incompatible action fields")
+        elif self.kind is ActionKind.USE_SKILL:
+            self._validate_skill_target()
+            if (
+                any(
+                    value is not None
+                    for value in (
+                        self.item_id,
+                        self.destination_tile_id,
+                        self.source_location,
+                        self.target_slot,
+                        self.displaced_item_id,
+                        self.displaced_item_destination,
+                    )
+                )
+                or self.resolved_path
+            ):
+                raise ValueError("USE_SKILL contains incompatible action fields")
+        elif self.kind is ActionKind.EQUIP_ITEM:
+            if not self.item_id or not self.source_location or not self.target_slot:
+                raise ValueError(
+                    "EQUIP_ITEM requires item_id, source_location, and target_slot"
+                )
+            if self.displaced_item_id and not self.displaced_item_destination:
+                raise ValueError("displaced item requires its destination")
+            if (
+                any(
+                    value is not None
+                    for value in (
+                        self.skill_id,
+                        self.target_kind,
+                        self.target_actor_id,
+                        self.target_tile_id,
+                        self.target_direction,
+                        self.mode_variant,
+                        self.destination_tile_id,
+                    )
+                )
+                or self.resolved_path
+            ):
+                raise ValueError("EQUIP_ITEM contains incompatible action fields")
+        elif (
+            any(
+                value is not None
+                for value in (
+                    self.skill_id,
+                    self.item_id,
+                    self.target_kind,
+                    self.target_actor_id,
+                    self.target_tile_id,
+                    self.target_direction,
+                    self.mode_variant,
+                    self.destination_tile_id,
+                    self.source_location,
+                    self.target_slot,
+                    self.displaced_item_id,
+                    self.displaced_item_destination,
+                )
+            )
+            or self.resolved_path
+        ):
+            raise ValueError(f"{self.kind} contains incompatible action fields")
+
+    def _validate_skill_target(self) -> None:
+        if not self.skill_id or self.target_kind is None:
+            raise ValueError("USE_SKILL requires skill_id and target_kind")
+        actor = self.target_actor_id is not None
+        tile = self.target_tile_id is not None
+        direction = self.target_direction is not None
+        expected = {
+            TargetKind.SELF: (False, False, False),
+            TargetKind.ACTOR: (True, False, False),
+            TargetKind.TILE: (False, True, False),
+            TargetKind.DIRECTION: (False, False, True),
+            TargetKind.AREA: (False, True, direction),
+        }[self.target_kind]
+        if (actor, tile, direction) != expected:
+            raise ValueError("USE_SKILL target fields do not match target_kind")
+        if direction and (
+            isinstance(self.target_direction, bool)
+            or not 0 <= self.target_direction <= 5  # type: ignore[operator]
+        ):
+            raise ValueError("target_direction must be in [0, 5]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -610,6 +729,19 @@ class TacticalState:
                 item.item_id for item in active.equipment
             }:
                 raise ValueError("affordance item_id is not owned by active actor")
+            if (
+                action.displaced_item_id is not None
+                and action.displaced_item_id
+                not in {item.item_id for item in active.equipment}
+            ):
+                raise ValueError("displaced_item_id is not owned by active actor")
+            if (
+                action.target_actor_id is not None
+                and action.target_actor_id not in actors
+            ):
+                raise ValueError("affordance target_actor_id references unknown actor")
+            if action.target_tile_id is not None and action.target_tile_id not in tiles:
+                raise ValueError("affordance target_tile_id references unknown tile")
             for tile_id in (*action.resolved_path, *action.preview.affected_tile_ids):
                 if tile_id not in tiles:
                     raise ValueError(f"affordance references unknown tile {tile_id}")
