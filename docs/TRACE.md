@@ -128,5 +128,3 @@ This is diagnostic comparison across intentional model/config generations. A
 changed fingerprint is not automatically a tactical regression; the promoted
 fixture expectations implemented by #23–#25 decide whether the semantic change
 is acceptable.
-
-<!-- trusted-head round-trip -->
