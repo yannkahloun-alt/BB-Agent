@@ -124,6 +124,8 @@ The timing summary is diagnostic on ordinary CI hardware. #10/#13 keep the 3-sec
 
 The corpus report passes only when there are zero blocking failures. There is intentionally no aggregate tactical-accuracy percentage that can hide a failed promoted safety/core assertion.
 
+Exact replay preserves the original JSON numeric representation of versioned evaluator/profile and UnitValuePolicy fields (for example `1` remains `1`, rather than being rewritten to `1.0`). This keeps configuration identity byte-stable while leaving numeric scoring semantics unchanged.
+
 ## Regression classification
 
 `classify_trace_change()` combines #22 `TraceDiff` with fixture expectations and reports one of:
