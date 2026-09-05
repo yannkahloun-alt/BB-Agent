@@ -80,6 +80,96 @@ def _problem_payload(problem: Problem) -> dict[str, JsonValue]:
     }
 
 
+def _action_ids(actions: JsonValue) -> tuple[str, ...]:
+    if not isinstance(actions, Sequence) or isinstance(
+        actions, str | bytes | bytearray
+    ):
+        return ()
+    action_ids = []
+    for action in actions:
+        if isinstance(action, Mapping):
+            action_id = action.get("action_id")
+            if isinstance(action_id, str):
+                action_ids.append(action_id)
+    return tuple(sorted(action_ids))
+
+
+def _stable_problem_payloads(problems: JsonValue) -> list[dict[str, JsonValue]]:
+    if not isinstance(problems, Sequence) or isinstance(
+        problems, str | bytes | bytearray
+    ):
+        return []
+    result = []
+    for problem in problems:
+        if not isinstance(problem, Mapping):
+            continue
+        result.append(
+            {
+                "code": problem.get("code"),
+                "path": problem.get("path"),
+                "mechanic_id": problem.get("mechanic_id"),
+                "exception_type": problem.get("exception_type"),
+            }
+        )
+    result.sort(
+        key=lambda item: tuple(
+            str(item.get(key) or "")
+            for key in ("code", "path", "mechanic_id", "exception_type")
+        )
+    )
+    return result
+
+
+def _semantic_generation_payload(
+    generation: Mapping[str, JsonValue],
+) -> dict[str, JsonValue]:
+    return {
+        "decision_status": generation.get("decision_status"),
+        "legal_candidate_ids": list(_action_ids(generation.get("legal_candidates"))),
+        "rejected_probe_counts": generation.get("rejected_probe_counts"),
+        "indeterminate_count": generation.get("indeterminate_count"),
+        "coverage_diagnostics": _stable_problem_payloads(
+            generation.get("coverage_diagnostics")
+        ),
+    }
+
+
+def _semantic_evaluation_payloads(
+    evaluations: Sequence[Mapping[str, JsonValue]],
+) -> list[dict[str, JsonValue]]:
+    result = []
+    for record in evaluations:
+        payload: dict[str, JsonValue] = {
+            "action_id": record.get("action_id"),
+            "coverage_status": record.get("coverage_status"),
+            "outcome": record.get("outcome"),
+        }
+        evaluation = record.get("evaluation")
+        if isinstance(evaluation, Mapping):
+            evaluation_payload = dict(evaluation)
+            features = evaluation_payload.get("features")
+            if isinstance(features, Mapping):
+                feature_payload = dict(features)
+                feature_payload.pop("semantic_ownership", None)
+                evaluation_payload["features"] = feature_payload
+            payload["evaluation"] = evaluation_payload
+        result.append(payload)
+    result.sort(key=lambda item: str(item.get("action_id") or ""))
+    return result
+
+
+def _semantic_failure_payload(
+    failure: Mapping[str, JsonValue] | None,
+) -> dict[str, JsonValue] | None:
+    if failure is None:
+        return None
+    return {
+        "stage": failure.get("stage"),
+        "status": failure.get("status"),
+        "problems": _stable_problem_payloads(failure.get("problems")),
+    }
+
+
 @dataclass(frozen=True, slots=True)
 class DecisionTrace:
     trace_version: str
@@ -138,10 +228,10 @@ class DecisionTrace:
                 "ruleset_content_fingerprint": input.get("ruleset_content_fingerprint"),
             },
             "engine": engine,
-            "generation": generation,
-            "evaluations": list(evaluations),
+            "generation": _semantic_generation_payload(generation),
+            "evaluations": _semantic_evaluation_payloads(evaluations),
             "selection": selection,
-            "failure": failure,
+            "failure": _semantic_failure_payload(failure),
         }
         output_fingerprint = canonical_sha256(payload)
         trace_id = canonical_sha256(
@@ -175,10 +265,10 @@ class DecisionTrace:
                 ),
             },
             "engine": self.engine,
-            "generation": self.generation,
-            "evaluations": list(self.evaluations),
+            "generation": _semantic_generation_payload(self.generation),
+            "evaluations": _semantic_evaluation_payloads(self.evaluations),
             "selection": self.selection,
-            "failure": self.failure,
+            "failure": _semantic_failure_payload(self.failure),
         }
 
     def to_dict(self) -> dict[str, JsonValue]:
@@ -759,17 +849,7 @@ def _evaluation_by_action(trace: DecisionTrace) -> dict[str, dict[str, JsonValue
 
 
 def _legal_candidate_ids(trace: DecisionTrace) -> set[str]:
-    actions = trace.generation.get("legal_candidates")
-    if not isinstance(actions, Sequence) or isinstance(
-        actions, str | bytes | bytearray
-    ):
-        return set()
-    return {
-        action_id
-        for action in actions
-        if isinstance(action, Mapping)
-        and isinstance((action_id := action.get("action_id")), str)
-    }
+    return set(_action_ids(trace.generation.get("legal_candidates")))
 
 
 def _component_values(candidate: dict[str, JsonValue]) -> dict[str, float]:

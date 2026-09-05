@@ -9,7 +9,12 @@ from bb_agent.evaluator import (
     evaluate_decision,
 )
 from bb_agent.results import ResultStatus
-from bb_agent.tactical_state import ActionKind, TacticalState
+from bb_agent.tactical_state import (
+    ActionKind,
+    AffordanceProvenance,
+    ResolutionAuthority,
+    TacticalState,
+)
 from bb_agent.trace import (
     DecisionTrace,
     compare_traces,
@@ -268,3 +273,93 @@ def test_unexpected_second_candidate_outcome_exception_keeps_current_stage(monke
     assert trace.failure is not None
     assert trace.failure["status"] == "EVALUATION_EXCEPTION"
     assert trace.failure["stage"] == "outcome_and_features"
+
+
+def _with_affordance_diagnostic_metadata(
+    state: TacticalState,
+    source_generation: str,
+    provenance: AffordanceProvenance,
+    authority: ResolutionAuthority,
+) -> TacticalState:
+    actions = []
+    for action in state.action_affordances.actions:
+        changes = {
+            "source_generation": source_generation,
+            "provenance": provenance,
+            "debug_ground_truth": {"capture_source": source_generation},
+        }
+        for field_name in (
+            "ap_cost",
+            "fatigue_cost",
+            "charge_cost",
+            "ammo_cost",
+            "item_action_cost",
+        ):
+            cost = getattr(action, field_name)
+            if cost is not None:
+                changes[field_name] = replace(cost, authority=authority)
+
+        preview = action.preview
+        preview_changes = {}
+        for field_name in (
+            "displayed_hit_chance",
+            "affected_tile_ids",
+            "displayed_damage",
+        ):
+            value = getattr(preview, field_name)
+            if value is not None:
+                preview_changes[field_name] = replace(value, authority=authority)
+        preview_changes["facts"] = tuple(
+            (key, replace(value, authority=authority)) for key, value in preview.facts
+        )
+        changes["preview"] = replace(preview, **preview_changes)
+        changes["contingent_reactions"] = tuple(
+            replace(
+                reaction,
+                hit_chance=(
+                    None
+                    if reaction.hit_chance is None
+                    else replace(reaction.hit_chance, authority=authority)
+                ),
+            )
+            for reaction in action.contingent_reactions
+        )
+        actions.append(replace(action, **changes))
+    affordances = replace(
+        state.action_affordances,
+        source_generation=source_generation,
+        actions=tuple(actions),
+    )
+    values = {field.name: getattr(state, field.name) for field in fields(state)}
+    values.update(state_id="", action_affordances=affordances)
+    return TacticalState.create(**values)
+
+
+def test_affordance_provenance_metadata_does_not_change_semantic_trace_identity():
+    authority = _authority()
+    base = _ordinary_attack_state(authority)
+    fixture_state = _with_affordance_diagnostic_metadata(
+        base,
+        "fixture-generation-a",
+        AffordanceProvenance.HANDCRAFTED_FIXTURE,
+        ResolutionAuthority.HANDCRAFTED_FIXTURE,
+    )
+    game_state = _with_affordance_diagnostic_metadata(
+        base,
+        "game-generation-b",
+        AffordanceProvenance.GAME_PLAYER_AFFORDANCE,
+        ResolutionAuthority.GAME_PLAYER_AFFORDANCE,
+    )
+
+    assert fixture_state.state_id == game_state.state_id
+    assert tuple(
+        action.action_id for action in fixture_state.action_affordances.actions
+    ) == tuple(action.action_id for action in game_state.action_affordances.actions)
+
+    fixture_trace = run_decision_trace(authority, fixture_state)
+    game_trace = run_decision_trace(authority, game_state)
+
+    assert fixture_trace.input["canonical_state"] != game_trace.input["canonical_state"]
+    assert fixture_trace.selection == game_trace.selection
+    assert fixture_trace.output_fingerprint == game_trace.output_fingerprint
+    assert fixture_trace.trace_id == game_trace.trace_id

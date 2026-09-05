@@ -47,12 +47,16 @@ The following are deliberately excluded from deterministic output identity:
 
 - wall-clock timestamps;
 - `raw_capture_id` provenance/linkage labels (still retained in trace input);
+- affordance capture/provenance/debug metadata and resolution-authority labels that the canonical state contract deliberately excludes from `state_id`;
+- free-text diagnostic messages; stable status/error codes, paths and mechanic IDs remain in the semantic failure/coverage fingerprint;
 - measured stage durations;
 - host/CPU/OS metadata;
 - other runtime telemetry that cannot affect the recommendation.
 
 This means two evaluations may report different nanosecond timings while still
 having exactly the same `output_fingerprint` and `trace_id`.
+
+The trace still preserves the complete diagnostic action/state records. For output identity, candidate generation is projected to stable legal action IDs and coverage codes, while candidate evaluations omit diagnostic action provenance and the documentation-only feature ownership table. The canonical `state_id` already commits to the semantic command costs/previews and decision input.
 
 ## Outcome and simulator facts
 
