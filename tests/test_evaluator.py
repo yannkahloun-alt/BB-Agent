@@ -22,7 +22,14 @@ def _base_features(action_id: str):
     result = extract_candidate_features(authority, state, source_id)
     assert result.status is ResultStatus.SUCCESS
     assert result.value is not None
-    return replace(result.value, action_id=action_id)
+    return replace(
+        result.value,
+        action_id=action_id,
+        threat=replace(
+            result.value.threat,
+            hostile_zoc_pressure=MetricRange.exact(0),
+        ),
+    )
 
 
 def _component(candidate, component_id: str):
@@ -80,7 +87,9 @@ def test_incomplete_material_coverage_returns_no_ranking():
 
     assert result.status is ResultStatus.INCOMPLETE_COVERAGE
     assert result.value is None
-    assert any(problem.mechanic_id == "mod.unknown_aoe" for problem in result.problems)
+    assert any(
+        problem.mechanic_id == "mod.unknown_aoe" for problem in result.problems
+    )
 
 
 def test_high_mean_action_can_lose_to_materially_safer_candidate():
