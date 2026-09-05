@@ -183,6 +183,7 @@ def _with_affordance_diagnostic_metadata(
         changes = {
             "source_generation": source_generation,
             "provenance": provenance,
+            "debug_ground_truth": {"capture_source": source_generation},
         }
         for field_name in (
             "ap_cost",
@@ -194,6 +195,32 @@ def _with_affordance_diagnostic_metadata(
             cost = getattr(action, field_name)
             if cost is not None:
                 changes[field_name] = replace(cost, authority=authority)
+
+        preview = action.preview
+        preview_changes = {}
+        for field_name in (
+            "displayed_hit_chance",
+            "affected_tile_ids",
+            "displayed_damage",
+        ):
+            value = getattr(preview, field_name)
+            if value is not None:
+                preview_changes[field_name] = replace(value, authority=authority)
+        preview_changes["facts"] = tuple(
+            (key, replace(value, authority=authority)) for key, value in preview.facts
+        )
+        changes["preview"] = replace(preview, **preview_changes)
+        changes["contingent_reactions"] = tuple(
+            replace(
+                reaction,
+                hit_chance=(
+                    None
+                    if reaction.hit_chance is None
+                    else replace(reaction.hit_chance, authority=authority)
+                ),
+            )
+            for reaction in action.contingent_reactions
+        )
         actions.append(replace(action, **changes))
     affordances = replace(
         state.action_affordances,
