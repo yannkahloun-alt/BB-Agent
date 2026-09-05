@@ -3,6 +3,7 @@ from dataclasses import fields, replace
 import pytest
 
 import bb_agent.outcomes as outcomes
+import bb_agent.transitions as transitions
 from bb_agent.outcomes import evaluate_ordinary_attack
 from bb_agent.results import ErrorCode, ResultStatus
 from bb_agent.tactical_state import (
@@ -22,6 +23,7 @@ from test_mechanics import (
     _movement_state,
     _ordinary_attack_state,
     _reaction,
+    _resource_action,
     _snapshot,
     _wait,
 )
@@ -171,17 +173,15 @@ def test_current_attack_and_contingent_aoo_share_effect_restrictions():
 
 def test_contingent_aoo_uses_internal_attack_context_not_enemy_affordance(monkeypatch):
     authority = _authority()
-    state = _movement_state(
-        authority, _move_action(reactions=(_reaction(),))
-    )
+    state = _movement_state(authority, _move_action(reactions=(_reaction(),)))
     seen = []
-    original = outcomes._evaluate_ordinary_attack_context
+    original = transitions.evaluate_ordinary_attack
 
     def record_context(authority_arg, state_arg, context):
         seen.append(context)
         return original(authority_arg, state_arg, context)
 
-    monkeypatch.setattr(outcomes, "_evaluate_ordinary_attack_context", record_context)
+    monkeypatch.setattr(transitions, "evaluate_ordinary_attack", record_context)
 
     result = evaluate_transition(
         authority, state, state.action_affordances.actions[0].action_id
@@ -231,6 +231,44 @@ def test_production_paths_enforce_resolution_stage_and_preserve_ledgers():
     )
     assert bad.status is ResultStatus.VALIDATION_FAILURE
     assert bad.problems[0].code is ErrorCode.VALIDATION_FAILED
+
+
+def test_transition_preserves_reaction_and_reload_resolution_ledgers():
+    authority = _authority()
+    move_state = _movement_state(
+        authority, _move_action(reactions=(_reaction(),))
+    )
+
+    move = evaluate_transition(
+        authority, move_state, move_state.action_affordances.actions[0].action_id
+    )
+
+    assert move.status is ResultStatus.SUCCESS
+    assert move.value is not None
+    move_ledgers = dict(move.value.resolution_ledgers)
+    assert set(move_ledgers) == {
+        "ap_cost",
+        "fatigue_cost",
+        "aoo:east:enemy.displayed_hit_chance",
+    }
+    assert all(
+        ledger.completed[-1].value == "OUTCOME" for ledger in move_ledgers.values()
+    )
+
+    reload_state = _snapshot(authority, _resource_action("actives.reload_bolt"))
+    reload = evaluate_transition(
+        authority,
+        reload_state,
+        reload_state.action_affordances.actions[0].action_id,
+    )
+
+    assert reload.status is ResultStatus.SUCCESS
+    assert reload.value is not None
+    assert set(dict(reload.value.resolution_ledgers)) == {
+        "ap_cost",
+        "fatigue_cost",
+        "ammo_cost",
+    }
 
 
 def test_debug_oracle_resolved_input_cannot_enter_production_outcome_path():
