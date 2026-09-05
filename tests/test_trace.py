@@ -1,0 +1,186 @@
+from dataclasses import fields, replace
+
+import pytest
+
+from bb_agent.evaluator import DEFAULT_EVALUATION_PROFILE, EvaluationProfile
+from bb_agent.results import ResultStatus
+from bb_agent.tactical_state import TacticalState
+from bb_agent.trace import (
+    DecisionTrace,
+    compare_traces,
+    replay_decision_trace,
+    run_decision_trace,
+)
+from test_evaluator import _scenario_flip_state
+from test_mechanics import _attack, _authority, _ordinary_attack_state, _snapshot, _wait
+
+
+def _with_raw_capture(state: TacticalState, raw_capture_id: str) -> TacticalState:
+    values = {field.name: getattr(state, field.name) for field in fields(state)}
+    values.update(state_id="", raw_capture_id=raw_capture_id)
+    return TacticalState.create(**values)
+
+
+def test_repeated_trace_has_exact_semantic_identity_despite_measured_timings():
+    authority = _authority()
+    state = _ordinary_attack_state(authority)
+
+    first = run_decision_trace(authority, state, implementation_revision="test-rev")
+    second = run_decision_trace(authority, state, implementation_revision="test-rev")
+
+    assert first.output_fingerprint == second.output_fingerprint
+    assert first.trace_id == second.trace_id
+    assert first.selection is not None
+    assert second.selection is not None
+    assert first.selection["ranking"] == second.selection["ranking"]
+    assert first.selection["chosen_action_id"] == second.selection["chosen_action_id"]
+    assert first.performance["stage_timings_ns"] != {}
+    assert second.performance["stage_timings_ns"] != {}
+
+    changed_performance = replace(
+        first,
+        performance={
+            "stage_timings_ns": {"validation": 999_999_999},
+            "counters": first.performance["counters"],
+        },
+    )
+    assert changed_performance.output_fingerprint == first.output_fingerprint
+    assert changed_performance.trace_id == first.trace_id
+
+
+def test_trace_roundtrip_and_replay_regenerate_exact_output():
+    authority = _authority()
+    state = _ordinary_attack_state(authority)
+    trace = run_decision_trace(authority, state)
+
+    decoded = DecisionTrace.from_json_bytes(trace.to_json_bytes())
+    replay = replay_decision_trace(authority, decoded)
+
+    assert decoded == trace
+    assert replay.matches is True
+    assert replay.ranking_matches is True
+    assert replay.chosen_action_matches is True
+    assert replay.actual_trace.output_fingerprint == trace.output_fingerprint
+
+
+def test_trace_candidate_records_expose_action_outcome_scoring_risk_and_explanations():
+    authority = _authority()
+    state = _ordinary_attack_state(authority)
+
+    trace = run_decision_trace(authority, state)
+
+    assert trace.failure is None
+    assert trace.selection is not None
+    assert len(trace.evaluations) == 1
+    record = trace.evaluations[0]
+    assert record["action_id"] == trace.selection["chosen_action_id"]
+    assert record["action"] is not None
+    costs = record["deterministic_costs"]
+    assert costs["ap_cost"] is not None
+    assert costs["fatigue_cost"] is not None
+
+    outcome = record["outcome"]
+    assert outcome["method"] == "exact_branch_enumeration"
+    assert outcome["branch_count"] > 0
+    assert outcome["sample_count"] == 0
+    assert outcome["simulator_seed"] is None
+
+    evaluation = record["evaluation"]
+    assert evaluation["features"]["enemy_effect"]
+    assert evaluation["components"]
+    assert evaluation["tail_risk"]
+    assert evaluation["ranking_value"] is not None
+    contributions = [
+        fact["contribution"] for fact in evaluation["explanation_facts"]
+    ]
+    assert sum(contributions) == pytest.approx(evaluation["ranking_value"])
+
+
+def test_trace_performance_diagnostics_do_not_change_decision_result():
+    authority = _authority()
+    state = _ordinary_attack_state(authority)
+
+    direct = run_decision_trace(authority, state)
+    timings = direct.performance["stage_timings_ns"]
+    counters = direct.performance["counters"]
+
+    assert set(timings) == {
+        "coverage",
+        "outcome_and_features",
+        "scoring",
+        "selection",
+        "validation",
+    }
+    assert all(value >= 0 for value in timings.values())
+    assert counters["legal_candidate_count"] == 1
+    assert counters["evaluated_candidate_count"] == 1
+    assert counters["outcome_branch_count"] > 0
+    assert counters["sample_count"] == 0
+    assert direct.selection is not None
+
+
+def test_incomplete_coverage_emits_structured_failure_trace_without_ranking():
+    authority = _authority()
+    state = _snapshot(authority, _wait(), _attack("mod.unknown_aoe"))
+
+    trace = run_decision_trace(authority, state)
+
+    assert trace.selection is None
+    assert trace.evaluations == ()
+    assert trace.failure is not None
+    assert trace.failure["status"] == ResultStatus.INCOMPLETE_COVERAGE.value
+    assert trace.generation["decision_status"] == ResultStatus.INCOMPLETE_COVERAGE.value
+    diagnostics = trace.generation["coverage_diagnostics"]
+    assert any(item["mechanic_id"] == "mod.unknown_aoe" for item in diagnostics)
+    assert DecisionTrace.from_json_bytes(trace.to_json_bytes()) == trace
+
+
+def test_player_legal_and_debug_traces_identify_profile_and_shared_raw_capture():
+    authority = _authority()
+    player = _with_raw_capture(_scenario_flip_state(authority), "capture-22")
+    debug = _with_raw_capture(
+        _scenario_flip_state(authority, omniscient_hp=5),
+        "capture-22",
+    )
+
+    player_trace = run_decision_trace(authority, player)
+    debug_trace = run_decision_trace(authority, debug)
+
+    assert player_trace.input["raw_capture_id"] == "capture-22"
+    assert debug_trace.input["raw_capture_id"] == "capture-22"
+    assert player_trace.input["information_profile"] == "player_legal"
+    assert debug_trace.input["information_profile"] == "omniscient_debug"
+    assert player_trace.input["state_id"] != debug_trace.input["state_id"]
+    assert player_trace.output_fingerprint != debug_trace.output_fingerprint
+
+
+def test_trace_diff_reports_component_and_rank_deltas():
+    authority = _authority()
+    state = _scenario_flip_state(authority)
+    baseline = EvaluationProfile(
+        weights=replace(
+            DEFAULT_EVALUATION_PROFILE.weights,
+            enemy_effect=1.0,
+            post_action_exposure=0.0,
+            position_control_protection=0.0,
+            resource_future_capacity=0.0,
+            tempo=0.0,
+        ),
+        tail_risk_weight=0.0,
+        uncertainty_weight=0.0,
+        near_tie_margin=0.001,
+    )
+    changed = replace(
+        baseline,
+        version="trace-diff-test.v2",
+        weights=replace(baseline.weights, enemy_effect=0.0),
+    )
+
+    before = run_decision_trace(authority, state, baseline)
+    after = run_decision_trace(authority, state, changed)
+    diff = compare_traces(before, after)
+
+    assert diff.output_fingerprint_changed is True
+    assert diff.component_deltas
+    assert any(delta.component_id == "enemy_effect" for delta in diff.component_deltas)
+    assert diff.rank_deltas or diff.chosen_action_changed
