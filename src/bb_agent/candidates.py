@@ -30,6 +30,10 @@ class EvaluationUnsupported(ValueError):
         )
 
 
+class EvaluationUncertaintyUnsupported(EvaluationUnsupported):
+    """A candidate cannot represent the current epistemic outcome domain."""
+
+
 class EvaluationInvalid(ValueError):
     """A candidate/state contradiction violates the canonical input contract."""
 
@@ -50,7 +54,9 @@ def candidate_action_id(reference: CandidateReference) -> str:
         return reference.action_id
     if isinstance(reference, str) and reference:
         return reference
-    raise TypeError("candidate reference must be a nonempty action_id or ActionAffordance")
+    raise TypeError(
+        "candidate reference must be a nonempty action_id or ActionAffordance"
+    )
 
 
 def resolve_current_candidate(
@@ -102,7 +108,9 @@ def resolve_current_candidate(
     return Result.success(CanonicalCandidate(normalized, action, structural))
 
 
-def evaluation_failure_result[T](exc: EvaluationUnsupported | EvaluationInvalid) -> Result[T]:
+def evaluation_failure_result[T](
+    exc: EvaluationUnsupported | EvaluationInvalid,
+) -> Result[T]:
     """Translate only deliberate evaluation failures; programmer errors propagate."""
 
     if isinstance(exc, EvaluationUnsupported):
