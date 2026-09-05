@@ -1330,6 +1330,7 @@ def _normalize_actions(
 
 
 def _command_intent(action: ActionAffordance) -> dict[str, JsonValue]:
+    """Return executable player-command identity, excluding outcome consequences."""
     return {
         "actor_id": action.actor_id,
         "kind": action.kind.value,
@@ -1347,11 +1348,6 @@ def _command_intent(action: ActionAffordance) -> dict[str, JsonValue]:
         "target_slot": action.target_slot,
         "displaced_item_id": action.displaced_item_id,
         "displaced_item_destination": action.displaced_item_destination,
-        **(
-            {"contingent_reactions": _jsonify(action.contingent_reactions)}
-            if action.contingent_reactions
-            else {}
-        ),
     }
 
 
