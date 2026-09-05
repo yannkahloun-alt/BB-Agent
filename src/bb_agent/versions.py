@@ -40,5 +40,3 @@ CURRENT_VERSIONS: Final = ContractVersions(
     evaluation_config="m1-evaluation-profile.v1",
     fixture="bb-agent-fixture.v1",
 )
-
-# final trusted-head round-trip
