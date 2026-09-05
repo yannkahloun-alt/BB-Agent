@@ -42,9 +42,7 @@ def _fixture(
         ruleset_content_fingerprint=state.ruleset.content_fingerprint,
         information_profile=state.information_profile,
         affordance_completeness=state.action_affordances.completeness,
-        expectation_version=(
-            EXPECTATION_VERSION if expectations is not None else None
-        ),
+        expectation_version=(EXPECTATION_VERSION if expectations is not None else None),
         review_status=review_status,
     )
     return FixtureEnvelope.create(
@@ -120,9 +118,7 @@ def test_promoted_fixture_supports_full_generic_expectation_vocabulary():
             }
         ],
         "exact_legal_action_ids": action_ids,
-        "action_facts": [
-            {"action_id": chosen, "path": "ap_cost.value", "equals": 0}
-        ],
+        "action_facts": [{"action_id": chosen, "path": "ap_cost.value", "equals": 0}],
         "expected_output_fingerprint": baseline.output_fingerprint,
     }
     report = run_fixture_validation(
@@ -131,7 +127,7 @@ def test_promoted_fixture_supports_full_generic_expectation_vocabulary():
         profile,
     )
 
-    assert report.passed is True
+    assert report.passed is True, report.blocking_failures
     assert report.blocking_failures == ()
     assert report.review_findings == ()
     assert {item.assertion_id for item in report.assertions} >= {
@@ -164,7 +160,7 @@ def test_calibration_disagreement_is_review_only_not_a_gated_failure():
 
     report = run_fixture_validation(authority, fixture)
 
-    assert report.passed is True
+    assert report.passed is True, report.blocking_failures
     finding = next(
         item for item in report.assertions if item.assertion_id == "acceptable_top1"
     )
@@ -200,8 +196,7 @@ def test_expected_incomplete_coverage_passes_but_ranking_fixture_fails_closed():
     assert coverage_report.trace.selection is None
     assert ranking_report.passed is False
     assert any(
-        item.assertion_id == "ranking_available"
-        and item.status is AssertionStatus.FAIL
+        item.assertion_id == "ranking_available" and item.status is AssertionStatus.FAIL
         for item in ranking_report.assertions
     )
 
@@ -225,7 +220,7 @@ def test_oracle_affordance_completeness_metadata_is_checked_generically():
 
     report = run_fixture_validation(authority, fixture)
 
-    assert report.passed is True
+    assert report.passed is True, report.blocking_failures
     assert next(
         item
         for item in report.assertions
@@ -255,7 +250,7 @@ def test_information_sensitive_expectation_uses_recorded_scenario_ranking():
 
     report = run_fixture_validation(authority, fixture, profile)
 
-    assert report.passed is True
+    assert report.passed is True, report.blocking_failures
     assert next(
         item
         for item in report.assertions
@@ -292,7 +287,10 @@ def test_regression_classification_distinguishes_frozen_categories():
     high_trace = run_decision_trace(authority, high, profile)
     assert low_trace.selection is not None
     assert high_trace.selection is not None
-    assert low_trace.selection["chosen_action_id"] != high_trace.selection["chosen_action_id"]
+    assert (
+        low_trace.selection["chosen_action_id"]
+        != high_trace.selection["chosen_action_id"]
+    )
     acceptable = [
         low_trace.selection["chosen_action_id"],
         high_trace.selection["chosen_action_id"],
@@ -361,7 +359,7 @@ def test_corpus_summary_reports_taxonomy_severity_and_nonblocking_reviews():
 
     report = run_validation_corpus(authority, (safety, calibration))
 
-    assert report.passed is True
+    assert report.passed is True, report.blocking_failures
     assert report.coverage.total_fixtures == 2
     assert report.coverage.gated_fixtures == 1
     assert report.coverage.calibration_fixtures == 1

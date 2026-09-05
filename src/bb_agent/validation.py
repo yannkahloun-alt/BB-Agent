@@ -102,7 +102,9 @@ class NumericRelation:
         if self.right_value is not None and not math.isfinite(self.right_value):
             raise ValueError("numeric relation constant must be finite")
         if not math.isfinite(self.tolerance) or self.tolerance < 0:
-            raise ValueError("numeric relation tolerance must be finite and nonnegative")
+            raise ValueError(
+                "numeric relation tolerance must be finite and nonnegative"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -124,7 +126,9 @@ class ExplanationExpectation:
 
     def __post_init__(self) -> None:
         if not self.action_id or not self.component_ids:
-            raise ValueError("explanation expectation requires action and component IDs")
+            raise ValueError(
+                "explanation expectation requires action and component IDs"
+            )
         if any(not item for item in self.component_ids):
             raise ValueError("explanation component IDs must be nonempty")
 
@@ -170,12 +174,21 @@ class FixtureExpectations:
             raise ValueError("exact_legal_action_ids contains an empty action ID")
         for pair in self.required_orderings:
             if len(pair) != 2 or not pair[0] or not pair[1] or pair[0] == pair[1]:
-                raise ValueError("required_orderings must contain distinct action pairs")
-        if self.expected_output_fingerprint is not None and not self.expected_output_fingerprint:
+                raise ValueError(
+                    "required_orderings must contain distinct action pairs"
+                )
+        if (
+            self.expected_output_fingerprint is not None
+            and not self.expected_output_fingerprint
+        ):
             raise ValueError("expected_output_fingerprint cannot be empty")
-        if self.has_ranking_assertions and self.expected_status not in (None, "SUCCESS"):
+        if self.has_ranking_assertions and self.expected_status not in (
+            None,
+            "SUCCESS",
+        ):
             raise ValueError(
-                "ranking assertions cannot be combined with a non-success expected status"
+                "ranking assertions cannot be combined with a non-success "
+                "expected status"
             )
 
     @property
@@ -412,7 +425,10 @@ def run_fixture_validation(
             tuple(assertions),
         )
 
-    if normalized.metadata.review_status is ReviewStatus.PROMOTED and expectations is None:
+    if (
+        normalized.metadata.review_status is ReviewStatus.PROMOTED
+        and expectations is None
+    ):
         assertions.append(
             _hard_assertion(
                 "promoted_expectations",
@@ -436,14 +452,17 @@ def run_fixture_validation(
             _hard_assertion(
                 "affordance_integrity",
                 trace_action_ids == tuple(sorted(state_action_ids)),
-                "trace legal candidates exactly match the complete fixture affordance set",
+                "trace legal candidates exactly match the complete fixture "
+                "affordance set",
             ),
         )
     )
 
     try:
         replay = replay_decision_trace(authority, trace)
-        replay_ok = replay.matches and replay.ranking_matches and replay.chosen_action_matches
+        replay_ok = (
+            replay.matches and replay.ranking_matches and replay.chosen_action_matches
+        )
         replay_message = "exact replay reproduced fingerprint/ranking/chosen action"
     except (TypeError, ValueError, KeyError) as exc:
         replay_ok = False
@@ -487,8 +506,12 @@ def run_validation_corpus(
     )
     taxonomy = Counter(tag for fixture in fixtures for tag in fixture.metadata.taxonomy)
     severities = Counter(fixture.metadata.severity.value for fixture in fixtures)
-    profiles = Counter(fixture.metadata.information_profile.value for fixture in fixtures)
-    review_statuses = Counter(fixture.metadata.review_status.value for fixture in fixtures)
+    profiles = Counter(
+        fixture.metadata.information_profile.value for fixture in fixtures
+    )
+    review_statuses = Counter(
+        fixture.metadata.review_status.value for fixture in fixtures
+    )
     durations = sorted(
         duration
         for report in reports
@@ -536,7 +559,9 @@ def classify_trace_change(
 
     diff = compare_traces(before, after)
     if before.output_fingerprint == after.output_fingerprint:
-        return RegressionReport(RegressionKind.NO_CHANGE, diff, "semantic output unchanged")
+        return RegressionReport(
+            RegressionKind.NO_CHANGE, diff, "semantic output unchanged"
+        )
 
     expectations = (
         None
@@ -570,10 +595,9 @@ def classify_trace_change(
                 "recommendation changed between acceptable_top1 members",
             )
 
-        if (
-            expectations.allow_model_version_change
-            and _engine_model_identity(before) != _engine_model_identity(after)
-        ):
+        if expectations.allow_model_version_change and _engine_model_identity(
+            before
+        ) != _engine_model_identity(after):
             return RegressionReport(
                 RegressionKind.INTENDED_MODEL_VERSION_CHANGE,
                 diff,
@@ -621,7 +645,8 @@ def _evaluate_expectations(
                 "expected_status",
                 actual_status == expectations.expected_status,
                 tactical_gate,
-                f"decision status is {actual_status!r}; expected {expectations.expected_status!r}",
+                f"decision status is {actual_status!r}; expected "
+                f"{expectations.expected_status!r}",
             )
         )
 
@@ -641,7 +666,8 @@ def _evaluate_expectations(
             _hard_assertion(
                 "exact_legal_action_ids",
                 legal_ids == expected,
-                f"legal action IDs are {sorted(legal_ids)}; expected {sorted(expected)}",
+                f"legal action IDs are {sorted(legal_ids)}; expected "
+                f"{sorted(expected)}",
             )
         )
     for action_id in expectations.required_legal_action_ids:
@@ -814,7 +840,9 @@ def _evaluate_expectations(
                 else _metric_value(trace, relation.right)
             )
             assert right is not None
-            passed = _compare_numeric(left, relation.operator, right, relation.tolerance)
+            passed = _compare_numeric(
+                left, relation.operator, right, relation.tolerance
+            )
             message = f"numeric relation {left} {relation.operator.value} {right}"
         except (IndexError, KeyError, TypeError, ValueError) as exc:
             passed = False
@@ -1016,9 +1044,7 @@ def _numeric_relation(value: JsonValue) -> NumericRelation:
     tolerance_raw = data.get("tolerance")
     if tolerance_raw is None:
         tolerance = _TOLERANCE
-    elif isinstance(tolerance_raw, bool) or not isinstance(
-        tolerance_raw, int | float
-    ):
+    elif isinstance(tolerance_raw, bool) or not isinstance(tolerance_raw, int | float):
         raise ValueError("numeric relation tolerance must be numeric")
     else:
         tolerance = float(tolerance_raw)
@@ -1055,7 +1081,9 @@ def _explanation_expectation(value: JsonValue) -> ExplanationExpectation:
 def _legal_action_records(trace: DecisionTrace) -> dict[str, Mapping[str, Any]]:
     actions = trace.generation.get("legal_candidates")
     result: dict[str, Mapping[str, Any]] = {}
-    if not isinstance(actions, Sequence) or isinstance(actions, str | bytes | bytearray):
+    if not isinstance(actions, Sequence) or isinstance(
+        actions, str | bytes | bytearray
+    ):
         return result
     for action in actions:
         if not isinstance(action, Mapping):
