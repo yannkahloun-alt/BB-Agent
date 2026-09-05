@@ -32,6 +32,7 @@ from test_mechanics import (
     _snapshot,
     _wait,
 )
+from test_tactical_state import _unknown_resources
 
 
 def _base_features(action_id: str):
@@ -82,6 +83,15 @@ def _death_risk(features, probability: float, *, self_harm: float = 0):
     )
 
 
+def _inferred_exact(value: int, basis: str) -> KnownValue:
+    return KnownValue(
+        Representation.EXACT,
+        KnowledgeClass.INFERRED,
+        value=value,
+        basis=(basis,),
+    )
+
+
 def _scenario_flip_state(authority, *, omniscient_hp: int | None = None):
     state = _ordinary_attack_state(authority, hit_points=10)
     brother = next(actor for actor in state.combatants if actor.actor_id == "brother")
@@ -93,26 +103,45 @@ def _scenario_flip_state(authority, *, omniscient_hp: int | None = None):
             candidates=(5, 20),
             basis=("visible-wound-band",),
         )
+        enemy_one_resources = replace(
+            _unknown_resources(),
+            hit_points=enemy_hp,
+            head_armor=_inferred_exact(40, "visible-helmet"),
+            body_armor=_inferred_exact(70, "visible-body-armor"),
+        )
+        enemy_two_resources = replace(
+            _unknown_resources(),
+            hit_points=_inferred_exact(10, "visible-wound-reference"),
+            head_armor=_inferred_exact(40, "visible-helmet-reference"),
+            body_armor=_inferred_exact(70, "visible-body-armor-reference"),
+        )
         information_profile = InformationProfile.PLAYER_LEGAL
     else:
-        enemy_hp = KnownValue.exact(
-            omniscient_hp,
-            KnowledgeClass.DEBUG_GROUND_TRUTH,
+        enemy_one_resources = replace(
+            enemy.resources,
+            hit_points=KnownValue.exact(
+                omniscient_hp,
+                KnowledgeClass.DEBUG_GROUND_TRUTH,
+            ),
+        )
+        enemy_two_resources = replace(
+            enemy.resources,
+            hit_points=KnownValue.exact(
+                10,
+                KnowledgeClass.DEBUG_GROUND_TRUTH,
+            ),
         )
         information_profile = InformationProfile.OMNISCIENT_DEBUG
 
     enemy_one = replace(
         enemy,
-        resources=replace(enemy.resources, hit_points=enemy_hp),
+        resources=enemy_one_resources,
     )
     enemy_two = replace(
         enemy,
         actor_id="enemy-2",
         position=KnownValue.exact("northeast"),
-        resources=replace(
-            enemy.resources,
-            hit_points=KnownValue.exact(10),
-        ),
+        resources=enemy_two_resources,
     )
 
     attack_one = state.action_affordances.actions[0]
@@ -325,6 +354,20 @@ def test_omniscient_aleatory_aoo_spread_is_not_epistemic_uncertainty():
     authority = _authority()
     move = _move_action(reactions=(_reaction(),))
     state = _movement_state(authority, move)
+    values = {field.name: getattr(state, field.name) for field in fields(state)}
+    values.update(
+        state_id="",
+        tiles=tuple(
+            replace(
+                tile,
+                blocking=KnownValue.exact(False),
+                traversable=KnownValue.exact(True),
+                blocks_line_of_sight=KnownValue.exact(False),
+            )
+            for tile in state.tiles
+        ),
+    )
+    state = TacticalState.create(**values)
 
     result = evaluate_decision(authority, state)
 
