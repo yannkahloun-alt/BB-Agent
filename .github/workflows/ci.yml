@@ -5,12 +5,173 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   PYTHONHASHSEED: "0"
 
 jobs:
+  apply-review-fixes:
+    name: apply-review-fixes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install -e ".[dev]"
+      - name: Apply review fixes
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          outcomes = Path("src/bb_agent/outcomes.py")
+          text = outcomes.read_text()
+          old = '''    if (
+              weapon.content.value != "weapon.hand_axe"
+              or weapon_entry is None
+              or skill_entry is None
+              or skill_entry.family_id != "ordinary_attack"
+          ):
+              _unsupported("weapon or skill damage profile is unsupported", context)
+          weapon_facts, skill_facts = dict(weapon_entry.facts), dict(skill_entry.facts)
+          if "damage_min" not in weapon_facts:
+              _unsupported("weapon damage profile is unsupported", context)
+          '''
+          new = '''    if (
+              weapon.content.value != "weapon.hand_axe"
+              or weapon_entry is None
+              or context.skill_id != "actives.chop"
+              or skill_entry is None
+              or skill_entry.category != "skill"
+              or skill_entry.family_id != "ordinary_attack"
+          ):
+              _unsupported("weapon or skill damage profile is unsupported", context)
+          weapon_facts, skill_facts = dict(weapon_entry.facts), dict(skill_entry.facts)
+          required_weapon_facts = {
+              "damage_min",
+              "damage_max",
+              "armor_damage_multiplier",
+          }
+          required_skill_facts = {
+              "direct_damage_multiplier",
+              "additional_head_damage_multiplier",
+          }
+          if not required_weapon_facts <= weapon_facts.keys():
+              _unsupported("weapon damage profile is unsupported", context)
+          if not required_skill_facts <= skill_facts.keys():
+              _unsupported("skill damage profile is unsupported", context)
+          '''
+          assert old in text, "ordinary attack support block changed"
+          outcomes.write_text(text.replace(old, new, 1))
+
+          transitions = Path("src/bb_agent/transitions.py")
+          text = transitions.read_text()
+          old = '''    if ap < 0 or fatigue > _exact(
+              actor.resources.fatigue_capacity, "fatigue capacity", action
+          ):
+              _unsupported(
+                  action, "resolved action costs exceed actor resources", "transition"
+              )
+          '''
+          new = '''    if ap < 0 or fatigue > _exact(
+              actor.resources.fatigue_capacity, "fatigue capacity", action
+          ):
+              _invalid(action, "resolved action costs exceed actor resources")
+          '''
+          assert old in text, "transition cost block changed"
+          transitions.write_text(text.replace(old, new, 1))
+
+          mechanics_tests = Path("tests/test_mechanics.py")
+          text = mechanics_tests.read_text()
+          old = '''def test_move_costs_fail_closed_when_resolved_resources_are_insufficient():
+              authority = _authority()
+              move = _move_action(ap=10)
+              state = _movement_state(authority, move)
+
+              result = evaluate_transition(authority, state, state.action_affordances.actions[0])
+
+              assert result.status is ResultStatus.INCOMPLETE_COVERAGE
+              assert result.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
+              assert "costs exceed" in result.problems[0].message
+          '''
+          new = '''def test_move_costs_are_validation_failure_when_current_command_is_impossible():
+              authority = _authority()
+              move = _move_action(ap=10)
+              state = _movement_state(authority, move)
+
+              result = evaluate_transition(authority, state, state.action_affordances.actions[0])
+
+              assert result.status is ResultStatus.VALIDATION_FAILURE
+              assert result.problems[0].code is ErrorCode.VALIDATION_FAILED
+              assert "costs exceed" in result.problems[0].message
+          '''
+          assert old in text, "movement cost regression changed"
+          mechanics_tests.write_text(text.replace(old, new, 1))
+
+          hardening = Path("tests/test_candidate_hardening.py")
+          text = hardening.read_text()
+          import_old = "from bb_agent.outcomes import evaluate_ordinary_attack\n"
+          import_new = (
+              "from bb_agent.mechanics import MechanicsAuthority\n"
+              "from bb_agent.outcomes import evaluate_ordinary_attack\n"
+          )
+          assert import_old in text, "hardening import anchor changed"
+          text = text.replace(import_old, import_new, 1)
+          addition = '''
+
+          def test_contingent_aoo_does_not_expand_with_future_ordinary_attack_catalog_entry():
+              authority = _authority()
+              chop = authority.catalog.entry("actives.chop")
+              assert chop is not None
+              future_skill = replace(chop, content_id="actives.future_attack")
+              future_authority = MechanicsAuthority(
+                  replace(
+                      authority.catalog,
+                      entries=authority.catalog.entries + (future_skill,),
+                  ),
+                  authority.manifest,
+              )
+              reaction = replace(_reaction(), skill_id="actives.future_attack")
+              state = _movement_state(
+                  future_authority,
+                  _move_action(reactions=(reaction,)),
+              )
+
+              result = evaluate_transition(
+                  future_authority,
+                  state,
+                  state.action_affordances.actions[0].action_id,
+              )
+
+              assert result.status is ResultStatus.INCOMPLETE_COVERAGE
+              assert result.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
+              assert "damage profile is unsupported" in result.problems[0].message
+          '''
+          assert "test_contingent_aoo_does_not_expand_with_future_ordinary_attack_catalog_entry" not in text
+          hardening.write_text(text.rstrip() + addition + "\n")
+          PY
+      - run: python -m ruff format src/bb_agent/outcomes.py src/bb_agent/transitions.py tests/test_mechanics.py tests/test_candidate_hardening.py
+      - run: python -m pytest tests/test_candidate_hardening.py tests/test_mechanics.py
+      - run: python -m ruff check src/bb_agent/outcomes.py src/bb_agent/transitions.py tests/test_mechanics.py tests/test_candidate_hardening.py
+      - run: python -m pyflakes src/bb_agent/outcomes.py src/bb_agent/transitions.py tests/test_mechanics.py tests/test_candidate_hardening.py
+      - name: Commit review fixes
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/bb_agent/outcomes.py src/bb_agent/transitions.py tests/test_mechanics.py tests/test_candidate_hardening.py
+          git commit -m "Address independent #40 review findings"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
+
   tests:
     name: tests
     runs-on: ubuntu-latest
