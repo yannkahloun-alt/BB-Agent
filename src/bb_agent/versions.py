@@ -37,6 +37,6 @@ CURRENT_VERSIONS: Final = ContractVersions(
     decision_trace="issue-7.amended-by-13",
     mechanics_manifest="bb-agent-mechanics-manifest.v1",
     outcome_model="ordinary-attack.v1",
-    evaluation_config="not-implemented",
+    evaluation_config="m1-evaluation-profile.v1",
     fixture="bb-agent-fixture.v1",
 )
