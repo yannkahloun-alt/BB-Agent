@@ -9,10 +9,14 @@ from __future__ import annotations
 
 import math
 from dataclasses import asdict, dataclass, replace
+from itertools import product
 
 from bb_agent.features import (
+    EpistemicAssignment,
+    EpistemicFeatureScenario,
     MetricRange,
     TacticalFeatures,
+    extract_candidate_feature_scenarios,
     extract_candidate_features,
 )
 from bb_agent.mechanics import MechanicsAuthority
@@ -231,6 +235,14 @@ class DecisionSelection:
 
 
 @dataclass(frozen=True, slots=True)
+class EpistemicRankingScenario:
+    scenario_id: str
+    assignments: tuple[EpistemicAssignment, ...]
+    ranking: tuple[str, ...]
+    chosen_action_id: str
+
+
+@dataclass(frozen=True, slots=True)
 class DecisionEvaluation:
     state_id: str
     information_profile: str
@@ -245,6 +257,7 @@ class DecisionEvaluation:
     chosen_action_id: str
     near_tie_groups: tuple[tuple[str, ...], ...]
     tie_breaks: tuple[TieBreakRecord, ...]
+    epistemic_scenarios: tuple[EpistemicRankingScenario, ...]
     information_sensitive: bool
 
 
@@ -252,14 +265,32 @@ def _clip(value: float) -> float:
     return max(-1.0, min(1.0, value))
 
 
+def _selection_bounds(value: MetricRange) -> tuple[float, float]:
+    assert value.selection_minimum is not None
+    assert value.selection_maximum is not None
+    return value.selection_minimum, value.selection_maximum
+
+
+def _epistemic_bounds(value: MetricRange) -> tuple[float, float]:
+    assert value.epistemic_minimum is not None
+    assert value.epistemic_maximum is not None
+    return value.epistemic_minimum, value.epistemic_maximum
+
+
 def _multiply(value: MetricRange, multiplier: float) -> MetricRange:
     if multiplier < 0:
         raise ValueError("metric multiplier must be nonnegative")
     expected = None if value.expected is None else value.expected * multiplier
+    selection_minimum, selection_maximum = _selection_bounds(value)
+    epistemic_minimum, epistemic_maximum = _epistemic_bounds(value)
     return MetricRange(
         value.minimum * multiplier,
         value.maximum * multiplier,
         expected,
+        selection_minimum=selection_minimum * multiplier,
+        selection_maximum=selection_maximum * multiplier,
+        epistemic_minimum=epistemic_minimum * multiplier,
+        epistemic_maximum=epistemic_maximum * multiplier,
     )
 
 
@@ -268,14 +299,32 @@ def _normalized(
     scale: float,
     direction: float = 1.0,
 ) -> MetricRange:
-    endpoints = (
+    support = (
         _clip(direction * value.minimum / scale),
         _clip(direction * value.maximum / scale),
     )
     expected = (
         None if value.expected is None else _clip(direction * value.expected / scale)
     )
-    return MetricRange(min(endpoints), max(endpoints), expected)
+    selection_minimum, selection_maximum = _selection_bounds(value)
+    selection = (
+        _clip(direction * selection_minimum / scale),
+        _clip(direction * selection_maximum / scale),
+    )
+    epistemic_minimum, epistemic_maximum = _epistemic_bounds(value)
+    epistemic = (
+        _clip(direction * epistemic_minimum / scale),
+        _clip(direction * epistemic_maximum / scale),
+    )
+    return MetricRange(
+        min(support),
+        max(support),
+        expected,
+        selection_minimum=min(selection),
+        selection_maximum=max(selection),
+        epistemic_minimum=min(epistemic),
+        epistemic_maximum=max(epistemic),
+    )
 
 
 def _average(values: tuple[MetricRange, ...]) -> MetricRange:
@@ -288,19 +337,31 @@ def _average(values: tuple[MetricRange, ...]) -> MetricRange:
             sum(value.expected for value in values if value.expected is not None)
             / count
         )
+    selection = tuple(_selection_bounds(value) for value in values)
+    epistemic = tuple(_epistemic_bounds(value) for value in values)
     return MetricRange(
         sum(value.minimum for value in values) / count,
         sum(value.maximum for value in values) / count,
         expected,
+        selection_minimum=sum(bounds[0] for bounds in selection) / count,
+        selection_maximum=sum(bounds[1] for bounds in selection) / count,
+        epistemic_minimum=sum(bounds[0] for bounds in epistemic) / count,
+        epistemic_maximum=sum(bounds[1] for bounds in epistemic) / count,
     )
 
 
 def _weighted(value: MetricRange, weight: float) -> MetricRange:
     expected = None if value.expected is None else value.expected * weight
+    selection_minimum, selection_maximum = _selection_bounds(value)
+    epistemic_minimum, epistemic_maximum = _epistemic_bounds(value)
     return MetricRange(
         value.minimum * weight,
         value.maximum * weight,
         expected,
+        selection_minimum=selection_minimum * weight,
+        selection_maximum=selection_maximum * weight,
+        epistemic_minimum=epistemic_minimum * weight,
+        epistemic_maximum=epistemic_maximum * weight,
     )
 
 
@@ -310,10 +371,16 @@ def _add(values: tuple[MetricRange, ...]) -> MetricRange:
     expected = None
     if all(value.expected is not None for value in values):
         expected = sum(value.expected for value in values if value.expected is not None)
+    selection = tuple(_selection_bounds(value) for value in values)
+    epistemic = tuple(_epistemic_bounds(value) for value in values)
     return MetricRange(
         sum(value.minimum for value in values),
         sum(value.maximum for value in values),
         expected,
+        selection_minimum=sum(bounds[0] for bounds in selection),
+        selection_maximum=sum(bounds[1] for bounds in selection),
+        epistemic_minimum=sum(bounds[0] for bounds in epistemic),
+        epistemic_maximum=sum(bounds[1] for bounds in epistemic),
     )
 
 
@@ -321,32 +388,52 @@ def _subtract(left: MetricRange, right: MetricRange) -> MetricRange:
     expected = None
     if left.expected is not None and right.expected is not None:
         expected = left.expected - right.expected
+    left_selection = _selection_bounds(left)
+    right_selection = _selection_bounds(right)
+    left_epistemic = _epistemic_bounds(left)
+    right_epistemic = _epistemic_bounds(right)
     return MetricRange(
         left.minimum - right.maximum,
         left.maximum - right.minimum,
         expected,
+        selection_minimum=left_selection[0] - right_selection[1],
+        selection_maximum=left_selection[1] - right_selection[0],
+        epistemic_minimum=left_epistemic[0] - right_epistemic[1],
+        epistemic_maximum=left_epistemic[1] - right_epistemic[0],
     )
 
 
 def _shift(value: MetricRange, amount: float) -> MetricRange:
     expected = None if value.expected is None else value.expected + amount
+    selection_minimum, selection_maximum = _selection_bounds(value)
+    epistemic_minimum, epistemic_maximum = _epistemic_bounds(value)
     return MetricRange(
         value.minimum + amount,
         value.maximum + amount,
         expected,
+        selection_minimum=selection_minimum + amount,
+        selection_maximum=selection_maximum + amount,
+        epistemic_minimum=epistemic_minimum + amount,
+        epistemic_maximum=epistemic_maximum + amount,
     )
 
 
 def _selection_value(value: MetricRange) -> float:
     """Use expectation when justified, otherwise the conservative lower bound."""
 
-    return value.expected if value.expected is not None else value.minimum
+    if value.expected is not None:
+        return value.expected
+    selection_minimum, _ = _selection_bounds(value)
+    return selection_minimum
 
 
 def _penalty_selection(value: MetricRange) -> float:
     """Use expectation when justified, otherwise the conservative upper loss."""
 
-    return value.expected if value.expected is not None else value.maximum
+    if value.expected is not None:
+        return value.expected
+    _, selection_maximum = _selection_bounds(value)
+    return selection_maximum
 
 
 def _component(
@@ -610,7 +697,8 @@ def score_candidate_features(
     base_selection_value = sum(component.selection_value for component in components)
     tail = _tail_risk(features, profile, actor_value)
     before_uncertainty = _subtract(tactical_range, tail.penalty)
-    uncertainty_span = before_uncertainty.maximum - before_uncertainty.minimum
+    epistemic_minimum, epistemic_maximum = _epistemic_bounds(before_uncertainty)
+    uncertainty_span = epistemic_maximum - epistemic_minimum
     uncertainty_penalty = profile.uncertainty_weight * uncertainty_span
     ranking_range = _shift(before_uncertainty, -uncertainty_penalty)
     ranking_value = base_selection_value - tail.selection_penalty - uncertainty_penalty
@@ -700,42 +788,6 @@ def _with_dominance(
     return tuple(updated)
 
 
-def _ranges_overlap(
-    left: CandidateEvaluation,
-    right: CandidateEvaluation,
-    margin: float,
-) -> bool:
-    if left.guardrail_excluded != right.guardrail_excluded:
-        return False
-    uncertain = (
-        left.ranking_range.maximum - left.ranking_range.minimum > _TOLERANCE
-        or right.ranking_range.maximum - right.ranking_range.minimum > _TOLERANCE
-    )
-    if not uncertain:
-        return False
-    return (
-        left.ranking_range.minimum <= right.ranking_range.maximum + margin
-        and right.ranking_range.minimum <= left.ranking_range.maximum + margin
-    )
-
-
-def _with_information_sensitivity(
-    candidates: tuple[CandidateEvaluation, ...],
-    margin: float,
-) -> tuple[CandidateEvaluation, ...]:
-    return tuple(
-        replace(
-            candidate,
-            information_sensitive=any(
-                other.action_id != candidate.action_id
-                and _ranges_overlap(candidate, other, margin)
-                for other in candidates
-            ),
-        )
-        for candidate in candidates
-    )
-
-
 def _tie_key(
     candidate: CandidateEvaluation,
 ) -> tuple[float, float, int, str]:
@@ -779,10 +831,6 @@ def select_candidate_evaluations(
         raise ValueError("selection requires unique action IDs")
 
     candidates = _with_dominance(candidates)
-    candidates = _with_information_sensitivity(
-        candidates,
-        profile.near_tie_margin,
-    )
     eligible = tuple(
         candidate for candidate in candidates if not candidate.guardrail_excluded
     )
@@ -831,6 +879,138 @@ def select_candidate_evaluations(
     )
 
 
+def _assignment_domain_key(
+    assignments: tuple[EpistemicAssignment, ...],
+) -> tuple[tuple[str, str], ...]:
+    return tuple((assignment.actor_id, assignment.field) for assignment in assignments)
+
+
+def _assignment_sort_key(
+    assignments: tuple[EpistemicAssignment, ...],
+) -> tuple[tuple[str, str, int], ...]:
+    return tuple(
+        (assignment.actor_id, assignment.field, assignment.value)
+        for assignment in assignments
+    )
+
+
+def _joint_epistemic_assignments(
+    scenario_features: dict[str, tuple[EpistemicFeatureScenario, ...]],
+) -> tuple[tuple[EpistemicAssignment, ...], ...]:
+    domains: dict[
+        tuple[tuple[str, str], ...],
+        set[tuple[EpistemicAssignment, ...]],
+    ] = {}
+    for scenarios in scenario_features.values():
+        for scenario in scenarios:
+            key = _assignment_domain_key(scenario.assignments)
+            domains.setdefault(key, set()).add(scenario.assignments)
+    if not domains:
+        return ()
+
+    ordered_domains = tuple(
+        tuple(sorted(domains[key], key=_assignment_sort_key)) for key in sorted(domains)
+    )
+    joint: set[tuple[EpistemicAssignment, ...]] = set()
+    for combination in product(*ordered_domains):
+        merged: dict[tuple[str, str], EpistemicAssignment] = {}
+        compatible = True
+        for assignments in combination:
+            for assignment in assignments:
+                key = (assignment.actor_id, assignment.field)
+                existing = merged.get(key)
+                if existing is not None and existing.value != assignment.value:
+                    compatible = False
+                    break
+                merged[key] = assignment
+            if not compatible:
+                break
+        if compatible:
+            joint.add(tuple(sorted(merged.values())))
+    return tuple(sorted(joint, key=_assignment_sort_key))
+
+
+def _scenario_candidate(
+    base: CandidateEvaluation,
+    joint: dict[tuple[str, str], int],
+    scenario_evaluations: dict[
+        str,
+        tuple[tuple[tuple[EpistemicAssignment, ...], CandidateEvaluation], ...],
+    ],
+) -> CandidateEvaluation:
+    matches = []
+    for assignments, evaluation in scenario_evaluations.get(base.action_id, ()):
+        if all(
+            joint.get((assignment.actor_id, assignment.field)) == assignment.value
+            for assignment in assignments
+        ):
+            matches.append(evaluation)
+    if len(matches) > 1:
+        raise ValueError("multiple scenario evaluations matched one joint hidden state")
+    return matches[0] if matches else base
+
+
+def _apply_epistemic_sensitivity(
+    selection: DecisionSelection,
+    scenario_features: dict[str, tuple[EpistemicFeatureScenario, ...]],
+    scenario_evaluations: dict[
+        str,
+        tuple[tuple[tuple[EpistemicAssignment, ...], CandidateEvaluation], ...],
+    ],
+    profile: EvaluationProfile,
+) -> tuple[DecisionSelection, tuple[EpistemicRankingScenario, ...]]:
+    joint_assignments = _joint_epistemic_assignments(scenario_features)
+    if not joint_assignments:
+        return selection, ()
+
+    rank_positions = {candidate.action_id: set() for candidate in selection.candidates}
+    chosen_action_ids: set[str] = set()
+    records = []
+    for assignments in joint_assignments:
+        joint = {
+            (assignment.actor_id, assignment.field): assignment.value
+            for assignment in assignments
+        }
+        candidates = tuple(
+            _scenario_candidate(candidate, joint, scenario_evaluations)
+            for candidate in selection.candidates
+        )
+        scenario_selection = select_candidate_evaluations(candidates, profile)
+        for rank, action_id in enumerate(scenario_selection.ranking):
+            rank_positions[action_id].add(rank)
+        chosen_action_ids.add(scenario_selection.chosen_action_id)
+        scenario_id = canonical_sha256(
+            tuple(
+                (assignment.actor_id, assignment.field, assignment.value)
+                for assignment in assignments
+            )
+        )
+        records.append(
+            EpistemicRankingScenario(
+                scenario_id,
+                assignments,
+                scenario_selection.ranking,
+                scenario_selection.chosen_action_id,
+            )
+        )
+
+    updated_candidates = tuple(
+        replace(
+            candidate,
+            information_sensitive=len(rank_positions[candidate.action_id]) > 1,
+        )
+        for candidate in selection.candidates
+    )
+    return (
+        replace(
+            selection,
+            candidates=updated_candidates,
+            information_sensitive=len(chosen_action_ids) > 1,
+        ),
+        tuple(records),
+    )
+
+
 def evaluate_decision(
     authority: MechanicsAuthority,
     state: TacticalState,
@@ -866,6 +1046,11 @@ def evaluate_decision(
         )
 
     evaluations = []
+    scenario_features: dict[str, tuple[EpistemicFeatureScenario, ...]] = {}
+    scenario_evaluations: dict[
+        str,
+        tuple[tuple[tuple[EpistemicAssignment, ...], CandidateEvaluation], ...],
+    ] = {}
     actions = sorted(
         normalized.action_affordances.actions,
         key=lambda candidate: candidate.action_id,
@@ -890,8 +1075,38 @@ def evaluate_decision(
             )
         )
 
+        scenario_result = extract_candidate_feature_scenarios(
+            authority,
+            normalized,
+            action.action_id,
+        )
+        if scenario_result.value is None:
+            return Result(
+                scenario_result.status,
+                problems=scenario_result.problems,
+            )
+        scenario_features[action.action_id] = scenario_result.value
+        scenario_evaluations[action.action_id] = tuple(
+            (
+                scenario.assignments,
+                score_candidate_features(
+                    scenario.features,
+                    action.actor_id,
+                    profile,
+                    unit_value_policy,
+                ),
+            )
+            for scenario in scenario_result.value
+        )
+
     selection = select_candidate_evaluations(
         tuple(evaluations),
+        profile,
+    )
+    selection, epistemic_scenarios = _apply_epistemic_sensitivity(
+        selection,
+        scenario_features,
+        scenario_evaluations,
         profile,
     )
     assert coverage.value is not None
@@ -910,6 +1125,7 @@ def evaluate_decision(
             selection.chosen_action_id,
             selection.near_tie_groups,
             selection.tie_breaks,
+            epistemic_scenarios,
             selection.information_sensitive,
         )
     )

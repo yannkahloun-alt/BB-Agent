@@ -1,10 +1,11 @@
-from dataclasses import replace
+from dataclasses import fields, replace
 
 import pytest
 
 from bb_agent.evaluator import (
     DEFAULT_EVALUATION_PROFILE,
     EvaluationProfile,
+    EvaluationWeights,
     UnitValuePolicy,
     evaluate_decision,
     score_candidate_features,
@@ -12,7 +13,25 @@ from bb_agent.evaluator import (
 )
 from bb_agent.features import MetricRange, extract_candidate_features
 from bb_agent.results import ResultStatus
-from test_mechanics import _attack, _authority, _snapshot, _wait
+from bb_agent.tactical_state import (
+    HexCoord,
+    InformationProfile,
+    KnowledgeClass,
+    KnownValue,
+    Representation,
+    TacticalState,
+    Tile,
+)
+from test_mechanics import (
+    _attack,
+    _authority,
+    _move_action,
+    _movement_state,
+    _ordinary_attack_state,
+    _reaction,
+    _snapshot,
+    _wait,
+)
 
 
 def _base_features(action_id: str):
@@ -61,6 +80,89 @@ def _death_risk(features, probability: float, *, self_harm: float = 0):
             self_death_probability=MetricRange.exact(probability),
         ),
     )
+
+
+def _scenario_flip_state(authority, *, omniscient_hp: int | None = None):
+    state = _ordinary_attack_state(authority, hit_points=10)
+    brother = next(actor for actor in state.combatants if actor.actor_id == "brother")
+    enemy = next(actor for actor in state.combatants if actor.actor_id == "enemy")
+    if omniscient_hp is None:
+        enemy_hp = KnownValue(
+            Representation.SET,
+            KnowledgeClass.INFERRED,
+            candidates=(5, 20),
+            basis=("visible-wound-band",),
+        )
+        information_profile = InformationProfile.PLAYER_LEGAL
+    else:
+        enemy_hp = KnownValue.exact(
+            omniscient_hp,
+            KnowledgeClass.DEBUG_GROUND_TRUTH,
+        )
+        information_profile = InformationProfile.OMNISCIENT_DEBUG
+
+    enemy_one = replace(
+        enemy,
+        resources=replace(enemy.resources, hit_points=enemy_hp),
+    )
+    enemy_two = replace(
+        enemy,
+        actor_id="enemy-2",
+        position=KnownValue.exact("northeast"),
+        resources=replace(
+            enemy.resources,
+            hit_points=KnownValue.exact(10),
+        ),
+    )
+
+    attack_one = state.action_affordances.actions[0]
+    preview = attack_one.preview
+    if preview.affected_tile_ids is not None:
+        preview = replace(
+            preview,
+            affected_tile_ids=replace(
+                preview.affected_tile_ids,
+                value=["northeast"],
+            ),
+        )
+    attack_two = replace(
+        attack_one,
+        action_id="attack:enemy-2",
+        target_actor_id="enemy-2",
+        preview=preview,
+    )
+
+    origin = next(tile for tile in state.tiles if tile.tile_id == "origin")
+    east = next(tile for tile in state.tiles if tile.tile_id == "east")
+    origin = replace(
+        origin,
+        neighbors=("east", "northeast", None, None, None, None),
+    )
+    east = replace(
+        east,
+        neighbors=(None, None, "northeast", "origin", None, None),
+    )
+    northeast = Tile(
+        "northeast",
+        HexCoord(1, -1),
+        0,
+        KnownValue.exact("plain"),
+        (None, None, None, None, "origin", "east"),
+        "enemy-2",
+    )
+
+    values = {field.name: getattr(state, field.name) for field in fields(state)}
+    values.update(
+        state_id="",
+        information_profile=information_profile,
+        combatants=(brother, enemy_one, enemy_two),
+        tiles=(origin, east, northeast),
+        action_affordances=replace(
+            state.action_affordances,
+            actions=(attack_one, attack_two),
+        ),
+    )
+    return TacticalState.create(**values)
 
 
 def test_complete_decision_evaluation_is_exactly_deterministic():
@@ -219,44 +321,75 @@ def test_injected_unit_value_policy_changes_loss_cost_without_state_mutation():
     assert strategic.ranking_value < default.ranking_value
 
 
-def test_uncertain_score_envelope_marks_information_sensitive_ranking():
-    uncertain = _base_features("uncertain")
-    uncertain = replace(
-        uncertain,
-        enemy_effect=replace(
-            uncertain.enemy_effect,
-            expected_hp_damage=MetricRange(20, 60),
-            kill_probability=MetricRange(0.2, 0.8),
-        ),
-    )
-    stable = _enemy(_base_features("stable"), hp=40, kill=0.45)
-    uncertain_score = score_candidate_features(uncertain, "brother")
-    stable_score = score_candidate_features(stable, "brother")
+def test_omniscient_aleatory_aoo_spread_is_not_epistemic_uncertainty():
+    authority = _authority()
+    move = _move_action(reactions=(_reaction(),))
+    state = _movement_state(authority, move)
 
-    uncertain_selection = select_candidate_evaluations((uncertain_score, stable_score))
+    result = evaluate_decision(authority, state)
 
-    assert uncertain_score.mean_tactical_value is None
-    assert uncertain_score.uncertainty_span > 0
-    assert uncertain_selection.information_sensitive is True
-    assert any(
-        candidate.information_sensitive for candidate in uncertain_selection.candidates
-    )
+    assert result.status is ResultStatus.SUCCESS
+    assert result.value is not None
+    candidate = result.value.candidates[0]
+    damage = candidate.features.friendly_harm.expected_self_hp_damage
+    assert damage.maximum > damage.minimum
+    assert damage.expected is not None
+    assert candidate.uncertainty_span == pytest.approx(0)
+    assert candidate.information_sensitive is False
+    assert result.value.information_sensitive is False
+    facts = {
+        fact.component_id: fact.contribution for fact in candidate.explanation_facts
+    }
+    assert facts["uncertainty_robustness_adjustment"] == pytest.approx(0)
 
-    exact = replace(
-        uncertain,
-        enemy_effect=replace(
-            uncertain.enemy_effect,
-            expected_hp_damage=MetricRange.exact(40),
-            kill_probability=MetricRange.exact(0.45),
-        ),
+
+def test_player_legal_rank_flip_uses_coherent_hidden_state_scenarios():
+    authority = _authority()
+    weights = EvaluationWeights(
+        enemy_effect=1,
+        immediate_friendly_harm=0,
+        post_action_exposure=0,
+        position_control_protection=0,
+        resource_future_capacity=0,
+        tempo=0,
     )
-    exact_selection = select_candidate_evaluations(
-        (
-            score_candidate_features(exact, "brother"),
-            stable_score,
+    profile = EvaluationProfile(
+        weights=weights,
+        tail_risk_weight=0,
+        uncertainty_weight=0,
+        near_tie_margin=0.001,
+    )
+    player_legal = _scenario_flip_state(authority)
+
+    result = evaluate_decision(authority, player_legal, profile)
+
+    assert result.status is ResultStatus.SUCCESS
+    assert result.value is not None
+    assert result.value.information_sensitive is True
+    assert len(result.value.epistemic_scenarios) == 2
+    assert (
+        len(
+            {scenario.chosen_action_id for scenario in result.value.epistemic_scenarios}
         )
+        == 2
     )
-    assert exact_selection.information_sensitive is False
+    assert {
+        assignment.value
+        for scenario in result.value.epistemic_scenarios
+        for assignment in scenario.assignments
+        if assignment.actor_id == "enemy" and assignment.field == "resources.hit_points"
+    } == {5, 20}
+
+    for hp in (5, 20):
+        omniscient = evaluate_decision(
+            authority,
+            _scenario_flip_state(authority, omniscient_hp=hp),
+            profile,
+        )
+        assert omniscient.status is ResultStatus.SUCCESS
+        assert omniscient.value is not None
+        assert omniscient.value.information_sensitive is False
+        assert omniscient.value.epistemic_scenarios == ()
 
 
 def test_near_tie_uses_frozen_resource_then_action_id_tie_path():

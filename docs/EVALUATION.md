@@ -33,18 +33,30 @@ mean component.
 
 ## Unknowns and robustness
 
-A `MetricRange` with a justified expectation uses that expectation for the
-selection value. A range without a justified expectation never receives a
-midpoint. The evaluator instead uses the conservative lower bound for tactical
-benefit and the conservative upper bound for a loss/penalty. The complete score
-envelope remains recorded.
+`MetricRange` keeps three views separate. Raw `minimum`/`maximum` preserve
+the complete represented support, including combat-RNG branches. The robust
+selection projection first integrates any justified aleatory probabilities and
+then retains conservative bounds for non-probabilistic uncertainty. A separate
+epistemic projection tracks only hidden-information variation. Consequently an
+AOO can retain a wide raw damage support while contributing zero epistemic width
+when its hit/damage distribution is fully known. Bounded model proxies such as
+current ZOC pressure may remain robust ranges without being mislabeled as hidden
+information.
 
-The uncertainty adjustment is derived from the width of the post-tail-risk score
-envelope. Selection is marked information-sensitive when an uncertain
-candidate's ranking envelope materially overlaps another candidate under the
-same guardrail eligibility. `omniscient_debug` inputs that collapse the relevant
-feature ranges therefore remove that epistemic sensitivity while combat RNG
-expectations remain intact.
+A range without a justified expectation never receives a midpoint. Tactical
+benefits use the conservative robust-selection lower bound and losses use the
+corresponding upper bound. The uncertainty/robustness adjustment is charged only
+from the post-tail **epistemic** projection width, so ordinary combat RNG cannot
+lose a tie on the `lower_epistemic_uncertainty` criterion.
+
+Information sensitivity is not inferred from overlapping aggregate envelopes.
+Where the outcome model exposes coherent unweighted `EpistemicScenario` hidden
+states, #21 converts each scenario to tactical features after integrating its RNG
+branches, forms compatible joint hidden states across candidates, and records the
+actual deterministic ranking in each state. A recommendation is information-
+sensitive only when those plausible hidden states materially change the selected
+action under the normal near-tie/tie policy. `omniscient_debug` has no such
+hidden-state scenario set while retaining the same aleatory combat model.
 
 ## Friendly unit value
 

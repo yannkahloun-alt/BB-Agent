@@ -42,11 +42,22 @@ MODEL_VERSION = "tactical-features.v1"
 
 @dataclass(frozen=True, slots=True)
 class MetricRange:
-    """A raw metric with bounds and an optional justified expectation."""
+    """Raw support plus robust and epistemic projections for one metric.
+
+    ``minimum``/``maximum`` preserve all represented variation, including
+    aleatory branch support. ``selection_*`` integrates justified aleatory
+    probabilities before retaining any non-probabilistic robustness envelope.
+    ``epistemic_*`` is narrower still: it tracks only hidden-information
+    variation that may legitimately drive #6 information sensitivity.
+    """
 
     minimum: float
     maximum: float
     expected: float | None = None
+    selection_minimum: float | None = None
+    selection_maximum: float | None = None
+    epistemic_minimum: float | None = None
+    epistemic_maximum: float | None = None
 
     def __post_init__(self) -> None:
         if not math.isfinite(self.minimum) or not math.isfinite(self.maximum):
@@ -59,10 +70,66 @@ class MetricRange:
             if not self.minimum - 1e-9 <= self.expected <= self.maximum + 1e-9:
                 raise ValueError("feature expectation lies outside its bounds")
 
+        selection_minimum = self.selection_minimum
+        selection_maximum = self.selection_maximum
+        if (selection_minimum is None) != (selection_maximum is None):
+            raise ValueError("selection projection requires both bounds")
+        if selection_minimum is None:
+            if self.expected is not None:
+                selection_minimum = self.expected
+                selection_maximum = self.expected
+            else:
+                selection_minimum = self.minimum
+                selection_maximum = self.maximum
+
+        epistemic_minimum = self.epistemic_minimum
+        epistemic_maximum = self.epistemic_maximum
+        if (epistemic_minimum is None) != (epistemic_maximum is None):
+            raise ValueError("epistemic projection requires both bounds")
+        if epistemic_minimum is None:
+            if self.expected is not None:
+                epistemic_minimum = self.expected
+                epistemic_maximum = self.expected
+            else:
+                epistemic_minimum = selection_minimum
+                epistemic_maximum = selection_maximum
+
+        projected = (
+            selection_minimum,
+            selection_maximum,
+            epistemic_minimum,
+            epistemic_maximum,
+        )
+        if any(not math.isfinite(value) for value in projected):
+            raise ValueError("feature projections must be finite")
+        if selection_minimum > selection_maximum:
+            raise ValueError("selection projection minimum exceeds maximum")
+        if epistemic_minimum > epistemic_maximum:
+            raise ValueError("epistemic projection minimum exceeds maximum")
+        if not self.minimum - 1e-9 <= selection_minimum <= self.maximum + 1e-9:
+            raise ValueError("selection minimum lies outside raw support")
+        if not self.minimum - 1e-9 <= selection_maximum <= self.maximum + 1e-9:
+            raise ValueError("selection maximum lies outside raw support")
+        if not self.minimum - 1e-9 <= epistemic_minimum <= self.maximum + 1e-9:
+            raise ValueError("epistemic minimum lies outside raw support")
+        if not self.minimum - 1e-9 <= epistemic_maximum <= self.maximum + 1e-9:
+            raise ValueError("epistemic maximum lies outside raw support")
+
+        object.__setattr__(self, "selection_minimum", selection_minimum)
+        object.__setattr__(self, "selection_maximum", selection_maximum)
+        object.__setattr__(self, "epistemic_minimum", epistemic_minimum)
+        object.__setattr__(self, "epistemic_maximum", epistemic_maximum)
+
     @classmethod
     def exact(cls, value: int | float) -> MetricRange:
         number = float(value)
         return cls(number, number, number)
+
+    @property
+    def epistemic_span(self) -> float:
+        assert self.epistemic_minimum is not None
+        assert self.epistemic_maximum is not None
+        return self.epistemic_maximum - self.epistemic_minimum
 
 
 @dataclass(frozen=True, slots=True)
@@ -224,6 +291,24 @@ class TacticalFeatures:
     semantic_ownership: tuple[FeatureOwnership, ...] = SEMANTIC_OWNERSHIP
 
 
+@dataclass(frozen=True, slots=True, order=True)
+class EpistemicAssignment:
+    """One concrete hidden-state fact used by a coherent player-legal scenario."""
+
+    actor_id: str
+    field: str
+    value: int
+
+
+@dataclass(frozen=True, slots=True)
+class EpistemicFeatureScenario:
+    """Scenario-specific tactical features after integrating combat RNG."""
+
+    scenario_id: str
+    assignments: tuple[EpistemicAssignment, ...]
+    features: TacticalFeatures
+
+
 @dataclass(frozen=True, slots=True)
 class _PostureBranch:
     probability: float
@@ -270,13 +355,41 @@ def _weighted_range(
     minimum = min(metric.minimum for _, metric in items)
     maximum = max(metric.maximum for _, metric in items)
     total_probability = sum(probability for probability, _ in items)
+    normalized_probability = abs(total_probability - 1.0) <= 1e-9
     expected = None
-    if abs(total_probability - 1.0) <= 1e-9 and all(
+    if normalized_probability and all(
         metric.expected is not None for _, metric in items
     ):
         expected = sum(
             probability * metric.expected  # type: ignore[operator]
             for probability, metric in items
+        )
+
+    if normalized_probability:
+        selection_minimum = sum(
+            probability * float(metric.selection_minimum)
+            for probability, metric in items
+        )
+        selection_maximum = sum(
+            probability * float(metric.selection_maximum)
+            for probability, metric in items
+        )
+        epistemic_minimum = sum(
+            probability * float(metric.epistemic_minimum)
+            for probability, metric in items
+        )
+        epistemic_maximum = sum(
+            probability * float(metric.epistemic_maximum)
+            for probability, metric in items
+        )
+        return MetricRange(
+            minimum,
+            maximum,
+            expected,
+            selection_minimum=selection_minimum,
+            selection_maximum=selection_maximum,
+            epistemic_minimum=epistemic_minimum,
+            epistemic_maximum=epistemic_maximum,
         )
     return MetricRange(minimum, maximum, expected)
 
@@ -1114,7 +1227,14 @@ def _build_features(
     if adjacent_hostiles.maximum == 0:
         hostile_zoc = MetricRange.exact(0)
     else:
-        hostile_zoc = MetricRange(0, adjacent_hostiles.maximum)
+        # This is an intentionally bounded threat proxy, not hidden-state
+        # uncertainty. Keep the robust range but give it zero epistemic width.
+        hostile_zoc = MetricRange(
+            0,
+            adjacent_hostiles.maximum,
+            epistemic_minimum=0,
+            epistemic_maximum=0,
+        )
 
     position = PositionFeatures(
         _posture_metric(
@@ -1200,6 +1320,98 @@ def _build_features(
         _future_capacity(state, action, branches),
         _tempo(state, transition),
     )
+
+
+def extract_candidate_feature_scenarios(
+    authority: MechanicsAuthority,
+    state: TacticalState,
+    action: CandidateReference,
+) -> Result[tuple[EpistemicFeatureScenario, ...]]:
+    """Preserve coherent unweighted hidden-state scenarios for #21 ranking.
+
+    Ordinary-attack outcomes already separate one plausible hidden target state
+    from its complete aleatory RNG distribution. This adapter converts each such
+    state into scenario-specific tactical features by integrating the RNG inside
+    that scenario. It deliberately does not synthesize scenarios from unrelated
+    per-metric bounds.
+    """
+
+    candidate = resolve_current_candidate(authority, state, action)
+    if candidate.value is None:
+        return Result(candidate.status, problems=candidate.problems)
+    if "ordinary_attack" not in candidate.value.structural_coverage.family_ids:
+        return Result.success(())
+
+    canonical_state = candidate.value.state
+    canonical_action = candidate.value.action
+    attack_result = evaluate_ordinary_attack(
+        authority,
+        canonical_state,
+        canonical_action.action_id,
+    )
+    if attack_result.value is None:
+        return Result(attack_result.status, problems=attack_result.problems)
+    attack = attack_result.value
+    if not attack.epistemic_scenarios:
+        return Result.success(())
+
+    try:
+        if canonical_action.target_actor_id is None:
+            _invalid(canonical_action, "epistemic attack scenario has no target actor")
+        target_actor_id = canonical_action.target_actor_id
+        scenarios = []
+        for scenario in sorted(
+            attack.epistemic_scenarios,
+            key=lambda item: (
+                item.target_hp,
+                item.target_head_armor,
+                item.target_body_armor,
+            ),
+        ):
+            assignments = (
+                EpistemicAssignment(
+                    target_actor_id,
+                    "resources.hit_points",
+                    scenario.target_hp,
+                ),
+                EpistemicAssignment(
+                    target_actor_id,
+                    "resources.head_armor",
+                    scenario.target_head_armor,
+                ),
+                EpistemicAssignment(
+                    target_actor_id,
+                    "resources.body_armor",
+                    scenario.target_body_armor,
+                ),
+            )
+            scenario_outcome = replace(
+                attack,
+                branches=scenario.branches,
+                epistemic_scenarios=(),
+                epistemic=False,
+            )
+            scenario_features = _build_features(
+                canonical_state,
+                canonical_action,
+                scenario_outcome,
+                None,
+            )
+            scenario_id = (
+                f"{target_actor_id}:hp={scenario.target_hp}:"
+                f"head={scenario.target_head_armor}:"
+                f"body={scenario.target_body_armor}"
+            )
+            scenarios.append(
+                EpistemicFeatureScenario(
+                    scenario_id,
+                    assignments,
+                    scenario_features,
+                )
+            )
+        return Result.success(tuple(scenarios))
+    except (EvaluationUnsupported, EvaluationInvalid) as exc:
+        return evaluation_failure_result(exc)
 
 
 def extract_candidate_features(
