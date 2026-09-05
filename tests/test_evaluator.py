@@ -83,11 +83,11 @@ def _death_risk(features, probability: float, *, self_harm: float = 0):
     )
 
 
-def _inferred_exact(value: int, basis: str) -> KnownValue:
+def _inferred_point_distribution(value: int, basis: str) -> KnownValue:
     return KnownValue(
-        Representation.EXACT,
+        Representation.DISTRIBUTION,
         KnowledgeClass.INFERRED,
-        value=value,
+        distribution=((value, 1.0),),
         basis=(basis,),
     )
 
@@ -106,14 +106,14 @@ def _scenario_flip_state(authority, *, omniscient_hp: int | None = None):
         enemy_one_resources = replace(
             _unknown_resources(),
             hit_points=enemy_hp,
-            head_armor=_inferred_exact(40, "visible-helmet"),
-            body_armor=_inferred_exact(70, "visible-body-armor"),
+            head_armor=_inferred_point_distribution(40, "visible-helmet"),
+            body_armor=_inferred_point_distribution(70, "visible-body-armor"),
         )
         enemy_two_resources = replace(
             _unknown_resources(),
-            hit_points=_inferred_exact(10, "visible-wound-reference"),
-            head_armor=_inferred_exact(40, "visible-helmet-reference"),
-            body_armor=_inferred_exact(70, "visible-body-armor-reference"),
+            hit_points=_inferred_point_distribution(10, "visible-wound-reference"),
+            head_armor=_inferred_point_distribution(40, "visible-helmet-reference"),
+            body_armor=_inferred_point_distribution(70, "visible-body-armor-reference"),
         )
         information_profile = InformationProfile.PLAYER_LEGAL
     else:
