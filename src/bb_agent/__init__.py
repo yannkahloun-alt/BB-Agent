@@ -7,9 +7,9 @@ from bb_agent.evaluator import (
     MODEL_VERSION as EVALUATOR_MODEL_VERSION,
 )
 from bb_agent.evaluator import (
+    CandidateEvaluation,
     DEFAULT_EVALUATION_PROFILE,
     DEFAULT_UNIT_VALUE_POLICY,
-    CandidateEvaluation,
     DecisionEvaluation,
     DecisionSelection,
     EvaluationProfile,
