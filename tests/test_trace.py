@@ -2,7 +2,11 @@ from dataclasses import fields, replace
 
 import pytest
 
-from bb_agent.evaluator import DEFAULT_EVALUATION_PROFILE, EvaluationProfile
+from bb_agent.evaluator import (
+    DEFAULT_EVALUATION_PROFILE,
+    EvaluationProfile,
+    evaluate_decision,
+)
 from bb_agent.results import ResultStatus
 from bb_agent.tactical_state import TacticalState
 from bb_agent.trace import (
@@ -74,6 +78,7 @@ def test_trace_candidate_records_expose_action_outcome_scoring_risk_and_explanat
     assert len(trace.evaluations) == 1
     record = trace.evaluations[0]
     assert record["action_id"] == trace.selection["chosen_action_id"]
+    assert record["coverage_status"] == "SUPPORTED"
     assert record["action"] is not None
     costs = record["deterministic_costs"]
     assert costs["ap_cost"] is not None
@@ -98,7 +103,13 @@ def test_trace_performance_diagnostics_do_not_change_decision_result():
     authority = _authority()
     state = _ordinary_attack_state(authority)
 
+    direct_result = evaluate_decision(authority, state)
     direct = run_decision_trace(authority, state)
+    assert direct_result.status is ResultStatus.SUCCESS
+    assert direct_result.value is not None
+    assert direct.selection is not None
+    assert tuple(direct.selection["ranking"]) == direct_result.value.ranking
+    assert direct.selection["chosen_action_id"] == direct_result.value.chosen_action_id
     timings = direct.performance["stage_timings_ns"]
     counters = direct.performance["counters"]
 
@@ -131,6 +142,21 @@ def test_incomplete_coverage_emits_structured_failure_trace_without_ranking():
     diagnostics = trace.generation["coverage_diagnostics"]
     assert any(item["mechanic_id"] == "mod.unknown_aoe" for item in diagnostics)
     assert DecisionTrace.from_json_bytes(trace.to_json_bytes()) == trace
+    replay = replay_decision_trace(authority, trace)
+    assert replay.matches is True
+
+
+def test_invalid_state_emits_validation_failure_trace():
+    authority = _authority()
+    state = replace(_ordinary_attack_state(authority), state_id="stale-state-id")
+
+    trace = run_decision_trace(authority, state)
+
+    assert trace.selection is None
+    assert trace.failure is not None
+    assert trace.failure["stage"] == "validation"
+    assert trace.failure["status"] == ResultStatus.VALIDATION_FAILURE.value
+    assert trace.generation["decision_status"] == ResultStatus.VALIDATION_FAILURE.value
 
 
 def test_player_legal_and_debug_traces_identify_profile_and_shared_raw_capture():

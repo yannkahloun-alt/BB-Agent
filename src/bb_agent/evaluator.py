@@ -1052,11 +1052,16 @@ def evaluate_decision(
                 "state",
             )
         )
+    except Exception:
+        record_timing("validation", stage_started)
+        raise
     record_timing("validation", stage_started)
 
     stage_started = perf_counter_ns()
-    coverage = authority.classify(normalized)
-    record_timing("coverage", stage_started)
+    try:
+        coverage = authority.classify(normalized)
+    finally:
+        record_timing("coverage", stage_started)
     record_counter("coverage_problem_count", len(coverage.problems))
     if coverage.status is not ResultStatus.SUCCESS:
         return Result(
@@ -1087,24 +1092,25 @@ def evaluate_decision(
     epistemic_input_scenarios = 0
     for action in actions:
         stage_started = perf_counter_ns()
-        feature_result = extract_candidate_features(
-            authority,
-            normalized,
-            action.action_id,
-        )
-        if feature_result.value is None:
-            record_timing("outcome_and_features", stage_started)
-            record_counter("evaluated_candidate_count", len(evaluations))
-            return Result(
-                feature_result.status,
-                problems=feature_result.problems,
+        try:
+            feature_result = extract_candidate_features(
+                authority,
+                normalized,
+                action.action_id,
             )
-        scenario_result = extract_candidate_feature_scenarios(
-            authority,
-            normalized,
-            action.action_id,
-        )
-        record_timing("outcome_and_features", stage_started)
+            if feature_result.value is None:
+                record_counter("evaluated_candidate_count", len(evaluations))
+                return Result(
+                    feature_result.status,
+                    problems=feature_result.problems,
+                )
+            scenario_result = extract_candidate_feature_scenarios(
+                authority,
+                normalized,
+                action.action_id,
+            )
+        finally:
+            record_timing("outcome_and_features", stage_started)
         if scenario_result.value is None:
             record_counter("evaluated_candidate_count", len(evaluations))
             return Result(

@@ -303,7 +303,7 @@ def _coerce_source(
 def _safe_normalized_state(state: TacticalState) -> TacticalState | None:
     try:
         return state.normalized()
-    except (TypeError, ValueError):
+    except Exception:
         return None
 
 
@@ -315,7 +315,7 @@ def _state_payload(
         value = _jsonify(candidate.to_dict())
         assert isinstance(value, dict)
         return value
-    except (TypeError, ValueError, AssertionError):
+    except Exception:
         return {
             "contract_version": getattr(candidate, "contract_version", "unknown"),
             "state_id": getattr(candidate, "state_id", ""),
@@ -424,6 +424,7 @@ def _candidate_trace(
             deterministic_costs[field_name] = action.get(field_name)
     return {
         "action_id": candidate.action_id,
+        "coverage_status": "SUPPORTED",
         "action": action,
         "deterministic_costs": deterministic_costs,
         "outcome": _jsonify(outcome),
@@ -475,6 +476,19 @@ def _failure_stage(status: ResultStatus, timings: Mapping[str, int]) -> str:
         return "outcome_and_features"
     if "coverage" in timings:
         return "coverage"
+    return "evaluation"
+
+
+def _exception_stage(timings: Mapping[str, int]) -> str:
+    for stage in (
+        "selection",
+        "scoring",
+        "outcome_and_features",
+        "coverage",
+        "validation",
+    ):
+        if stage in timings:
+            return stage
     return "evaluation"
 
 
@@ -589,7 +603,7 @@ def run_decision_trace(
         }
     else:
         failure = {
-            "stage": "evaluation",
+            "stage": _exception_stage(timings),
             "status": "EVALUATION_EXCEPTION",
             "problems": [
                 {
