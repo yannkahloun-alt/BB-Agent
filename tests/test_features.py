@@ -1,7 +1,5 @@
 from dataclasses import fields, replace
 
-import pytest
-
 from bb_agent.features import extract_candidate_features
 from bb_agent.results import ResultStatus
 from bb_agent.tactical_state import (
@@ -36,10 +34,9 @@ def _rebuild(state: TacticalState, **changes) -> TacticalState:
     return TacticalState.create(**values)
 
 
-def _known_position(actor: Combatant, tile_id: str, *, relation=None) -> Combatant:
+def _known_position(actor: Combatant, tile_id: str) -> Combatant:
     return replace(
         actor,
-        relation=actor.relation if relation is None else relation,
         position=KnownValue.exact(tile_id),
         visible=True,
         life_state=LifeState.ALIVE,
@@ -86,11 +83,7 @@ def _formation_state(
     elevations: dict[str, int] | None = None,
 ) -> TacticalState:
     authority = _authority()
-    move = replace(
-        _move_action(destination=destination, path=(destination,)),
-        action_id=f"move:{start}:{destination}",
-    )
-    base = _snapshot(authority, move)
+    base = _snapshot(authority, _move_action())
     brother = next(actor for actor in base.combatants if actor.actor_id == "brother")
     enemy = next(actor for actor in base.combatants if actor.actor_id == "enemy")
     ally = replace(
@@ -117,6 +110,7 @@ def _formation_state(
         "escape": (1, 1),
         "rear_escape": (-1, 1),
     }
+    move = _move_action(destination=destination, path=(destination,))
     return _snapshot(
         authority,
         move,
@@ -137,7 +131,9 @@ def _features(state: TacticalState):
 
 def test_zero_damage_move_can_create_protection_position_and_future_capacity():
     state = _formation_state(
-        start="flank", destination="screen", elevations={"screen": 1}
+        start="flank",
+        destination="screen",
+        elevations={"screen": 1},
     )
 
     features = _features(state)
@@ -176,11 +172,7 @@ def test_high_ground_and_contact_elevation_are_explicit():
 
 def test_surround_pressure_is_separate_from_unproven_zoc_capability():
     authority = _authority()
-    move = replace(
-        _move_action(destination="center", path=("center",)),
-        action_id="move:center",
-    )
-    base = _snapshot(authority, move)
+    base = _snapshot(authority, _move_action())
     brother = next(actor for actor in base.combatants if actor.actor_id == "brother")
     enemy = next(actor for actor in base.combatants if actor.actor_id == "enemy")
     ally = replace(
@@ -199,13 +191,13 @@ def test_surround_pressure_is_separate_from_unproven_zoc_capability():
     coordinates = {
         "center": (0, 0),
         "start": (-1, 1),
-        "ally": (-1, 0),
+        "ally": (1, -1),
         "enemy-1": (1, 0),
         "enemy-2": (0, 1),
     }
     state = _snapshot(
         authority,
-        move,
+        _move_action(destination="center", path=("center",)),
         information_profile=InformationProfile.OMNISCIENT_DEBUG,
         combatants=actors,
         tiles=_tiles(coordinates, actors),
@@ -222,25 +214,29 @@ def test_surround_pressure_is_separate_from_unproven_zoc_capability():
 
 def test_fat_heavy_action_reduces_headroom_and_locks_current_cost_templates():
     authority = _authority()
-    reload_action = replace(_resource_action("actives.reload_bolt"), action_id="reload")
-    move = replace(
-        _move_action(destination="east", path=("east",), fatigue=10),
-        action_id="move:expensive",
-    )
+    reload_action = _resource_action("actives.reload_bolt")
+    move = _move_action(destination="east", path=("east",), fatigue=10)
     state = _snapshot(authority, reload_action, move)
-    brother = next(actor for actor in state.combatants if actor.actor_id == "brother")
     actors = tuple(
         replace(
             actor,
-            resources=replace(actor.resources, fatigue_capacity=KnownValue.exact(25)),
+            resources=replace(
+                actor.resources,
+                fatigue_capacity=KnownValue.exact(25),
+            ),
         )
-        if actor.actor_id == brother.actor_id
+        if actor.actor_id == "brother"
         else actor
         for actor in state.combatants
     )
     state = _rebuild(state, combatants=actors)
+    reload_id = next(
+        action.action_id
+        for action in state.action_affordances.actions
+        if action.skill_id == "actives.reload_bolt"
+    )
 
-    result = extract_candidate_features(authority, state, "reload")
+    result = extract_candidate_features(authority, state, reload_id)
 
     assert result.status is ResultStatus.SUCCESS
     assert result.value is not None
@@ -252,9 +248,9 @@ def test_fat_heavy_action_reduces_headroom_and_locks_current_cost_templates():
     assert result.value.future_capacity.ap_fat_locked_template_count.expected == 2
 
 
-def test_ranged_los_exposure_uses_known_blocking_and_never_invents_attack_odds():
+def test_ranged_los_exposure_uses_known_blocking_without_attack_odds():
     authority = _authority()
-    wait = replace(_wait(), action_id="wait")
+    wait = _wait()
     base = _snapshot(authority, wait)
     brother = next(actor for actor in base.combatants if actor.actor_id == "brother")
     enemy = next(actor for actor in base.combatants if actor.actor_id == "enemy")
@@ -284,35 +280,35 @@ def test_ranged_los_exposure_uses_known_blocking_and_never_invents_attack_odds()
 
 def test_safe_and_unsafe_repositioning_preserve_aoo_consequences():
     authority = _authority()
-    safe = _movement_state(
-        authority,
-        replace(_move_action(), action_id="move:safe"),
-        enemy_far=True,
-    )
+    safe = _movement_state(authority, _move_action(), enemy_far=True)
     unsafe = _movement_state(
         authority,
-        replace(
-            _move_action(reactions=(_reaction(),)), action_id="move:unsafe"
-        ),
+        _move_action(reactions=(_reaction(),)),
     )
+    safe_id = safe.action_affordances.actions[0].action_id
+    unsafe_id = unsafe.action_affordances.actions[0].action_id
 
-    safe_result = extract_candidate_features(authority, safe, "move:safe")
-    unsafe_result = extract_candidate_features(authority, unsafe, "move:unsafe")
+    safe_result = extract_candidate_features(authority, safe, safe_id)
+    unsafe_result = extract_candidate_features(authority, unsafe, unsafe_id)
 
     assert safe_result.status is ResultStatus.SUCCESS
     assert unsafe_result.status is ResultStatus.SUCCESS
     assert safe_result.value is not None
     assert unsafe_result.value is not None
     assert safe_result.value.mobility.movement_completion_probability.expected == 1
-    assert safe_result.value.friendly_harm.movement_interruption_probability.expected == 0
+    assert (
+        safe_result.value.friendly_harm.movement_interruption_probability.expected == 0
+    )
     assert unsafe_result.value.mobility.movement_completion_probability.expected < 1
-    assert unsafe_result.value.friendly_harm.movement_interruption_probability.expected > 0
+    assert (
+        unsafe_result.value.friendly_harm.movement_interruption_probability.expected > 0
+    )
     assert unsafe_result.value.friendly_harm.expected_self_hp_damage.maximum > 0
 
 
 def test_uncertain_hostile_position_stays_a_threat_range_without_midpoint():
     authority = _authority()
-    wait = replace(_wait(), action_id="wait")
+    wait = _wait()
     base = _snapshot(authority, wait)
     brother = next(actor for actor in base.combatants if actor.actor_id == "brother")
     enemy = next(actor for actor in base.combatants if actor.actor_id == "enemy")
@@ -351,11 +347,9 @@ def test_uncertain_hostile_position_stays_a_threat_range_without_midpoint():
 def test_attack_enemy_effect_and_wait_end_turn_tempo_are_raw_not_scored():
     authority = _authority()
     attack_state = _ordinary_attack_state(authority)
-    attack_result = extract_candidate_features(
-        authority,
-        attack_state,
-        attack_state.action_affordances.actions[0].action_id,
-    )
+    attack_id = attack_state.action_affordances.actions[0].action_id
+    attack_result = extract_candidate_features(authority, attack_state, attack_id)
+
     assert attack_result.status is ResultStatus.SUCCESS
     assert attack_result.value is not None
     assert attack_result.value.enemy_effect.expected_hp_damage.expected > 0
@@ -364,16 +358,13 @@ def test_attack_enemy_effect_and_wait_end_turn_tempo_are_raw_not_scored():
     assert attack_result.value.resources.remaining_action_points.expected == 5
     assert attack_result.value.resources.fatigue.expected == 10
 
-    wait_state = _snapshot(authority, replace(_wait(), action_id="wait"))
+    wait_state = _snapshot(authority, _wait())
     wait_features = _features(wait_state)
     assert wait_features.tempo.actor_has_waited.expected == 1
     assert wait_features.tempo.actor_may_wait.expected == 0
     assert wait_features.tempo.turn_ended.expected == 0
 
-    end_state = _snapshot(
-        authority,
-        replace(_wait(ActionKind.END_TURN), action_id="end-turn"),
-    )
+    end_state = _snapshot(authority, _wait(ActionKind.END_TURN))
     end_features = _features(end_state)
     assert end_features.tempo.turn_ended.expected == 1
 
