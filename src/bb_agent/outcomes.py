@@ -9,6 +9,7 @@ from itertools import product
 from bb_agent.candidates import (
     CandidateReference,
     EvaluationInvalid,
+    EvaluationUncertaintyUnsupported,
     EvaluationUnsupported,
     evaluation_failure_result,
     resolve_current_candidate,
@@ -26,7 +27,6 @@ from bb_agent.tactical_state import (
     ContingentReaction,
     InformationProfile,
     Representation,
-    ResolvedPreviewValue,
     TacticalState,
 )
 
@@ -110,9 +110,18 @@ class _AttackEvaluationContext:
     actor_fatigue: int | None
     resolution_ledgers: tuple[tuple[str, ResolutionLedger], ...]
 
+    @property
+    def actor_id(self) -> str:
+        """Compatibility name used by the existing transition test seam."""
+        return self.attacker_id
+
 
 def _unsupported(message: str, context: _AttackEvaluationContext | str) -> None:
-    path = context.problem_path if isinstance(context, _AttackEvaluationContext) else context
+    path = (
+        context.problem_path
+        if isinstance(context, _AttackEvaluationContext)
+        else context
+    )
     raise EvaluationUnsupported(message, path=path, mechanic_id="ordinary_attack")
 
 
@@ -157,8 +166,11 @@ def _values(value, label: str, path: str) -> tuple[tuple[int, float | None], ...
         if not isinstance(value.minimum, int) or not isinstance(value.maximum, int):
             _unsupported(f"{label} range must have integer endpoints", path)
         return tuple((item, None) for item in range(value.minimum, value.maximum + 1))
-    _unsupported(f"{label} is unknown and cannot be evaluated", path)
-    raise AssertionError("unreachable")
+    raise EvaluationUncertaintyUnsupported(
+        f"{label} is unknown and cannot be evaluated",
+        path=path,
+        mechanic_id="ordinary_attack",
+    )
 
 
 def _advance_ledger(
@@ -276,7 +288,10 @@ def _reaction_attack_context(
             mechanic_id="ordinary_attack",
         )
     return _AttackEvaluationContext(
-        f"{move_action_id}:aoo:{reaction.path_step_tile_id}:{reaction.reacting_actor_id}",
+        (
+            f"{move_action_id}:aoo:{reaction.path_step_tile_id}:"
+            f"{reaction.reacting_actor_id}"
+        ),
         path,
         reaction.reacting_actor_id,
         target_actor_id,
@@ -374,16 +389,22 @@ def _evaluate_ordinary_attack_context(
     if family.status is not CoverageStatus.SUPPORTED:
         _unsupported("ordinary attack is not covered by the active manifest", context)
     actor = next(
-        (item for item in state.combatants if item.actor_id == context.attacker_id), None
+        (item for item in state.combatants if item.actor_id == context.attacker_id),
+        None,
     )
     target = next(
         (item for item in state.combatants if item.actor_id == context.target_actor_id),
         None,
     )
     if actor is None or target is None:
-        _invalid("ordinary attack actor or target is absent from canonical state", context.problem_path)
+        _invalid(
+            "ordinary attack actor or target is absent from canonical state",
+            context.problem_path,
+        )
     if actor.effects or target.effects or target.equipment:
-        _unsupported("ordinary attack has unmodelled effects or target equipment", context)
+        _unsupported(
+            "ordinary attack has unmodelled effects or target equipment", context
+        )
     for combatant in (actor, target):
         if (
             combatant.perks.representation is not Representation.EXACT
@@ -408,9 +429,9 @@ def _evaluate_ordinary_attack_context(
     weapon_entry = authority.catalog.entry(weapon.content.value)
     skill_entry = authority.catalog.entry(context.skill_id)
     if (
-        weapon_entry is None
+        weapon.content.value != "weapon.hand_axe"
+        or weapon_entry is None
         or skill_entry is None
-        or weapon_entry.family_id != "ordinary_attack"
         or skill_entry.family_id != "ordinary_attack"
     ):
         _unsupported("weapon or skill damage profile is unsupported", context)
@@ -447,7 +468,9 @@ def _evaluate_ordinary_attack_context(
                 for branch in branches
             )
     if scenarios and integrated:
-        _unsupported("mixed weighted and envelope target knowledge is unsupported", context)
+        _unsupported(
+            "mixed weighted and envelope target knowledge is unsupported", context
+        )
     return AttackOutcome(
         context.evaluation_id,
         MODEL_VERSION,
@@ -466,19 +489,6 @@ def _evaluate_ordinary_attack_context(
         ),
         resolution_ledgers=context.resolution_ledgers,
     )
-
-
-def _evaluate_contingent_ordinary_attack(
-    authority: MechanicsAuthority,
-    state: TacticalState,
-    move_action_id: str,
-    reaction: ContingentReaction,
-    target_actor_id: str,
-) -> AttackOutcome:
-    """Evaluate one supplied AOO without synthesizing an enemy current action."""
-
-    context = _reaction_attack_context(move_action_id, reaction, target_actor_id)
-    return _evaluate_ordinary_attack_context(authority, state, context)
 
 
 def evaluate_ordinary_attack(
