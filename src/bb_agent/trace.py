@@ -37,7 +37,9 @@ def _jsonify(value: Any) -> JsonValue:
     if isinstance(value, Enum):
         return value.value
     if is_dataclass(value):
-        return {field.name: _jsonify(getattr(value, field.name)) for field in fields(value)}
+        return {
+            field.name: _jsonify(getattr(value, field.name)) for field in fields(value)
+        }
     if isinstance(value, Mapping):
         result: dict[str, JsonValue] = {}
         for key, child in value.items():
@@ -101,7 +103,9 @@ class DecisionTrace:
         canonical_json_bytes(self.performance)
         expected = canonical_sha256(self._fingerprint_payload())
         if self.output_fingerprint != expected:
-            raise ValueError("decision trace output_fingerprint does not match semantic output")
+            raise ValueError(
+                "decision trace output_fingerprint does not match semantic output"
+            )
         expected_trace_id = canonical_sha256(
             {
                 "trace_version": self.trace_version,
@@ -289,7 +293,9 @@ def _coerce_source(
         return source.fixture_id, source.state
     if isinstance(source, TacticalState):
         return None, source
-    raise TypeError("decision trace source must be FixtureEnvelope, ReplayInput, or TacticalState")
+    raise TypeError(
+        "decision trace source must be FixtureEnvelope, ReplayInput, or TacticalState"
+    )
 
 
 def _safe_normalized_state(state: TacticalState) -> TacticalState | None:
@@ -299,7 +305,9 @@ def _safe_normalized_state(state: TacticalState) -> TacticalState | None:
         return None
 
 
-def _state_payload(state: TacticalState, normalized: TacticalState | None) -> dict[str, JsonValue]:
+def _state_payload(
+    state: TacticalState, normalized: TacticalState | None
+) -> dict[str, JsonValue]:
     candidate = normalized if normalized is not None else state
     try:
         value = _jsonify(candidate.to_dict())
@@ -354,7 +362,10 @@ def _engine_payload(
         else []
     )
     sample_count = (
-        sum(candidate.features.outcome_facts.sample_count for candidate in evaluation.candidates)
+        sum(
+            candidate.features.outcome_facts.sample_count
+            for candidate in evaluation.candidates
+        )
         if evaluation is not None
         else 0
     )
@@ -386,7 +397,9 @@ def _actions_from_state_payload(
     if not isinstance(affordances, Mapping):
         return ()
     actions = affordances.get("actions")
-    if not isinstance(actions, Sequence) or isinstance(actions, str | bytes | bytearray):
+    if not isinstance(actions, Sequence) or isinstance(
+        actions, str | bytes | bytearray
+    ):
         return ()
     return tuple(_object(action, "action") for action in actions)
 
@@ -425,8 +438,7 @@ def _selection_payload(evaluation: DecisionEvaluation) -> dict[str, JsonValue]:
             "action_id": second.action_id,
             "ranking_value_delta": winner.ranking_value - second.ranking_value,
             "tail_risk_delta": (
-                winner.tail_risk.selection_penalty
-                - second.tail_risk.selection_penalty
+                winner.tail_risk.selection_penalty - second.tail_risk.selection_penalty
             ),
         }
     return {
@@ -523,7 +535,9 @@ def run_decision_trace(
     problems = tuple(result.problems) if result is not None else ()
     status = result.status if result is not None else None
     generation = {
-        "decision_status": status.value if status is not None else "EVALUATION_EXCEPTION",
+        "decision_status": status.value
+        if status is not None
+        else "EVALUATION_EXCEPTION",
         "legal_candidates": list(actions),
         "legal_candidate_count": len(actions),
         "rejected_probe_counts": {},
@@ -623,10 +637,16 @@ def _profile_from_trace(engine: Mapping[str, JsonValue]) -> EvaluationProfile:
     weights_data = _object(profile.get("weights"), "evaluation_profile.weights")
     scales_data = _object(profile.get("scales"), "evaluation_profile.scales")
     weights = EvaluationWeights(
-        **{field.name: float(weights_data[field.name]) for field in fields(EvaluationWeights)}
+        **{
+            field.name: float(weights_data[field.name])
+            for field in fields(EvaluationWeights)
+        }
     )
     scales = EvaluationScales(
-        **{field.name: float(scales_data[field.name]) for field in fields(EvaluationScales)}
+        **{
+            field.name: float(scales_data[field.name])
+            for field in fields(EvaluationScales)
+        }
     )
     threshold = profile.get("max_self_death_probability")
     return EvaluationProfile(
@@ -691,9 +711,15 @@ def replay_decision_trace(
     expected_ranking = (
         tuple(expected.selection.get("ranking", ())) if expected.selection else ()
     )
-    actual_ranking = tuple(actual.selection.get("ranking", ())) if actual.selection else ()
-    expected_chosen = expected.selection.get("chosen_action_id") if expected.selection else None
-    actual_chosen = actual.selection.get("chosen_action_id") if actual.selection else None
+    actual_ranking = (
+        tuple(actual.selection.get("ranking", ())) if actual.selection else ()
+    )
+    expected_chosen = (
+        expected.selection.get("chosen_action_id") if expected.selection else None
+    )
+    actual_chosen = (
+        actual.selection.get("chosen_action_id") if actual.selection else None
+    )
     matches = expected.output_fingerprint == actual.output_fingerprint
     return TraceReplayResult(
         matches,
@@ -756,7 +782,9 @@ def compare_traces(before: DecisionTrace, after: DecisionTrace) -> TraceDiff:
         tuple(before.selection.get("ranking", ())) if before.selection else ()
     )
     after_ranking = tuple(after.selection.get("ranking", ())) if after.selection else ()
-    before_rank = {str(action_id): rank for rank, action_id in enumerate(before_ranking)}
+    before_rank = {
+        str(action_id): rank for rank, action_id in enumerate(before_ranking)
+    }
     after_rank = {str(action_id): rank for rank, action_id in enumerate(after_ranking)}
     rank_deltas = tuple(
         RankDelta(action_id, before_rank.get(action_id), after_rank.get(action_id))
@@ -783,7 +811,9 @@ def compare_traces(before: DecisionTrace, after: DecisionTrace) -> TraceDiff:
                     )
                 )
 
-    before_chosen = before.selection.get("chosen_action_id") if before.selection else None
+    before_chosen = (
+        before.selection.get("chosen_action_id") if before.selection else None
+    )
     after_chosen = after.selection.get("chosen_action_id") if after.selection else None
     return TraceDiff(
         before_chosen != after_chosen,

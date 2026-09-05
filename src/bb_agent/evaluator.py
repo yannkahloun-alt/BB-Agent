@@ -8,8 +8,10 @@ Ranking-affecting policy is explicit and versioned so #22 can trace and replay i
 from __future__ import annotations
 
 import math
+from collections.abc import Callable
 from dataclasses import asdict, dataclass, replace
 from itertools import product
+from time import perf_counter_ns
 
 from bb_agent.features import (
     EpistemicAssignment,
@@ -28,6 +30,9 @@ MODEL_VERSION = "risk-evaluator.v1"
 CONFIG_VERSION = "m1-evaluation-profile.v1"
 UNIT_VALUE_POLICY_VERSION = "m1-common-preservation.v1"
 _TOLERANCE = 1e-9
+
+StageTimingSink = Callable[[str, int], None]
+CounterSink = Callable[[str, int], None]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1016,12 +1021,30 @@ def evaluate_decision(
     state: TacticalState,
     profile: EvaluationProfile = DEFAULT_EVALUATION_PROFILE,
     unit_value_policy: UnitValuePolicy = DEFAULT_UNIT_VALUE_POLICY,
+    *,
+    timing_sink: StageTimingSink | None = None,
+    counter_sink: CounterSink | None = None,
 ) -> Result[DecisionEvaluation]:
-    """Evaluate the complete canonical current affordance set fail-closed."""
+    """Evaluate the complete canonical current affordance set fail-closed.
 
+    Optional diagnostics sinks observe elapsed stage time and deterministic
+    counters without becoming ranking inputs or part of decision identity.
+    """
+
+    def record_timing(stage: str, started_ns: int) -> None:
+        if timing_sink is not None:
+            timing_sink(stage, perf_counter_ns() - started_ns)
+
+    def record_counter(name: str, value: int) -> None:
+        if counter_sink is not None:
+            counter_sink(name, value)
+
+    stage_started = perf_counter_ns()
     try:
         normalized = state.normalized()
     except (TypeError, ValueError) as exc:
+        record_timing("validation", stage_started)
+        record_counter("validation_problem_count", 1)
         return Result.validation_failure(
             Problem(
                 ErrorCode.VALIDATION_FAILED,
@@ -1029,14 +1052,19 @@ def evaluate_decision(
                 "state",
             )
         )
+    record_timing("validation", stage_started)
 
+    stage_started = perf_counter_ns()
     coverage = authority.classify(normalized)
+    record_timing("coverage", stage_started)
+    record_counter("coverage_problem_count", len(coverage.problems))
     if coverage.status is not ResultStatus.SUCCESS:
         return Result(
             coverage.status,
             problems=coverage.problems,
         )
     if not normalized.action_affordances.actions:
+        record_counter("validation_problem_count", 1)
         return Result.validation_failure(
             Problem(
                 ErrorCode.VALIDATION_FAILED,
@@ -1055,60 +1083,79 @@ def evaluate_decision(
         normalized.action_affordances.actions,
         key=lambda candidate: candidate.action_id,
     )
+    record_counter("legal_candidate_count", len(actions))
+    epistemic_input_scenarios = 0
     for action in actions:
+        stage_started = perf_counter_ns()
         feature_result = extract_candidate_features(
             authority,
             normalized,
             action.action_id,
         )
         if feature_result.value is None:
+            record_timing("outcome_and_features", stage_started)
+            record_counter("evaluated_candidate_count", len(evaluations))
             return Result(
                 feature_result.status,
                 problems=feature_result.problems,
             )
-        evaluations.append(
-            score_candidate_features(
-                feature_result.value,
-                action.actor_id,
-                profile,
-                unit_value_policy,
-            )
-        )
-
         scenario_result = extract_candidate_feature_scenarios(
             authority,
             normalized,
             action.action_id,
         )
+        record_timing("outcome_and_features", stage_started)
         if scenario_result.value is None:
+            record_counter("evaluated_candidate_count", len(evaluations))
             return Result(
                 scenario_result.status,
                 problems=scenario_result.problems,
             )
         scenario_features[action.action_id] = scenario_result.value
-        scenario_evaluations[action.action_id] = tuple(
-            (
-                scenario.assignments,
+        epistemic_input_scenarios += len(scenario_result.value)
+
+        stage_started = perf_counter_ns()
+        try:
+            evaluations.append(
                 score_candidate_features(
-                    scenario.features,
+                    feature_result.value,
                     action.actor_id,
                     profile,
                     unit_value_policy,
-                ),
+                )
             )
-            for scenario in scenario_result.value
-        )
+            scenario_evaluations[action.action_id] = tuple(
+                (
+                    scenario.assignments,
+                    score_candidate_features(
+                        scenario.features,
+                        action.actor_id,
+                        profile,
+                        unit_value_policy,
+                    ),
+                )
+                for scenario in scenario_result.value
+            )
+        finally:
+            record_timing("scoring", stage_started)
+        record_counter("evaluated_candidate_count", len(evaluations))
 
-    selection = select_candidate_evaluations(
-        tuple(evaluations),
-        profile,
-    )
-    selection, epistemic_scenarios = _apply_epistemic_sensitivity(
-        selection,
-        scenario_features,
-        scenario_evaluations,
-        profile,
-    )
+    record_counter("epistemic_input_scenario_count", epistemic_input_scenarios)
+    stage_started = perf_counter_ns()
+    try:
+        selection = select_candidate_evaluations(
+            tuple(evaluations),
+            profile,
+        )
+        selection, epistemic_scenarios = _apply_epistemic_sensitivity(
+            selection,
+            scenario_features,
+            scenario_evaluations,
+            profile,
+        )
+    finally:
+        record_timing("selection", stage_started)
+    record_counter("epistemic_ranking_scenario_count", len(epistemic_scenarios))
     assert coverage.value is not None
     return Result.success(
         DecisionEvaluation(
