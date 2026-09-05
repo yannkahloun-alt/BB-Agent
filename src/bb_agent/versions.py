@@ -5,7 +5,6 @@ from dataclasses import asdict, dataclass
 from types import MappingProxyType
 from typing import Final
 
-# Trusted-head round trip for issue #23; removed in the next commit.
 
 @dataclass(frozen=True, slots=True)
 class ContractVersions:
