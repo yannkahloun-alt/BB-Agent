@@ -337,9 +337,7 @@ def _friendly_harm(
             "post-action HP",
             action,
         )
-        damage_by_branch.append(
-            (branch.probability, max(0, starting_hp - ending_hp))
-        )
+        damage_by_branch.append((branch.probability, max(0, starting_hp - ending_hp)))
         if branch.actor.life_state is not LifeState.ALIVE:
             death_probability += branch.probability
         if branch.interrupted:
@@ -356,10 +354,7 @@ def _friendly_harm(
         MetricRange.exact(interruption_probability),
         tuple(
             sorted(
-                {
-                    reaction.reacting_actor_id
-                    for reaction in action.contingent_reactions
-                }
+                {reaction.reacting_actor_id for reaction in action.contingent_reactions}
             )
         ),
     )
@@ -376,8 +371,7 @@ def _actor_domain(
         return None
     if position.representation is Representation.SET:
         if all(
-            isinstance(item, str) and item in tile_ids
-            for item in position.candidates
+            isinstance(item, str) and item in tile_ids for item in position.candidates
         ):
             return frozenset(position.candidates)
         return None
@@ -536,8 +530,10 @@ def _ranged_los_range(state: TacticalState, actor_tile_id: str) -> MetricRange:
         statuses = tuple(
             _line_status(state, actor_tile_id, tile_id) for tile_id in candidates
         )
-        if domain is not None and statuses and all(
-            status is _LineStatus.CLEAR for status in statuses
+        if (
+            domain is not None
+            and statuses
+            and all(status is _LineStatus.CLEAR for status in statuses)
         ):
             minimum += 1
         if any(status is not _LineStatus.BLOCKED for status in statuses):
@@ -574,8 +570,7 @@ def _elevation_contact_range(
                 else actor_tile.elevation < tile.elevation
             )
             matches.append(
-                _adjacent(tile_by_id, actor_tile_id, tile_id)
-                and elevation_matches
+                _adjacent(tile_by_id, actor_tile_id, tile_id) and elevation_matches
             )
         if domain is not None and matches and all(matches):
             minimum += 1
@@ -600,8 +595,7 @@ def _hostile_combatants(state: TacticalState) -> tuple[Combatant, ...]:
     return tuple(
         actor
         for actor in state.combatants
-        if actor.relation is Relation.HOSTILE
-        and actor.life_state is LifeState.ALIVE
+        if actor.relation is Relation.HOSTILE and actor.life_state is LifeState.ALIVE
     )
 
 
@@ -676,9 +670,7 @@ def _flanked_hostiles(state: TacticalState, actor_tile_id: str) -> MetricRange:
                 )
                 possible_support = possible_support or any(adjacency)
                 definite_support = definite_support or (
-                    ally_domain is not None
-                    and bool(adjacency)
-                    and all(adjacency)
+                    ally_domain is not None and bool(adjacency) and all(adjacency)
                 )
             possible_for_hostile = possible_for_hostile or possible_support
             definite_for_hostile = definite_for_hostile and definite_support
@@ -699,8 +691,7 @@ def _open_adjacent_tiles(
     other_domains = tuple(
         _actor_domain(other, tile_ids)
         for other in state.combatants
-        if other.actor_id != actor.actor_id
-        and other.life_state is LifeState.ALIVE
+        if other.actor_id != actor.actor_id and other.life_state is LifeState.ALIVE
     )
     minimum = 0
     maximum = 0
@@ -719,14 +710,10 @@ def _open_adjacent_tiles(
             domain is None or neighbor_id in domain for domain in other_domains
         )
         definitely_open = (
-            traversable_minimum
-            and not blocking_maximum
-            and not possibly_occupied
+            traversable_minimum and not blocking_maximum and not possibly_occupied
         )
         possibly_open = (
-            traversable_maximum
-            and not blocking_minimum
-            and not definitely_occupied
+            traversable_maximum and not blocking_minimum and not definitely_occupied
         )
         minimum += int(definitely_open)
         maximum += int(possibly_open)
@@ -985,15 +972,9 @@ def _tempo(
             if branch.actor_may_wait is None
             else branch.actor_may_wait
         )
-        waited.append(
-            (branch.probability, MetricRange.exact(int(actor_has_waited)))
-        )
-        may_wait.append(
-            (branch.probability, MetricRange.exact(int(actor_may_wait)))
-        )
-        ended.append(
-            (branch.probability, MetricRange.exact(int(branch.turn_ended)))
-        )
+        waited.append((branch.probability, MetricRange.exact(int(actor_has_waited))))
+        may_wait.append((branch.probability, MetricRange.exact(int(actor_may_wait))))
+        ended.append((branch.probability, MetricRange.exact(int(branch.turn_ended))))
     return TempoFeatures(
         _weighted_range(waited),
         _weighted_range(may_wait),
