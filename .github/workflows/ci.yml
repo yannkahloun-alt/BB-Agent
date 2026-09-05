@@ -50,20 +50,21 @@ jobs:
               '    if "damage_min" not in weapon_facts:\n'
               '        _unsupported("weapon damage profile is unsupported", context)\n'
           )
-          new = '''    required_weapon_facts = {
-              "damage_min",
-              "damage_max",
-              "armor_damage_multiplier",
-          }
-          required_skill_facts = {
-              "direct_damage_multiplier",
-              "additional_head_damage_multiplier",
-          }
-          if not required_weapon_facts <= weapon_facts.keys():
-              _unsupported("weapon damage profile is unsupported", context)
-          if not required_skill_facts <= skill_facts.keys():
-              _unsupported("skill damage profile is unsupported", context)
-          '''
+          new = (
+              '    required_weapon_facts = {\n'
+              '        "damage_min",\n'
+              '        "damage_max",\n'
+              '        "armor_damage_multiplier",\n'
+              '    }\n'
+              '    required_skill_facts = {\n'
+              '        "direct_damage_multiplier",\n'
+              '        "additional_head_damage_multiplier",\n'
+              '    }\n'
+              '    if not required_weapon_facts <= weapon_facts.keys():\n'
+              '        _unsupported("weapon damage profile is unsupported", context)\n'
+              '    if not required_skill_facts <= skill_facts.keys():\n'
+              '        _unsupported("skill damage profile is unsupported", context)\n'
+          )
           assert text.count(old) == 1, "ordinary attack fact boundary anchor changed"
           outcomes.write_text(text.replace(old, new, 1))
 
@@ -139,6 +140,7 @@ jobs:
           hardening.write_text(text.rstrip() + addition + "\n")
           PY
       - run: python -m ruff format src/bb_agent/outcomes.py src/bb_agent/transitions.py tests/test_mechanics.py tests/test_candidate_hardening.py
+      - run: python -m py_compile src/bb_agent/outcomes.py src/bb_agent/transitions.py tests/test_mechanics.py tests/test_candidate_hardening.py
       - run: python -m pytest tests/test_candidate_hardening.py tests/test_mechanics.py
       - run: python -m ruff check src/bb_agent/outcomes.py src/bb_agent/transitions.py tests/test_mechanics.py tests/test_candidate_hardening.py
       - run: python -m pyflakes src/bb_agent/outcomes.py src/bb_agent/transitions.py tests/test_mechanics.py tests/test_candidate_hardening.py
