@@ -10,7 +10,6 @@ from typing import Any
 
 from bb_agent.evaluator import (
     CONFIG_VERSION,
-    MODEL_VERSION as EVALUATOR_MODEL_VERSION,
     DEFAULT_EVALUATION_PROFILE,
     DEFAULT_UNIT_VALUE_POLICY,
     CandidateEvaluation,
@@ -20,6 +19,9 @@ from bb_agent.evaluator import (
     EvaluationWeights,
     UnitValuePolicy,
     evaluate_decision,
+)
+from bb_agent.evaluator import (
+    MODEL_VERSION as EVALUATOR_MODEL_VERSION,
 )
 from bb_agent.fixtures import FixtureEnvelope, ReplayInput
 from bb_agent.mechanics import MechanicsAuthority
@@ -127,7 +129,7 @@ class DecisionTrace:
         selection: dict[str, JsonValue] | None,
         failure: dict[str, JsonValue] | None,
         performance: dict[str, JsonValue],
-    ) -> "DecisionTrace":
+    ) -> DecisionTrace:
         payload = {
             "trace_version": TRACE_VERSION,
             "input_identity": {
@@ -199,7 +201,7 @@ class DecisionTrace:
         return canonical_json_bytes(self.to_dict()) + b"\n"
 
     @classmethod
-    def from_dict(cls, value: Mapping[str, JsonValue]) -> "DecisionTrace":
+    def from_dict(cls, value: Mapping[str, JsonValue]) -> DecisionTrace:
         required = {
             "trace_version",
             "trace_id",
@@ -237,7 +239,7 @@ class DecisionTrace:
         )
 
     @classmethod
-    def from_json_bytes(cls, payload: bytes | bytearray | str) -> "DecisionTrace":
+    def from_json_bytes(cls, payload: bytes | bytearray | str) -> DecisionTrace:
         try:
             decoded = json.loads(payload)
         except (TypeError, ValueError, json.JSONDecodeError) as exc:

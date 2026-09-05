@@ -154,8 +154,9 @@ def test_player_legal_and_debug_traces_identify_profile_and_shared_raw_capture()
 
 def test_trace_diff_reports_component_and_rank_deltas():
     authority = _authority()
-    state = _scenario_flip_state(authority, omniscient_hp=20)
-    baseline = EvaluationProfile(
+    before_state = _scenario_flip_state(authority, omniscient_hp=5)
+    after_state = _scenario_flip_state(authority, omniscient_hp=20)
+    profile = EvaluationProfile(
         weights=replace(
             DEFAULT_EVALUATION_PROFILE.weights,
             enemy_effect=1.0,
@@ -168,17 +169,13 @@ def test_trace_diff_reports_component_and_rank_deltas():
         uncertainty_weight=0.0,
         near_tie_margin=0.001,
     )
-    changed = replace(
-        baseline,
-        version="trace-diff-test.v2",
-        weights=replace(baseline.weights, enemy_effect=0.0),
-    )
 
-    before = run_decision_trace(authority, state, baseline)
-    after = run_decision_trace(authority, state, changed)
+    before = run_decision_trace(authority, before_state, profile)
+    after = run_decision_trace(authority, after_state, profile)
     diff = compare_traces(before, after)
 
     assert diff.output_fingerprint_changed is True
+    assert diff.chosen_action_changed is True
+    assert diff.rank_deltas
     assert diff.component_deltas
     assert any(delta.component_id == "enemy_effect" for delta in diff.component_deltas)
-    assert diff.rank_deltas or diff.chosen_action_changed
