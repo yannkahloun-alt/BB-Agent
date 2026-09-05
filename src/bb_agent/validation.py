@@ -470,6 +470,14 @@ def run_fixture_validation(
     assertions.append(_hard_assertion("exact_replay", replay_ok, replay_message))
 
     if expectations is None:
+        actual_status = str(trace.generation.get("decision_status") or "")
+        assertions.append(
+            _hard_assertion(
+                "expected_status",
+                actual_status == "SUCCESS",
+                f"decision status is {actual_status!r}; expected 'SUCCESS'",
+            )
+        )
         if normalized.metadata.review_status is not ReviewStatus.PROMOTED:
             assertions.append(
                 ValidationAssertion(
@@ -700,15 +708,14 @@ def _evaluate_expectations(
         if problem.get("mechanic_id") is not None
     }
 
-    if expectations.expected_status is not None:
-        results.append(
-            _hard_assertion(
-                "expected_status",
-                actual_status == expectations.expected_status,
-                f"decision status is {actual_status!r}; expected "
-                f"{expectations.expected_status!r}",
-            )
+    expected_status = expectations.expected_status or "SUCCESS"
+    results.append(
+        _hard_assertion(
+            "expected_status",
+            actual_status == expected_status,
+            f"decision status is {actual_status!r}; expected {expected_status!r}",
         )
+    )
 
     if expectations.has_ranking_assertions:
         results.append(

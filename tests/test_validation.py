@@ -248,6 +248,42 @@ def test_expected_incomplete_coverage_passes_but_ranking_fixture_fails_closed():
     )
 
 
+def test_nonranking_expectations_default_to_success_and_hard_fail_coverage():
+    authority = _authority()
+    state = _snapshot(authority, _wait(), _attack("mod.unknown_aoe"))
+    legal_ids = [action.action_id for action in state.action_affordances.actions]
+    payload = {
+        "version": EXPECTATION_VERSION,
+        "exact_legal_action_ids": legal_ids,
+    }
+    parsed = FixtureExpectations.from_json(payload)
+    assert parsed.expected_status is None
+    assert parsed.has_ranking_assertions is False
+
+    cases = (
+        (FixtureSeverity.CORE, ReviewStatus.PROMOTED),
+        (FixtureSeverity.CALIBRATION, ReviewStatus.REVIEWED),
+    )
+    for severity, review_status in cases:
+        fixture = _fixture(
+            state,
+            payload,
+            fixture_id=f"unexpected-coverage-{severity.value.lower()}",
+            severity=severity,
+            review_status=review_status,
+        )
+        report = run_fixture_validation(authority, fixture)
+
+        assert report.trace is not None
+        assert report.trace.generation["decision_status"] == "INCOMPLETE_COVERAGE"
+        assert report.passed is False
+        status = next(
+            item for item in report.assertions if item.assertion_id == "expected_status"
+        )
+        assert status.status is AssertionStatus.FAIL
+        assert status.gated is True
+
+
 def test_oracle_affordance_completeness_metadata_is_checked_generically():
     authority = _authority()
     state = _snapshot(authority, _wait())

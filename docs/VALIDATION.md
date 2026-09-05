@@ -91,7 +91,7 @@ For `CORE`, `QUALITY`, and `SAFETY_CRITICAL` fixtures, tactical expectation fail
 
 For `CALIBRATION` fixtures, those tactical-value/ranking disagreements are emitted as `REVIEW` findings and do not by themselves fail M1 acceptance. Structural/replay/legality/coverage correctness remains hard on every severity: an explicit decision-status assertion is always gated, and any fixture that asks for ranking semantics must actually produce a successful complete-coverage ranking.
 
-An `INCOMPLETE_COVERAGE` fixture can explicitly assert that status and its mechanic/error diagnostics. Any fixture carrying ranking assertions implicitly requires a successful complete-coverage ranking; the harness therefore fails closed rather than scoring around unsupported legal affordances.
+Decision status is always a hard assertion. When `expected_status` is omitted, the harness implicitly expects `SUCCESS`; omission never disables coverage gating. A dedicated failure/coverage fixture must explicitly declare its expected non-success status, such as `INCOMPLETE_COVERAGE`, together with any mechanic/error diagnostics it wants to assert. Any fixture carrying ranking assertions likewise requires a successful complete-coverage ranking, so the harness fails closed rather than scoring around unsupported legal affordances.
 
 ## Oracle/capture boundary
 
