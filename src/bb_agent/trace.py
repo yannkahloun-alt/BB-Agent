@@ -134,7 +134,6 @@ class DecisionTrace:
             "trace_version": TRACE_VERSION,
             "input_identity": {
                 "state_id": input.get("state_id"),
-                "raw_capture_id": input.get("raw_capture_id"),
                 "information_profile": input.get("information_profile"),
                 "ruleset_content_fingerprint": input.get("ruleset_content_fingerprint"),
             },
@@ -170,7 +169,6 @@ class DecisionTrace:
             "trace_version": self.trace_version,
             "input_identity": {
                 "state_id": self.input.get("state_id"),
-                "raw_capture_id": self.input.get("raw_capture_id"),
                 "information_profile": self.input.get("information_profile"),
                 "ruleset_content_fingerprint": self.input.get(
                     "ruleset_content_fingerprint"
@@ -479,19 +477,6 @@ def _failure_stage(status: ResultStatus, timings: Mapping[str, int]) -> str:
     return "evaluation"
 
 
-def _exception_stage(timings: Mapping[str, int]) -> str:
-    for stage in (
-        "selection",
-        "scoring",
-        "outcome_and_features",
-        "coverage",
-        "validation",
-    ):
-        if stage in timings:
-            return stage
-    return "evaluation"
-
-
 def run_decision_trace(
     authority: MechanicsAuthority,
     source: FixtureEnvelope | ReplayInput | TacticalState,
@@ -509,9 +494,14 @@ def run_decision_trace(
     fixture_id, state = _coerce_source(source)
     timings: dict[str, int] = {}
     counters: dict[str, int] = {}
+    current_stage = "evaluation"
 
     def timing_sink(stage: str, elapsed_ns: int) -> None:
         timings[stage] = timings.get(stage, 0) + elapsed_ns
+
+    def stage_observer(stage: str) -> None:
+        nonlocal current_stage
+        current_stage = stage
 
     def counter_sink(name: str, value: int) -> None:
         counters[name] = value
@@ -525,6 +515,7 @@ def run_decision_trace(
             profile,
             unit_value_policy,
             timing_sink=timing_sink,
+            stage_observer=stage_observer,
             counter_sink=counter_sink,
         )
     except Exception as exc:  # Trace API preserves unexpected evaluation failures.
@@ -603,7 +594,7 @@ def run_decision_trace(
         }
     else:
         failure = {
-            "stage": _exception_stage(timings),
+            "stage": current_stage,
             "status": "EVALUATION_EXCEPTION",
             "problems": [
                 {
@@ -767,6 +758,20 @@ def _evaluation_by_action(trace: DecisionTrace) -> dict[str, dict[str, JsonValue
     return result
 
 
+def _legal_candidate_ids(trace: DecisionTrace) -> set[str]:
+    actions = trace.generation.get("legal_candidates")
+    if not isinstance(actions, Sequence) or isinstance(
+        actions, str | bytes | bytearray
+    ):
+        return set()
+    return {
+        action_id
+        for action in actions
+        if isinstance(action, Mapping)
+        and isinstance((action_id := action.get("action_id")), str)
+    }
+
+
 def _component_values(candidate: dict[str, JsonValue]) -> dict[str, float]:
     evaluation = candidate.get("evaluation")
     if not isinstance(evaluation, Mapping):
@@ -800,8 +805,8 @@ def compare_traces(before: DecisionTrace, after: DecisionTrace) -> TraceDiff:
 
     before_by_action = _evaluation_by_action(before)
     after_by_action = _evaluation_by_action(after)
-    before_ids = set(before_by_action)
-    after_ids = set(after_by_action)
+    before_ids = _legal_candidate_ids(before)
+    after_ids = _legal_candidate_ids(after)
     added = tuple(sorted(after_ids - before_ids))
     removed = tuple(sorted(before_ids - after_ids))
 
@@ -820,7 +825,7 @@ def compare_traces(before: DecisionTrace, after: DecisionTrace) -> TraceDiff:
     )
 
     component_deltas = []
-    for action_id in sorted(before_ids & after_ids):
+    for action_id in sorted(before_by_action.keys() & after_by_action.keys()):
         left = _component_values(before_by_action[action_id])
         right = _component_values(after_by_action[action_id])
         for component_id in sorted(set(left) | set(right)):

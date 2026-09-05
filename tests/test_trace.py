@@ -2,13 +2,14 @@ from dataclasses import fields, replace
 
 import pytest
 
+import bb_agent.evaluator as evaluator_module
 from bb_agent.evaluator import (
     DEFAULT_EVALUATION_PROFILE,
     EvaluationProfile,
     evaluate_decision,
 )
 from bb_agent.results import ResultStatus
-from bb_agent.tactical_state import TacticalState
+from bb_agent.tactical_state import ActionKind, TacticalState
 from bb_agent.trace import (
     DecisionTrace,
     compare_traces,
@@ -205,3 +206,65 @@ def test_trace_diff_reports_component_and_rank_deltas():
     assert diff.rank_deltas
     assert diff.component_deltas
     assert any(delta.component_id == "enemy_effect" for delta in diff.component_deltas)
+
+
+def test_raw_capture_linkage_does_not_change_semantic_output_identity():
+    authority = _authority()
+    base = _ordinary_attack_state(authority)
+    first = run_decision_trace(authority, _with_raw_capture(base, "capture-a"))
+    second = run_decision_trace(authority, _with_raw_capture(base, "capture-b"))
+
+    assert first.input["state_id"] == second.input["state_id"]
+    assert first.input["raw_capture_id"] == "capture-a"
+    assert second.input["raw_capture_id"] == "capture-b"
+    assert first.output_fingerprint == second.output_fingerprint
+    assert first.trace_id == second.trace_id
+
+
+def test_trace_diff_uses_authoritative_legal_candidates_across_coverage_failure():
+    authority = _authority()
+    before = run_decision_trace(authority, _snapshot(authority, _wait()))
+    after = run_decision_trace(
+        authority,
+        _snapshot(authority, _wait(), _attack("mod.unknown_aoe")),
+    )
+
+    before_ids = {
+        action["action_id"] for action in before.generation["legal_candidates"]
+    }
+    after_ids = {action["action_id"] for action in after.generation["legal_candidates"]}
+    assert after.failure is not None
+    assert after.failure["status"] == ResultStatus.INCOMPLETE_COVERAGE.value
+    assert after.evaluations == ()
+
+    diff = compare_traces(before, after)
+
+    assert diff.added_action_ids == tuple(sorted(after_ids - before_ids))
+    assert diff.removed_action_ids == tuple(sorted(before_ids - after_ids))
+    assert diff.added_action_ids
+
+
+def test_unexpected_second_candidate_outcome_exception_keeps_current_stage(monkeypatch):
+    authority = _authority()
+    state = _snapshot(authority, _wait(), _wait(ActionKind.END_TURN))
+    original = evaluator_module.extract_candidate_features
+    calls = 0
+
+    def explode_on_second_candidate(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("second candidate outcome failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        evaluator_module,
+        "extract_candidate_features",
+        explode_on_second_candidate,
+    )
+
+    trace = run_decision_trace(authority, state)
+
+    assert trace.failure is not None
+    assert trace.failure["status"] == "EVALUATION_EXCEPTION"
+    assert trace.failure["stage"] == "outcome_and_features"

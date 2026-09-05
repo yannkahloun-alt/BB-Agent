@@ -32,6 +32,7 @@ UNIT_VALUE_POLICY_VERSION = "m1-common-preservation.v1"
 _TOLERANCE = 1e-9
 
 StageTimingSink = Callable[[str, int], None]
+StageObserver = Callable[[str], None]
 CounterSink = Callable[[str, int], None]
 
 
@@ -1023,6 +1024,7 @@ def evaluate_decision(
     unit_value_policy: UnitValuePolicy = DEFAULT_UNIT_VALUE_POLICY,
     *,
     timing_sink: StageTimingSink | None = None,
+    stage_observer: StageObserver | None = None,
     counter_sink: CounterSink | None = None,
 ) -> Result[DecisionEvaluation]:
     """Evaluate the complete canonical current affordance set fail-closed.
@@ -1035,10 +1037,15 @@ def evaluate_decision(
         if timing_sink is not None:
             timing_sink(stage, perf_counter_ns() - started_ns)
 
+    def record_stage(stage: str) -> None:
+        if stage_observer is not None:
+            stage_observer(stage)
+
     def record_counter(name: str, value: int) -> None:
         if counter_sink is not None:
             counter_sink(name, value)
 
+    record_stage("validation")
     stage_started = perf_counter_ns()
     try:
         normalized = state.normalized()
@@ -1057,6 +1064,7 @@ def evaluate_decision(
         raise
     record_timing("validation", stage_started)
 
+    record_stage("coverage")
     stage_started = perf_counter_ns()
     try:
         coverage = authority.classify(normalized)
@@ -1091,6 +1099,7 @@ def evaluate_decision(
     record_counter("legal_candidate_count", len(actions))
     epistemic_input_scenarios = 0
     for action in actions:
+        record_stage("outcome_and_features")
         stage_started = perf_counter_ns()
         try:
             feature_result = extract_candidate_features(
@@ -1120,6 +1129,7 @@ def evaluate_decision(
         scenario_features[action.action_id] = scenario_result.value
         epistemic_input_scenarios += len(scenario_result.value)
 
+        record_stage("scoring")
         stage_started = perf_counter_ns()
         try:
             evaluations.append(
@@ -1147,6 +1157,7 @@ def evaluate_decision(
         record_counter("evaluated_candidate_count", len(evaluations))
 
     record_counter("epistemic_input_scenario_count", epistemic_input_scenarios)
+    record_stage("selection")
     stage_started = perf_counter_ns()
     try:
         selection = select_candidate_evaluations(

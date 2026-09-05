@@ -46,6 +46,7 @@ version, canonical state identity, and output fingerprint.
 The following are deliberately excluded from deterministic output identity:
 
 - wall-clock timestamps;
+- `raw_capture_id` provenance/linkage labels (still retained in trace input);
 - measured stage durations;
 - host/CPU/OS metadata;
 - other runtime telemetry that cannot affect the recommendation.
@@ -115,7 +116,7 @@ Brothers' hidden future RNG stream.
 
 ## Regression comparison
 
-`compare_traces()` provides structured deltas for:
+`compare_traces()` uses `generation.legal_candidates` as the authoritative candidate set, including when coverage prevents evaluations, and provides structured deltas for:
 
 - added/removed candidate action IDs;
 - rank-position changes;
