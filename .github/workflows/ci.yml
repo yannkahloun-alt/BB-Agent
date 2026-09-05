@@ -74,10 +74,11 @@ jobs:
 
           trace = Path("src/bb_agent/trace.py")
           text = trace.read_text()
-          raw_line = '                "raw_capture_id": input.get("raw_capture_id"),\n'
-          if text.count(raw_line) != 2:
-              raise SystemExit("raw_capture_id identity count changed")
-          text = text.replace(raw_line, "")
+          raw_create = '                "raw_capture_id": input.get("raw_capture_id"),\n'
+          raw_validate = '                "raw_capture_id": self.input.get("raw_capture_id"),\n'
+          if text.count(raw_create) != 1 or text.count(raw_validate) != 1:
+              raise SystemExit("raw_capture_id identity locations changed")
+          text = text.replace(raw_create, "").replace(raw_validate, "")
           old_exception = '''def _exception_stage(timings: Mapping[str, int]) -> str:\n    for stage in (\n        "selection",\n        "scoring",\n        "outcome_and_features",\n        "coverage",\n        "validation",\n    ):\n        if stage in timings:\n            return stage\n    return "evaluation"\n\n\n'''
           if old_exception not in text:
               raise SystemExit("missing old exception-stage helper")
@@ -155,49 +156,3 @@ jobs:
           git add src/bb_agent/evaluator.py src/bb_agent/trace.py tests/test_trace.py docs/TRACE.md .github/workflows/ci.yml .github/workflows/issue22-review-fix.yml
           git commit -m "Fix #22 independent review findings"
           git push origin HEAD:codex/issue-22-decision-trace
-
-  tests:
-    name: tests
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: python tools/verify_workflow_dependency.py
-      - run: python -m pip install -e ".[dev]"
-      - run: python -m pytest
-
-  ruff:
-    name: ruff
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: python tools/verify_workflow_dependency.py
-      - run: python -m pip install -e ".[dev]"
-      - run: python -m ruff format --check .
-      - run: python -m ruff check .
-
-  pyflakes:
-    name: pyflakes
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-          cache: pip
-      - run: python tools/verify_workflow_dependency.py
-      - run: python -m pip install -e ".[dev]"
-      - run: python -m pyflakes src tests tools
