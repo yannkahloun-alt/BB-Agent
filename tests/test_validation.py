@@ -9,7 +9,7 @@ from bb_agent.fixtures import (
     ReviewStatus,
 )
 from bb_agent.tactical_state import ActionKind
-from bb_agent.trace import run_decision_trace
+from bb_agent.trace import DecisionTrace, run_decision_trace
 from bb_agent.validation import (
     EXPECTATION_VERSION,
     AssertionStatus,
@@ -20,7 +20,7 @@ from bb_agent.validation import (
     run_validation_corpus,
 )
 from test_evaluator import _scenario_flip_state
-from test_mechanics import _attack, _authority, _ordinary_attack_state, _snapshot, _wait
+from test_mechanics import _attack, _authority, _snapshot, _wait
 
 
 def _fixture(
@@ -57,6 +57,51 @@ def _evaluation_record(trace, action_id):
     return next(
         record for record in trace.evaluations if record["action_id"] == action_id
     )
+
+
+_UNSET = object()
+
+
+def _rebuild_trace(
+    trace,
+    *,
+    engine=None,
+    generation=None,
+    evaluations=None,
+    selection=_UNSET,
+):
+    selection_value = trace.selection if selection is _UNSET else selection
+    return DecisionTrace.create(
+        input=dict(trace.input),
+        engine=dict(trace.engine if engine is None else engine),
+        generation=dict(trace.generation if generation is None else generation),
+        evaluations=tuple(
+            dict(item)
+            for item in (trace.evaluations if evaluations is None else evaluations)
+        ),
+        selection=(None if selection_value is None else dict(selection_value)),
+        failure=None if trace.failure is None else dict(trace.failure),
+        performance=dict(trace.performance),
+    )
+
+
+def _versioned_engine(trace, suffix):
+    engine = dict(trace.engine)
+    engine["evaluation_config_version"] = (
+        str(engine.get("evaluation_config_version") or "config") + suffix
+    )
+    return engine
+
+
+def _swapped_selection(trace):
+    assert trace.selection is not None
+    ranking = list(trace.selection["ranking"])
+    assert len(ranking) >= 2
+    ranking[0], ranking[1] = ranking[1], ranking[0]
+    selection = dict(trace.selection)
+    selection["ranking"] = ranking
+    selection["chosen_action_id"] = ranking[0]
+    return selection
 
 
 def _enemy_effect_only_profile(*, version="m1-evaluation-profile.v1"):
@@ -260,76 +305,127 @@ def test_information_sensitive_expectation_uses_recorded_scenario_ranking():
 
 def test_regression_classification_distinguishes_frozen_categories():
     authority = _authority()
-    state = _ordinary_attack_state(authority)
+    state = _snapshot(authority, _wait(), _wait(ActionKind.END_TURN))
     before = run_decision_trace(authority, state)
     assert before.selection is not None
-    winner = before.selection["chosen_action_id"]
+    ranking = tuple(before.selection["ranking"])
+    assert len(ranking) == 2
+
     version_fixture = _fixture(
         state,
         {
             "version": EXPECTATION_VERSION,
-            "acceptable_top1": [winner],
+            "acceptable_top1": [before.selection["chosen_action_id"]],
             "allow_model_version_change": True,
         },
     )
-    after_version = run_decision_trace(
-        authority,
-        state,
-        replace(EvaluationProfile(), version="m1-evaluation-profile.test-v2"),
+    after_version = _rebuild_trace(
+        before,
+        engine=_versioned_engine(before, ".v2"),
     )
     intended = classify_trace_change(version_fixture, before, after_version)
     assert intended.kind is RegressionKind.INTENDED_MODEL_VERSION_CHANGE
 
-    profile = _enemy_effect_only_profile()
-    low = _scenario_flip_state(authority, omniscient_hp=5)
-    high = _scenario_flip_state(authority, omniscient_hp=20)
-    low_trace = run_decision_trace(authority, low, profile)
-    high_trace = run_decision_trace(authority, high, profile)
-    assert low_trace.selection is not None
-    assert high_trace.selection is not None
-    assert (
-        low_trace.selection["chosen_action_id"]
-        != high_trace.selection["chosen_action_id"]
+    acceptable_fixture = _fixture(
+        state,
+        {
+            "version": EXPECTATION_VERSION,
+            "acceptable_top1": list(ranking),
+            "allow_model_version_change": True,
+        },
+        fixture_id="acceptable-substitution",
     )
-    acceptable = [
-        low_trace.selection["chosen_action_id"],
-        high_trace.selection["chosen_action_id"],
-    ]
-    substitution_fixture = _fixture(
-        low,
-        {"version": EXPECTATION_VERSION, "acceptable_top1": acceptable},
+    after_substitution = _rebuild_trace(
+        before,
+        engine=_versioned_engine(before, ".substitution"),
+        selection=_swapped_selection(before),
     )
     substitution = classify_trace_change(
-        substitution_fixture,
-        low_trace,
-        high_trace,
+        acceptable_fixture,
+        before,
+        after_substitution,
     )
     assert substitution.kind is RegressionKind.ACCEPTABLE_SET_SUBSTITUTION
 
-    hard_fixture = _fixture(
-        low,
-        {
-            "version": EXPECTATION_VERSION,
-            "acceptable_top1": [low_trace.selection["chosen_action_id"]],
-        },
-        fixture_id="hard-regression",
+    same_engine_substitution = _rebuild_trace(
+        before,
+        selection=_swapped_selection(before),
     )
-    hard = classify_trace_change(hard_fixture, low_trace, high_trace)
-    assert hard.kind is RegressionKind.HARD_GATED_FAILURE
+    hard_same_engine = classify_trace_change(
+        acceptable_fixture,
+        before,
+        same_engine_substitution,
+    )
+    assert hard_same_engine.kind is RegressionKind.HARD_GATED_FAILURE
+
+    generation = dict(before.generation)
+    generation["legal_candidates"] = list(generation["legal_candidates"]) + [
+        {"action_id": "action:spurious-regression"}
+    ]
+    candidate_drift = _rebuild_trace(
+        before,
+        engine=_versioned_engine(before, ".candidate-drift"),
+        generation=generation,
+    )
+    hard_candidate = classify_trace_change(
+        acceptable_fixture,
+        before,
+        candidate_drift,
+    )
+    assert hard_candidate.kind is RegressionKind.HARD_GATED_FAILURE
+    assert hard_candidate.diff.added_action_ids == ("action:spurious-regression",)
+
+    evaluations = [dict(item) for item in before.evaluations]
+    target = dict(evaluations[0])
+    evaluation = dict(target["evaluation"])
+    components = list(evaluation["components"])
+    assert components
+    removed_component_id = components[0]["component_id"]
+    evaluation["components"] = components[1:]
+    target["evaluation"] = evaluation
+    evaluations[0] = target
+    component_drift = _rebuild_trace(
+        before,
+        engine=_versioned_engine(before, ".component-drift"),
+        evaluations=evaluations,
+    )
+    hard_component = classify_trace_change(
+        _fixture(
+            state, None, fixture_id="component-drift", review_status=ReviewStatus.DRAFT
+        ),
+        before,
+        component_drift,
+    )
+    assert hard_component.kind is RegressionKind.HARD_GATED_FAILURE
+    assert removed_component_id in hard_component.message
 
     calibration_fixture = _fixture(
-        low,
+        state,
         None,
         fixture_id="calibration-change",
         severity=FixtureSeverity.CALIBRATION,
         review_status=ReviewStatus.DRAFT,
     )
+    calibration_change = _rebuild_trace(
+        before,
+        engine=_versioned_engine(before, ".calibration"),
+        selection=_swapped_selection(before),
+    )
     calibration = classify_trace_change(
         calibration_fixture,
-        low_trace,
-        high_trace,
+        before,
+        calibration_change,
     )
     assert calibration.kind is RegressionKind.CALIBRATION_REVIEW_REQUIRED
+
+    other_state = _snapshot(authority, _wait())
+    other_trace = run_decision_trace(authority, other_state)
+    cross_state = classify_trace_change(
+        calibration_fixture,
+        before,
+        other_trace,
+    )
+    assert cross_state.kind is RegressionKind.HARD_GATED_FAILURE
 
 
 def test_corpus_summary_reports_taxonomy_severity_and_nonblocking_reviews():
