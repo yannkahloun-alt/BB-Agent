@@ -133,9 +133,7 @@ def _with_costs(
     if ap < 0 or fatigue > _exact(
         actor.resources.fatigue_capacity, "fatigue capacity", action
     ):
-        _unsupported(
-            action, "resolved action costs exceed actor resources", "transition"
-        )
+        _invalid(action, "resolved action costs exceed actor resources")
     return (
         replace(
             actor,

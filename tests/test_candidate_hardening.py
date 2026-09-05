@@ -4,6 +4,7 @@ import pytest
 
 import bb_agent.outcomes as outcomes
 import bb_agent.transitions as transitions
+from bb_agent.mechanics import MechanicsAuthority
 from bb_agent.outcomes import evaluate_ordinary_attack
 from bb_agent.results import ErrorCode, ResultStatus
 from bb_agent.tactical_state import (
@@ -355,3 +356,32 @@ def test_reaction_authority_changes_state_identity_not_command_identity():
         == game_state.action_affordances.actions[0].action_id
     )
     assert fixture_state.state_id != game_state.state_id
+
+
+def test_contingent_aoo_does_not_expand_with_future_ordinary_attack_catalog_entry():
+    authority = _authority()
+    chop = authority.catalog.entry("actives.chop")
+    assert chop is not None
+    future_skill = replace(chop, content_id="actives.future_attack")
+    future_authority = MechanicsAuthority(
+        replace(
+            authority.catalog,
+            entries=authority.catalog.entries + (future_skill,),
+        ),
+        authority.manifest,
+    )
+    reaction = replace(_reaction(), skill_id="actives.future_attack")
+    state = _movement_state(
+        future_authority,
+        _move_action(reactions=(reaction,)),
+    )
+
+    result = evaluate_transition(
+        future_authority,
+        state,
+        state.action_affordances.actions[0].action_id,
+    )
+
+    assert result.status is ResultStatus.INCOMPLETE_COVERAGE
+    assert result.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
+    assert "damage profile is unsupported" in result.problems[0].message

@@ -433,13 +433,26 @@ def _evaluate_ordinary_attack_context(
     if (
         weapon.content.value != "weapon.hand_axe"
         or weapon_entry is None
+        or context.skill_id != "actives.chop"
         or skill_entry is None
+        or skill_entry.category != "skill"
         or skill_entry.family_id != "ordinary_attack"
     ):
         _unsupported("weapon or skill damage profile is unsupported", context)
     weapon_facts, skill_facts = dict(weapon_entry.facts), dict(skill_entry.facts)
-    if "damage_min" not in weapon_facts:
+    required_weapon_facts = {
+        "damage_min",
+        "damage_max",
+        "armor_damage_multiplier",
+    }
+    required_skill_facts = {
+        "direct_damage_multiplier",
+        "additional_head_damage_multiplier",
+    }
+    if not required_weapon_facts <= weapon_facts.keys():
         _unsupported("weapon damage profile is unsupported", context)
+    if not required_skill_facts <= skill_facts.keys():
+        _unsupported("skill damage profile is unsupported", context)
     kwargs = dict(
         hit_chance=context.hit_chance,
         low=int(weapon_facts["damage_min"]),
