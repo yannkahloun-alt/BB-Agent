@@ -8,7 +8,7 @@ BB-Agent is in the M1 offline tactical decision-kernel implementation phase.
 
 M1 consumes a canonical tactical state plus a complete current `ActionAffordanceSet`, evaluates only explicitly supported mechanics, later ranks them with risk-sensitive logic, and emits deterministic/replayable traces. Live game capture, execution automation, generalized future-state legality/search, campaign automation, and ML remain outside M1.
 
-## Implemented through #40
+## Implemented through #20
 
 Completed implementation/hardening tickets:
 
@@ -20,6 +20,7 @@ Completed implementation/hardening tickets:
 - #19 — `MOVE_TO`, contingent AOO representation, and simple deterministic action transitions.
 - #37 — source-faithful disengagement/AOO movement semantics and transition fixtures.
 - #40 — canonical candidate resolution, reaction attack context, resolution ownership, failure-class and identity hardening.
+- #20 — raw tactical positioning, threat, formation, resource, tempo, and future-capacity feature extraction.
 
 ### #18 supported outcome boundary
 
@@ -95,7 +96,25 @@ The hardened boundary is:
 - contingent-reaction consequence data is not part of the player's command identity. Equivalent commands keep the same `action_id` across acquisition provenance and reaction-knowledge changes, while the reaction facts remain in semantic state identity and therefore still change replay/evaluation identity;
 - the canonical tactical-state/action-affordance contract identifiers carry the explicit `identity-40` amendment.
 
-#20 must consume only candidate outcomes at or beyond the #40 boundary.
+## #20 tactical feature boundary
+
+#20 consumes only canonical candidate outcomes/transitions at or beyond the #40 boundary and exposes raw, inspectable feature families for later #21 scoring.
+
+The feature layer:
+
+- keeps direct enemy effect separate from posture/threat so target removal is not silently credited twice;
+- keeps immediate AOO/self-harm and interruption consequences separate from future hostile-pressure proxies;
+- exposes adjacent-hostile pressure exactly or as a bounded range from canonical position knowledge;
+- treats hostile ZOC capability conservatively because adjacency alone is not proof of AOO capability;
+- exposes ranged/LOS corridor exposure without inventing enemy ranged legality, hit chance, or intent;
+- reports elevation, friendly adjacency, direct-screen creation/loss, flank/surround contribution, and local reposition-space facts;
+- reports residual AP/FAT/headroom and explicit ammo/charge/item costs;
+- computes residual AP/FAT affordability only against deduplicated current-command cost templates and does not claim those commands remain legal after the candidate;
+- reports current Wait/end-turn facts without initiative prediction or enemy-response search;
+- preserves uncertainty as ranges when player-legal inputs do not justify a probability distribution;
+- documents semantic ownership for every feature family in `docs/FEATURES.md` and in the structured feature result.
+
+#20 does not add #21 weights/ranking/explanation policy, generalized enemy actions, future-turn search, inferred AOOs, or broader mechanics coverage.
 
 ## Frozen M1 invariants
 
@@ -114,9 +133,8 @@ The hardened boundary is:
 
 ## Remaining M1 sequence
 
-After the #40 candidate-evaluation hardening boundary is present on `main`:
+After #20 lands on `main`:
 
-- #20 — tactical positioning, threat, formation and future-capacity features.
 - #21 — risk-sensitive evaluator, deterministic selection and explanation facts.
 - #22 — decision trace, deterministic replay and performance diagnostics.
 - #23 — validation harness and fixture expectation semantics.

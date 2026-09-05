@@ -1,5 +1,13 @@
 """Foundations for the offline BB-Agent decision kernel."""
 
+from bb_agent.features import (
+    MODEL_VERSION as TACTICAL_FEATURE_MODEL_VERSION,
+)
+from bb_agent.features import (
+    MetricRange,
+    TacticalFeatures,
+    extract_candidate_features,
+)
 from bb_agent.fixtures import (
     FixtureEnvelope,
     FixtureMetadata,
@@ -20,8 +28,12 @@ __all__ = [
     "ReplayInput",
     "TacticalState",
     "AttackOutcome",
+    "MetricRange",
     "OutcomeBranch",
+    "TACTICAL_FEATURE_MODEL_VERSION",
+    "TacticalFeatures",
     "evaluate_ordinary_attack",
+    "extract_candidate_features",
     "load_fixture",
     "save_fixture",
     "validate_fixture_pair",
