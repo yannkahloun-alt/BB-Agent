@@ -22,7 +22,16 @@ from bb_agent.trace import (
     run_decision_trace,
 )
 from test_evaluator import _scenario_flip_state
-from test_mechanics import _attack, _authority, _ordinary_attack_state, _snapshot, _wait
+from test_mechanics import (
+    _attack,
+    _authority,
+    _move_action,
+    _movement_state,
+    _ordinary_attack_state,
+    _reaction,
+    _snapshot,
+    _wait,
+)
 
 
 def _with_raw_capture(state: TacticalState, raw_capture_id: str) -> TacticalState:
@@ -355,6 +364,47 @@ def test_affordance_provenance_metadata_does_not_change_semantic_trace_identity(
     assert tuple(
         action.action_id for action in fixture_state.action_affordances.actions
     ) == tuple(action.action_id for action in game_state.action_affordances.actions)
+
+    fixture_trace = run_decision_trace(authority, fixture_state)
+    game_trace = run_decision_trace(authority, game_state)
+
+    assert fixture_trace.input["canonical_state"] != game_trace.input["canonical_state"]
+    assert fixture_trace.selection == game_trace.selection
+    assert fixture_trace.output_fingerprint == game_trace.output_fingerprint
+    assert fixture_trace.trace_id == game_trace.trace_id
+
+
+
+def test_contingent_reaction_authority_does_not_change_state_or_trace_identity():
+    authority = _authority()
+    base = _movement_state(authority, _move_action(reactions=(_reaction(),)))
+    fixture_state = _with_affordance_diagnostic_metadata(
+        base,
+        "fixture-reaction-generation",
+        AffordanceProvenance.HANDCRAFTED_FIXTURE,
+        ResolutionAuthority.HANDCRAFTED_FIXTURE,
+    )
+    game_state = _with_affordance_diagnostic_metadata(
+        base,
+        "game-reaction-generation",
+        AffordanceProvenance.GAME_PLAYER_AFFORDANCE,
+        ResolutionAuthority.GAME_PLAYER_AFFORDANCE,
+    )
+
+    fixture_action = fixture_state.action_affordances.actions[0]
+    game_action = game_state.action_affordances.actions[0]
+    assert fixture_action.contingent_reactions
+    assert game_action.contingent_reactions
+    assert (
+        fixture_action.contingent_reactions[0].hit_chance.authority
+        is ResolutionAuthority.HANDCRAFTED_FIXTURE
+    )
+    assert (
+        game_action.contingent_reactions[0].hit_chance.authority
+        is ResolutionAuthority.GAME_PLAYER_AFFORDANCE
+    )
+    assert fixture_state.state_id == game_state.state_id
+    assert fixture_action.action_id == game_action.action_id
 
     fixture_trace = run_decision_trace(authority, fixture_state)
     game_trace = run_decision_trace(authority, game_state)

@@ -1449,6 +1449,15 @@ def _strip_action_resolution_authorities(action: dict[str, JsonValue]) -> None:
         cost = action.get(cost_name)
         if isinstance(cost, dict):
             cost.pop("authority", None)
+    reactions = action.get("contingent_reactions")
+    if isinstance(reactions, list):
+        for reaction in reactions:
+            if not isinstance(reaction, dict):
+                continue
+            hit_chance = reaction.get("hit_chance")
+            if isinstance(hit_chance, dict):
+                hit_chance.pop("authority", None)
+
     preview = action.get("preview")
     if not isinstance(preview, dict):
         return

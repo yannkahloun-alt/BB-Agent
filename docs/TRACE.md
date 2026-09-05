@@ -57,6 +57,7 @@ This means two evaluations may report different nanosecond timings while still
 having exactly the same `output_fingerprint` and `trace_id`.
 
 The trace still preserves the complete diagnostic action/state records. For output identity, candidate generation is projected to stable legal action IDs and coverage codes, while candidate evaluations omit diagnostic action provenance and the documentation-only feature ownership table. The canonical `state_id` already commits to the semantic command costs/previews and decision input.
+Resolution-authority provenance is excluded consistently for resolved costs, player-visible previews, and contingent-reaction hit-chance previews; their resolved values/stages remain semantic inputs.
 
 ## Outcome and simulator facts
 
