@@ -374,8 +374,7 @@ def test_affordance_provenance_metadata_does_not_change_semantic_trace_identity(
     assert fixture_trace.trace_id == game_trace.trace_id
 
 
-
-def test_contingent_reaction_authority_does_not_change_state_or_trace_identity():
+def test_contingent_reaction_authority_remains_semantic_state_and_trace_identity():
     authority = _authority()
     base = _movement_state(authority, _move_action(reactions=(_reaction(),)))
     fixture_state = _with_affordance_diagnostic_metadata(
@@ -403,13 +402,13 @@ def test_contingent_reaction_authority_does_not_change_state_or_trace_identity()
         game_action.contingent_reactions[0].hit_chance.authority
         is ResolutionAuthority.GAME_PLAYER_AFFORDANCE
     )
-    assert fixture_state.state_id == game_state.state_id
     assert fixture_action.action_id == game_action.action_id
+    assert fixture_state.state_id != game_state.state_id
 
     fixture_trace = run_decision_trace(authority, fixture_state)
     game_trace = run_decision_trace(authority, game_state)
 
     assert fixture_trace.input["canonical_state"] != game_trace.input["canonical_state"]
     assert fixture_trace.selection == game_trace.selection
-    assert fixture_trace.output_fingerprint == game_trace.output_fingerprint
-    assert fixture_trace.trace_id == game_trace.trace_id
+    assert fixture_trace.output_fingerprint != game_trace.output_fingerprint
+    assert fixture_trace.trace_id != game_trace.trace_id
