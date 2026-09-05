@@ -1,0 +1,781 @@
+"""Risk-sensitive deterministic evaluation and selection for M1 current decisions.
+
+The evaluator consumes #20 raw features. It does not invent commands, reconstruct
+hidden state, search future turns, or turn uncertain ranges into midpoint facts.
+Ranking-affecting policy is explicit and versioned so #22 can trace and replay it.
+"""
+
+from __future__ import annotations
+
+import math
+from dataclasses import asdict, dataclass, replace
+
+from bb_agent.features import MetricRange, TacticalFeatures, extract_candidate_features
+from bb_agent.mechanics import MechanicsAuthority
+from bb_agent.results import ErrorCode, Problem, Result, ResultStatus
+from bb_agent.serialization import canonical_sha256
+from bb_agent.tactical_state import TacticalState
+
+MODEL_VERSION = "risk-evaluator.v1"
+CONFIG_VERSION = "m1-evaluation-profile.v1"
+UNIT_VALUE_POLICY_VERSION = "m1-common-preservation.v1"
+_TOLERANCE = 1e-9
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationWeights:
+    """Versioned family weights; calibration may replace these generically later."""
+
+    enemy_effect: float = 1.25
+    immediate_friendly_harm: float = 1.25
+    post_action_exposure: float = 0.8
+    position_control_protection: float = 0.8
+    resource_future_capacity: float = 0.65
+    tempo: float = 0.35
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationScales:
+    """Interpretable raw-to-comparable normalization scales."""
+
+    hp_damage: float = 60.0
+    armor_damage: float = 100.0
+    hostile_pressure: float = 3.0
+    ranged_exposure: float = 3.0
+    elevation_delta: float = 2.0
+    elevation_contacts: float = 3.0
+    formation_links: float = 2.0
+    flanked_hostiles: float = 3.0
+    open_reposition_tiles: float = 6.0
+    action_points: float = 9.0
+    fatigue_headroom: float = 60.0
+    resource_units: float = 2.0
+
+
+@dataclass(frozen=True, slots=True)
+class EvaluationProfile:
+    """All ranking-affecting M1 evaluator policy for one deterministic run."""
+
+    version: str = CONFIG_VERSION
+    weights: EvaluationWeights = EvaluationWeights()
+    scales: EvaluationScales = EvaluationScales()
+    tail_risk_weight: float = 2.5
+    uncertainty_weight: float = 0.25
+    near_tie_margin: float = 0.05
+    max_self_death_probability: float | None = None
+
+    def __post_init__(self) -> None:
+        if not self.version:
+            raise ValueError("evaluation profile version must be nonempty")
+        weight_values = (
+            self.weights.enemy_effect,
+            self.weights.immediate_friendly_harm,
+            self.weights.post_action_exposure,
+            self.weights.position_control_protection,
+            self.weights.resource_future_capacity,
+            self.weights.tempo,
+            self.tail_risk_weight,
+            self.uncertainty_weight,
+            self.near_tie_margin,
+        )
+        if any(not math.isfinite(value) or value < 0 for value in weight_values):
+            raise ValueError("evaluation weights and margins must be finite and nonnegative")
+        scale_values = (
+            self.scales.hp_damage,
+            self.scales.armor_damage,
+            self.scales.hostile_pressure,
+            self.scales.ranged_exposure,
+            self.scales.elevation_delta,
+            self.scales.elevation_contacts,
+            self.scales.formation_links,
+            self.scales.flanked_hostiles,
+            self.scales.open_reposition_tiles,
+            self.scales.action_points,
+            self.scales.fatigue_headroom,
+            self.scales.resource_units,
+        )
+        if any(not math.isfinite(value) or value <= 0 for value in scale_values):
+            raise ValueError("evaluation scales must be finite and positive")
+        threshold = self.max_self_death_probability
+        if threshold is not None and (
+            not math.isfinite(threshold) or not 0 <= threshold <= 1
+        ):
+            raise ValueError("death-probability guardrail must lie in [0, 1]")
+
+    @property
+    def fingerprint(self) -> str:
+        return canonical_sha256(asdict(self))
+
+
+@dataclass(frozen=True, slots=True)
+class UnitValuePolicy:
+    """External evaluation context for friendly-life preservation.
+
+    The default gives all player-controlled lives the same strong common value.
+    A strategic layer may inject actor-specific multipliers without changing
+    TacticalState or creating a BB-Save-Toolkit runtime dependency.
+    """
+
+    version: str = UNIT_VALUE_POLICY_VERSION
+    default_value: float = 1.0
+    actor_values: tuple[tuple[str, float], ...] = ()
+
+    def __post_init__(self) -> None:
+        if not self.version:
+            raise ValueError("unit-value policy version must be nonempty")
+        if not math.isfinite(self.default_value) or self.default_value <= 0:
+            raise ValueError("default unit value must be finite and positive")
+        normalized = tuple(sorted(self.actor_values))
+        if len({actor_id for actor_id, _ in normalized}) != len(normalized):
+            raise ValueError("unit-value policy contains duplicate actor IDs")
+        for actor_id, value in normalized:
+            if not actor_id:
+                raise ValueError("unit-value actor ID must be nonempty")
+            if not math.isfinite(value) or value <= 0:
+                raise ValueError("unit values must be finite and positive")
+        object.__setattr__(self, "actor_values", normalized)
+
+    def value_for(self, actor_id: str) -> float:
+        return next(
+            (value for candidate_id, value in self.actor_values if candidate_id == actor_id),
+            self.default_value,
+        )
+
+    @property
+    def fingerprint(self) -> str:
+        return canonical_sha256(asdict(self))
+
+
+DEFAULT_EVALUATION_PROFILE = EvaluationProfile()
+DEFAULT_UNIT_VALUE_POLICY = UnitValuePolicy()
+
+
+@dataclass(frozen=True, slots=True)
+class ComponentContribution:
+    component_id: str
+    normalized: MetricRange
+    weight: float
+    weighted: MetricRange
+    selection_value: float
+
+
+@dataclass(frozen=True, slots=True)
+class TailRiskRecord:
+    self_death_probability: MetricRange
+    movement_interruption_probability: MetricRange
+    unit_value: float
+    penalty: MetricRange
+    selection_penalty: float
+
+
+@dataclass(frozen=True, slots=True)
+class ExplanationFact:
+    component_id: str
+    contribution: float
+
+
+@dataclass(frozen=True, slots=True)
+class CandidateEvaluation:
+    action_id: str
+    evaluator_version: str
+    evaluation_profile_version: str
+    evaluation_profile_fingerprint: str
+    unit_value_policy_version: str
+    unit_value_policy_fingerprint: str
+    features: TacticalFeatures
+    components: tuple[ComponentContribution, ...]
+    mean_tactical_value: float | None
+    tactical_value_range: MetricRange
+    base_selection_value: float
+    tail_risk: TailRiskRecord
+    uncertainty_span: float
+    uncertainty_penalty: float
+    ranking_value: float
+    ranking_range: MetricRange
+    irreversible_resource_cost: int
+    guardrail_findings: tuple[str, ...]
+    explanation_facts: tuple[ExplanationFact, ...]
+    dominated_by: str | None = None
+    information_sensitive: bool = False
+
+    def __post_init__(self) -> None:
+        reconciled = sum(fact.contribution for fact in self.explanation_facts)
+        if not math.isclose(reconciled, self.ranking_value, abs_tol=1e-9):
+            raise ValueError("explanation facts do not reconcile to ranking value")
+
+    @property
+    def guardrail_excluded(self) -> bool:
+        return bool(self.guardrail_findings)
+
+
+@dataclass(frozen=True, slots=True)
+class TieBreakRecord:
+    action_ids: tuple[str, ...]
+    winner_action_id: str
+    criteria: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionSelection:
+    candidates: tuple[CandidateEvaluation, ...]
+    ranking: tuple[str, ...]
+    chosen_action_id: str
+    near_tie_groups: tuple[tuple[str, ...], ...]
+    tie_breaks: tuple[TieBreakRecord, ...]
+    information_sensitive: bool
+
+
+@dataclass(frozen=True, slots=True)
+class DecisionEvaluation:
+    state_id: str
+    information_profile: str
+    evaluator_version: str
+    evaluation_profile_version: str
+    evaluation_profile_fingerprint: str
+    unit_value_policy_version: str
+    unit_value_policy_fingerprint: str
+    mechanics_manifest_fingerprint: str
+    candidates: tuple[CandidateEvaluation, ...]
+    ranking: tuple[str, ...]
+    chosen_action_id: str
+    near_tie_groups: tuple[tuple[str, ...], ...]
+    tie_breaks: tuple[TieBreakRecord, ...]
+    information_sensitive: bool
+
+
+def _clip(value: float) -> float:
+    return max(-1.0, min(1.0, value))
+
+
+def _multiply(value: MetricRange, multiplier: float) -> MetricRange:
+    if multiplier < 0:
+        raise ValueError("metric multiplier must be nonnegative")
+    expected = None if value.expected is None else value.expected * multiplier
+    return MetricRange(
+        value.minimum * multiplier,
+        value.maximum * multiplier,
+        expected,
+    )
+
+
+def _normalized(value: MetricRange, scale: float, direction: float = 1.0) -> MetricRange:
+    endpoints = (
+        _clip(direction * value.minimum / scale),
+        _clip(direction * value.maximum / scale),
+    )
+    expected = (
+        None
+        if value.expected is None
+        else _clip(direction * value.expected / scale)
+    )
+    return MetricRange(min(endpoints), max(endpoints), expected)
+
+
+def _average(values: tuple[MetricRange, ...]) -> MetricRange:
+    if not values:
+        return MetricRange.exact(0)
+    count = len(values)
+    expected = None
+    if all(value.expected is not None for value in values):
+        expected = sum(value.expected for value in values if value.expected is not None) / count
+    return MetricRange(
+        sum(value.minimum for value in values) / count,
+        sum(value.maximum for value in values) / count,
+        expected,
+    )
+
+
+def _weighted(value: MetricRange, weight: float) -> MetricRange:
+    expected = None if value.expected is None else value.expected * weight
+    return MetricRange(value.minimum * weight, value.maximum * weight, expected)
+
+
+def _add(values: tuple[MetricRange, ...]) -> MetricRange:
+    if not values:
+        return MetricRange.exact(0)
+    expected = None
+    if all(value.expected is not None for value in values):
+        expected = sum(value.expected for value in values if value.expected is not None)
+    return MetricRange(
+        sum(value.minimum for value in values),
+        sum(value.maximum for value in values),
+        expected,
+    )
+
+
+def _subtract(left: MetricRange, right: MetricRange) -> MetricRange:
+    expected = None
+    if left.expected is not None and right.expected is not None:
+        expected = left.expected - right.expected
+    return MetricRange(
+        left.minimum - right.maximum,
+        left.maximum - right.minimum,
+        expected,
+    )
+
+
+def _shift(value: MetricRange, amount: float) -> MetricRange:
+    expected = None if value.expected is None else value.expected + amount
+    return MetricRange(value.minimum + amount, value.maximum + amount, expected)
+
+
+def _selection_value(value: MetricRange) -> float:
+    """Use justified expectation when available, otherwise conservative lower bound."""
+
+    return value.expected if value.expected is not None else value.minimum
+
+
+def _penalty_selection(value: MetricRange) -> float:
+    """Use justified expectation when available, otherwise conservative upper loss."""
+
+    return value.expected if value.expected is not None else value.maximum
+
+
+def _component(
+    component_id: str,
+    terms: tuple[MetricRange, ...],
+    weight: float,
+) -> ComponentContribution:
+    normalized = _average(terms)
+    weighted = _weighted(normalized, weight)
+    return ComponentContribution(
+        component_id,
+        normalized,
+        weight,
+        weighted,
+        _selection_value(weighted),
+    )
+
+
+def _components(
+    features: TacticalFeatures,
+    profile: EvaluationProfile,
+    actor_value: float,
+    ally_value: float,
+) -> tuple[ComponentContribution, ...]:
+    scales = profile.scales
+    weights = profile.weights
+    enemy = _component(
+        "enemy_effect",
+        (
+            _normalized(features.enemy_effect.expected_hp_damage, scales.hp_damage),
+            _normalized(features.enemy_effect.expected_armor_damage, scales.armor_damage),
+            _normalized(features.enemy_effect.kill_probability, 1.0),
+        ),
+        weights.enemy_effect,
+    )
+    friendly = _component(
+        "immediate_friendly_harm",
+        (
+            _normalized(
+                _multiply(features.friendly_harm.expected_self_hp_damage, actor_value),
+                scales.hp_damage,
+                -1.0,
+            ),
+            _normalized(
+                _multiply(features.friendly_harm.expected_ally_hp_damage, ally_value),
+                scales.hp_damage,
+                -1.0,
+            ),
+            _normalized(
+                features.friendly_harm.movement_interruption_probability,
+                1.0,
+                -1.0,
+            ),
+        ),
+        weights.immediate_friendly_harm,
+    )
+    exposure = _component(
+        "post_action_exposure",
+        (
+            _normalized(
+                features.threat.adjacent_hostile_pressure,
+                scales.hostile_pressure,
+                -1.0,
+            ),
+            _normalized(
+                features.threat.hostile_zoc_pressure,
+                scales.hostile_pressure,
+                -1.0,
+            ),
+            _normalized(
+                features.threat.ranged_los_exposure,
+                scales.ranged_exposure,
+                -1.0,
+            ),
+        ),
+        weights.post_action_exposure,
+    )
+    position = _component(
+        "position_control_ally_protection",
+        (
+            _normalized(features.position.elevation_change, scales.elevation_delta),
+            _normalized(
+                features.position.elevation_advantage_contacts,
+                scales.elevation_contacts,
+            ),
+            _normalized(
+                features.position.elevation_disadvantage_contacts,
+                scales.elevation_contacts,
+                -1.0,
+            ),
+            _normalized(
+                features.formation.created_direct_screen_links,
+                scales.formation_links,
+            ),
+            _normalized(
+                features.formation.lost_direct_screen_links,
+                scales.formation_links,
+                -1.0,
+            ),
+            _normalized(
+                features.control.flanked_hostiles,
+                scales.flanked_hostiles,
+            ),
+            _normalized(
+                features.mobility.open_adjacent_reposition_tiles,
+                scales.open_reposition_tiles,
+            ),
+        ),
+        weights.position_control_protection,
+    )
+    template_scale = max(1.0, float(features.future_capacity.current_cost_template_count))
+    resources = _component(
+        "resource_fat_future_capacity",
+        (
+            _normalized(
+                features.resources.remaining_action_points,
+                scales.action_points,
+            ),
+            _normalized(
+                features.resources.fatigue_headroom,
+                scales.fatigue_headroom,
+            ),
+            _normalized(
+                features.future_capacity.ap_fat_feasible_template_count,
+                template_scale,
+            ),
+            _normalized(
+                features.future_capacity.ap_fat_locked_template_count,
+                template_scale,
+                -1.0,
+            ),
+            _normalized(
+                MetricRange.exact(features.resources.ammo_consumed),
+                scales.resource_units,
+                -1.0,
+            ),
+            _normalized(
+                MetricRange.exact(features.resources.charges_consumed),
+                scales.resource_units,
+                -1.0,
+            ),
+        ),
+        weights.resource_future_capacity,
+    )
+    tempo = _component(
+        "tempo_turn_order",
+        (
+            _normalized(features.tempo.actor_has_waited, 1.0),
+            _normalized(features.tempo.actor_may_wait, 1.0),
+            _normalized(features.tempo.turn_ended, 1.0, -1.0),
+        ),
+        weights.tempo,
+    )
+    return enemy, friendly, exposure, position, resources, tempo
+
+
+def _tail_risk(
+    features: TacticalFeatures,
+    profile: EvaluationProfile,
+    unit_value: float,
+) -> TailRiskRecord:
+    death = features.friendly_harm.self_death_probability
+    penalty = _multiply(death, profile.tail_risk_weight * unit_value)
+    return TailRiskRecord(
+        death,
+        features.friendly_harm.movement_interruption_probability,
+        unit_value,
+        penalty,
+        _penalty_selection(penalty),
+    )
+
+
+def score_candidate_features(
+    features: TacticalFeatures,
+    actor_id: str,
+    profile: EvaluationProfile = DEFAULT_EVALUATION_PROFILE,
+    unit_value_policy: UnitValuePolicy = DEFAULT_UNIT_VALUE_POLICY,
+) -> CandidateEvaluation:
+    """Score one feature record without changing or hiding its raw values."""
+
+    if not actor_id:
+        raise ValueError("actor_id must be nonempty")
+    actor_value = unit_value_policy.value_for(actor_id)
+    components = _components(
+        features,
+        profile,
+        actor_value,
+        unit_value_policy.default_value,
+    )
+    tactical_range = _add(tuple(component.weighted for component in components))
+    mean_tactical_value = tactical_range.expected
+    base_selection_value = sum(component.selection_value for component in components)
+    tail = _tail_risk(features, profile, actor_value)
+    before_uncertainty = _subtract(tactical_range, tail.penalty)
+    uncertainty_span = before_uncertainty.maximum - before_uncertainty.minimum
+    uncertainty_penalty = profile.uncertainty_weight * uncertainty_span
+    ranking_range = _shift(before_uncertainty, -uncertainty_penalty)
+    ranking_value = (
+        base_selection_value - tail.selection_penalty - uncertainty_penalty
+    )
+    irreversible_resource_cost = (
+        features.resources.ammo_consumed + features.resources.charges_consumed
+    )
+    findings = ()
+    threshold = profile.max_self_death_probability
+    if threshold is not None and tail.self_death_probability.maximum > threshold:
+        findings = ("MAX_SELF_DEATH_PROBABILITY",)
+    explanation = tuple(
+        ExplanationFact(component.component_id, component.selection_value)
+        for component in components
+    ) + (
+        ExplanationFact("tail_risk_penalty", -tail.selection_penalty),
+        ExplanationFact("uncertainty_robustness_adjustment", -uncertainty_penalty),
+    )
+    return CandidateEvaluation(
+        features.action_id,
+        MODEL_VERSION,
+        profile.version,
+        profile.fingerprint,
+        unit_value_policy.version,
+        unit_value_policy.fingerprint,
+        features,
+        components,
+        mean_tactical_value,
+        tactical_range,
+        base_selection_value,
+        tail,
+        uncertainty_span,
+        uncertainty_penalty,
+        ranking_value,
+        ranking_range,
+        irreversible_resource_cost,
+        findings,
+        explanation,
+    )
+
+
+def _dominates(left: CandidateEvaluation, right: CandidateEvaluation) -> bool:
+    benefit_no_worse = (
+        left.tactical_value_range.minimum
+        >= right.tactical_value_range.maximum - _TOLERANCE
+    )
+    risk_no_worse = (
+        left.tail_risk.penalty.maximum
+        <= right.tail_risk.penalty.minimum + _TOLERANCE
+    )
+    strictly_better = (
+        left.tactical_value_range.minimum
+        > right.tactical_value_range.maximum + _TOLERANCE
+        or left.tail_risk.penalty.maximum
+        < right.tail_risk.penalty.minimum - _TOLERANCE
+    )
+    return benefit_no_worse and risk_no_worse and strictly_better
+
+
+def _with_dominance(
+    candidates: tuple[CandidateEvaluation, ...],
+) -> tuple[CandidateEvaluation, ...]:
+    updated = []
+    for candidate in candidates:
+        dominators = sorted(
+            other.action_id
+            for other in candidates
+            if other.action_id != candidate.action_id and _dominates(other, candidate)
+        )
+        updated.append(
+            replace(candidate, dominated_by=dominators[0] if dominators else None)
+        )
+    return tuple(updated)
+
+
+def _ranges_overlap(
+    left: CandidateEvaluation,
+    right: CandidateEvaluation,
+    margin: float,
+) -> bool:
+    if left.guardrail_excluded != right.guardrail_excluded:
+        return False
+    uncertain = (
+        left.ranking_range.maximum - left.ranking_range.minimum > _TOLERANCE
+        or right.ranking_range.maximum - right.ranking_range.minimum > _TOLERANCE
+    )
+    if not uncertain:
+        return False
+    return (
+        left.ranking_range.minimum <= right.ranking_range.maximum + margin
+        and right.ranking_range.minimum <= left.ranking_range.maximum + margin
+    )
+
+
+def _with_information_sensitivity(
+    candidates: tuple[CandidateEvaluation, ...],
+    margin: float,
+) -> tuple[CandidateEvaluation, ...]:
+    return tuple(
+        replace(
+            candidate,
+            information_sensitive=any(
+                other.action_id != candidate.action_id
+                and _ranges_overlap(candidate, other, margin)
+                for other in candidates
+            ),
+        )
+        for candidate in candidates
+    )
+
+
+def _tie_key(candidate: CandidateEvaluation) -> tuple[float, float, int, str]:
+    return (
+        candidate.tail_risk.selection_penalty,
+        candidate.uncertainty_span,
+        candidate.irreversible_resource_cost,
+        candidate.action_id,
+    )
+
+
+def _score_groups(
+    candidates: tuple[CandidateEvaluation, ...],
+    margin: float,
+) -> tuple[tuple[CandidateEvaluation, ...], ...]:
+    pending = list(sorted(candidates, key=lambda item: (-item.ranking_value, item.action_id)))
+    groups = []
+    while pending:
+        anchor = pending[0].ranking_value
+        group = []
+        while pending and anchor - pending[0].ranking_value <= margin + _TOLERANCE:
+            group.append(pending.pop(0))
+        groups.append(tuple(sorted(group, key=_tie_key)))
+    return tuple(groups)
+
+
+def select_candidate_evaluations(
+    candidates: tuple[CandidateEvaluation, ...],
+    profile: EvaluationProfile = DEFAULT_EVALUATION_PROFILE,
+) -> DecisionSelection:
+    """Apply dominance diagnostics, guardrails, near ties and frozen tie sequence."""
+
+    if not candidates:
+        raise ValueError("selection requires at least one candidate")
+    if len({candidate.action_id for candidate in candidates}) != len(candidates):
+        raise ValueError("selection requires unique action IDs")
+    candidates = _with_dominance(candidates)
+    candidates = _with_information_sensitivity(candidates, profile.near_tie_margin)
+    eligible = tuple(candidate for candidate in candidates if not candidate.guardrail_excluded)
+    excluded = tuple(candidate for candidate in candidates if candidate.guardrail_excluded)
+    partitions = (eligible, excluded) if eligible else (excluded,)
+    ordered_groups = tuple(
+        group
+        for partition in partitions
+        if partition
+        for group in _score_groups(partition, profile.near_tie_margin)
+    )
+    ordered = tuple(candidate for group in ordered_groups for candidate in group)
+    near_ties = tuple(
+        tuple(candidate.action_id for candidate in group)
+        for group in ordered_groups
+        if len(group) > 1
+    )
+    tie_breaks = tuple(
+        TieBreakRecord(
+            tuple(candidate.action_id for candidate in group),
+            group[0].action_id,
+            (
+                "lower_tail_risk",
+                "lower_epistemic_uncertainty",
+                "lower_irreversible_resource_cost",
+                "stable_action_id",
+            ),
+        )
+        for group in ordered_groups
+        if len(group) > 1
+    )
+    chosen = ordered[0]
+    return DecisionSelection(
+        ordered,
+        tuple(candidate.action_id for candidate in ordered),
+        chosen.action_id,
+        near_ties,
+        tie_breaks,
+        chosen.information_sensitive,
+    )
+
+
+def evaluate_decision(
+    authority: MechanicsAuthority,
+    state: TacticalState,
+    profile: EvaluationProfile = DEFAULT_EVALUATION_PROFILE,
+    unit_value_policy: UnitValuePolicy = DEFAULT_UNIT_VALUE_POLICY,
+) -> Result[DecisionEvaluation]:
+    """Evaluate the complete canonical current affordance set fail-closed."""
+
+    try:
+        normalized = state.normalized()
+    except (TypeError, ValueError) as exc:
+        return Result.validation_failure(
+            Problem(ErrorCode.VALIDATION_FAILED, str(exc), "state")
+        )
+    coverage = authority.classify(normalized)
+    if coverage.status is not ResultStatus.SUCCESS:
+        return Result(coverage.status, problems=coverage.problems)
+    if not normalized.action_affordances.actions:
+        return Result.validation_failure(
+            Problem(
+                ErrorCode.VALIDATION_FAILED,
+                "complete affordance set contains no current actions",
+                "action_affordances.actions",
+            )
+        )
+
+    evaluations = []
+    for action in sorted(
+        normalized.action_affordances.actions,
+        key=lambda candidate: candidate.action_id,
+    ):
+        feature_result = extract_candidate_features(
+            authority,
+            normalized,
+            action.action_id,
+        )
+        if feature_result.value is None:
+            return Result(feature_result.status, problems=feature_result.problems)
+        evaluations.append(
+            score_candidate_features(
+                feature_result.value,
+                action.actor_id,
+                profile,
+                unit_value_policy,
+            )
+        )
+
+    selection = select_candidate_evaluations(tuple(evaluations), profile)
+    assert coverage.value is not None
+    return Result.success(
+        DecisionEvaluation(
+            normalized.state_id,
+            normalized.information_profile.value,
+            MODEL_VERSION,
+            profile.version,
+            profile.fingerprint,
+            unit_value_policy.version,
+            unit_value_policy.fingerprint,
+            coverage.value.manifest_fingerprint,
+            selection.candidates,
+            selection.ranking,
+            selection.chosen_action_id,
+            selection.near_tie_groups,
+            selection.tie_breaks,
+            selection.information_sensitive,
+        )
+    )
