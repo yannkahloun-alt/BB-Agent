@@ -40,3 +40,5 @@ CURRENT_VERSIONS: Final = ContractVersions(
     evaluation_config="m1-evaluation-profile.v1",
     fixture="bb-agent-fixture.v1",
 )
+
+# Trusted-head round-trip marker; removed in the next commit.
