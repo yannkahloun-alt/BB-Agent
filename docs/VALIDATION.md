@@ -138,3 +138,5 @@ Exact replay preserves the original JSON numeric representation of versioned eva
 - `REVIEW_REQUIRED_CHANGE`
 
 A version/config change is called intended only when the fixture explicitly sets `allow_model_version_change`. A recommendation swapping between two members of the fixture's `acceptable_top1` set is distinguished from a true gated failure. Trace/component deltas remain attached to the classification so #24–#26 reviews can explain why output changed.
+
+Regression classification is same-fixture and hard-regression checks have precedence over all versioned review categories. Legal candidate additions/removals, an unexpected non-`SUCCESS` decision/coverage status, loss of a legal candidate evaluation while the decision still claims `SUCCESS`, semantic output drift under identical engine/model/config identity, and unpermitted disappearance of modeled scoring/risk/uncertainty/explanation components are all `HARD_GATED_FAILURE`. A dedicated coverage fixture may classify an intended versioned failure only when it explicitly declares that resulting failure in `expected_status`.

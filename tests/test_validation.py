@@ -69,8 +69,10 @@ def _rebuild_trace(
     generation=None,
     evaluations=None,
     selection=_UNSET,
+    failure=_UNSET,
 ):
     selection_value = trace.selection if selection is _UNSET else selection
+    failure_value = trace.failure if failure is _UNSET else failure
     return DecisionTrace.create(
         input=dict(trace.input),
         engine=dict(trace.engine if engine is None else engine),
@@ -80,7 +82,7 @@ def _rebuild_trace(
             for item in (trace.evaluations if evaluations is None else evaluations)
         ),
         selection=(None if selection_value is None else dict(selection_value)),
-        failure=None if trace.failure is None else dict(trace.failure),
+        failure=None if failure_value is None else dict(failure_value),
         performance=dict(trace.performance),
     )
 
@@ -426,6 +428,63 @@ def test_regression_classification_distinguishes_frozen_categories():
         other_trace,
     )
     assert cross_state.kind is RegressionKind.HARD_GATED_FAILURE
+
+
+def test_regression_classification_hard_fails_unexpected_coverage_loss():
+    authority = _authority()
+    state = _snapshot(authority, _wait(), _wait(ActionKind.END_TURN))
+    before = run_decision_trace(authority, state)
+    assert before.selection is not None
+
+    problem = {
+        "code": "EVALUATION_UNSUPPORTED",
+        "message": "synthetic newly unsupported evaluation",
+        "path": "action_affordances.actions[0]",
+        "mechanic_id": "test.new_coverage_gap",
+    }
+    generation = dict(before.generation)
+    generation["decision_status"] = "INCOMPLETE_COVERAGE"
+    generation["coverage_diagnostics"] = [problem]
+    after = _rebuild_trace(
+        before,
+        engine=_versioned_engine(before, ".coverage-gap"),
+        generation=generation,
+        evaluations=(),
+        selection=None,
+        failure={
+            "stage": "coverage",
+            "status": "INCOMPLETE_COVERAGE",
+            "problems": [problem],
+        },
+    )
+    assert before.generation["legal_candidates"] == after.generation["legal_candidates"]
+
+    calibration_fixture = _fixture(
+        state,
+        None,
+        fixture_id="unexpected-coverage-gap",
+        severity=FixtureSeverity.CALIBRATION,
+        review_status=ReviewStatus.DRAFT,
+    )
+    hard = classify_trace_change(calibration_fixture, before, after)
+    assert hard.kind is RegressionKind.HARD_GATED_FAILURE
+    assert hard.diff.added_action_ids == ()
+    assert hard.diff.removed_action_ids == ()
+    assert "INCOMPLETE_COVERAGE" in hard.message
+
+    expected_fixture = _fixture(
+        state,
+        {
+            "version": EXPECTATION_VERSION,
+            "expected_status": "INCOMPLETE_COVERAGE",
+            "allow_model_version_change": True,
+        },
+        fixture_id="expected-coverage-gap",
+        severity=FixtureSeverity.CALIBRATION,
+        review_status=ReviewStatus.REVIEWED,
+    )
+    expected = classify_trace_change(expected_fixture, before, after)
+    assert expected.kind is RegressionKind.INTENDED_MODEL_VERSION_CHANGE
 
 
 def test_corpus_summary_reports_taxonomy_severity_and_nonblocking_reviews():

@@ -597,6 +597,30 @@ def classify_trace_change(
             "same-fixture legal candidate set changed without a ruleset/input change",
         )
 
+    before_status = str(before.generation.get("decision_status") or "")
+    after_status = str(after.generation.get("decision_status") or "")
+    expected_status = None if expectations is None else expectations.expected_status
+    if after_status != "SUCCESS" and after_status != expected_status:
+        return RegressionReport(
+            RegressionKind.HARD_GATED_FAILURE,
+            diff,
+            (
+                "unexpected decision failure/coverage status introduced: "
+                f"{before_status!r} -> {after_status!r}"
+            ),
+        )
+
+    missing_evaluations = tuple(
+        sorted(set(_candidate_records(before)) - set(_candidate_records(after)))
+    )
+    if after_status == "SUCCESS" and missing_evaluations:
+        return RegressionReport(
+            RegressionKind.HARD_GATED_FAILURE,
+            diff,
+            "successful decision stopped evaluating legal candidates: "
+            + ", ".join(missing_evaluations),
+        )
+
     engine_changed = _engine_model_identity(before) != _engine_model_identity(after)
     if not engine_changed:
         return RegressionReport(
