@@ -50,9 +50,7 @@ def test_attack_evaluation_resolves_canonical_action_not_divergent_copy():
         fatigue_cost=replace(action.fatigue_cost, value=90),
         preview=replace(
             action.preview,
-            displayed_hit_chance=replace(
-                action.preview.displayed_hit_chance, value=95
-            ),
+            displayed_hit_chance=replace(action.preview.displayed_hit_chance, value=95),
         ),
     )
 
@@ -235,9 +233,7 @@ def test_production_paths_enforce_resolution_stage_and_preserve_ledgers():
 
 def test_transition_preserves_reaction_and_reload_resolution_ledgers():
     authority = _authority()
-    move_state = _movement_state(
-        authority, _move_action(reactions=(_reaction(),))
-    )
+    move_state = _movement_state(authority, _move_action(reactions=(_reaction(),)))
 
     move = evaluate_transition(
         authority, move_state, move_state.action_affordances.actions[0].action_id

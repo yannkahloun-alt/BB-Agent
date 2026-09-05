@@ -265,9 +265,7 @@ def _move(
             context = _reaction_attack_context(
                 action.action_id, reaction, mover.actor_id
             )
-            prefix = (
-                f"aoo:{reaction.path_step_tile_id}:" f"{reaction.reacting_actor_id}"
-            )
+            prefix = f"aoo:{reaction.path_step_tile_id}:{reaction.reacting_actor_id}"
             for name, ledger in context.resolution_ledgers:
                 scoped_name = f"{prefix}.{name}"
                 prior = reaction_ledgers.get(scoped_name)

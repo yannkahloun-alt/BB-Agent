@@ -212,8 +212,10 @@ def _current_attack_context(
     if action.target_actor_id is None:
         _invalid("ordinary attack has no target actor", path)
     preview = action.preview.displayed_hit_chance
-    if preview is None or isinstance(preview.value, bool) or not isinstance(
-        preview.value, int
+    if (
+        preview is None
+        or isinstance(preview.value, bool)
+        or not isinstance(preview.value, int)
     ):
         raise EvaluationUnsupported(
             "ordinary attack requires an integer displayed hit chance",
