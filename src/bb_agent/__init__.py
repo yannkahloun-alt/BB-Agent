@@ -4,12 +4,9 @@ from bb_agent.evaluator import (
     CONFIG_VERSION as EVALUATION_CONFIG_VERSION,
 )
 from bb_agent.evaluator import (
-    MODEL_VERSION as EVALUATOR_MODEL_VERSION,
-)
-from bb_agent.evaluator import (
-    CandidateEvaluation,
     DEFAULT_EVALUATION_PROFILE,
     DEFAULT_UNIT_VALUE_POLICY,
+    CandidateEvaluation,
     DecisionEvaluation,
     DecisionSelection,
     EvaluationProfile,
@@ -19,6 +16,9 @@ from bb_agent.evaluator import (
     evaluate_decision,
     score_candidate_features,
     select_candidate_evaluations,
+)
+from bb_agent.evaluator import (
+    MODEL_VERSION as EVALUATOR_MODEL_VERSION,
 )
 from bb_agent.features import (
     MODEL_VERSION as TACTICAL_FEATURE_MODEL_VERSION,
