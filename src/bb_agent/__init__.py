@@ -2,6 +2,8 @@
 
 from bb_agent.features import (
     MODEL_VERSION as TACTICAL_FEATURE_MODEL_VERSION,
+)
+from bb_agent.features import (
     MetricRange,
     TacticalFeatures,
     extract_candidate_features,

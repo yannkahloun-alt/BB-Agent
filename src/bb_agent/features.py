@@ -9,9 +9,9 @@ or replaces uncertain player-legal knowledge with debug truth.
 from __future__ import annotations
 
 import math
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 from enum import IntEnum
-from typing import Callable, Iterable
 
 from bb_agent.candidates import (
     CandidateReference,
