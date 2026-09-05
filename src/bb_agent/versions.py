@@ -1,6 +1,5 @@
 """Authoritative identifiers for frozen contracts and ranking-affecting models."""
 
-# Temporary trusted-head advance; restored in the next commit.
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from types import MappingProxyType
