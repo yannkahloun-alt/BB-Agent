@@ -82,9 +82,7 @@ class EvaluationProfile:
             self.uncertainty_weight,
             self.near_tie_margin,
         )
-        if any(
-            not math.isfinite(value) or value < 0 for value in nonnegative
-        ):
+        if any(not math.isfinite(value) or value < 0 for value in nonnegative):
             raise ValueError(
                 "evaluation weights and margins must be finite and nonnegative"
             )
@@ -206,13 +204,9 @@ class CandidateEvaluation:
     information_sensitive: bool = False
 
     def __post_init__(self) -> None:
-        reconciled = sum(
-            fact.contribution for fact in self.explanation_facts
-        )
+        reconciled = sum(fact.contribution for fact in self.explanation_facts)
         if not math.isclose(reconciled, self.ranking_value, abs_tol=1e-9):
-            raise ValueError(
-                "explanation facts do not reconcile to ranking value"
-            )
+            raise ValueError("explanation facts do not reconcile to ranking value")
 
     @property
     def guardrail_excluded(self) -> bool:
@@ -261,9 +255,7 @@ def _clip(value: float) -> float:
 def _multiply(value: MetricRange, multiplier: float) -> MetricRange:
     if multiplier < 0:
         raise ValueError("metric multiplier must be nonnegative")
-    expected = (
-        None if value.expected is None else value.expected * multiplier
-    )
+    expected = None if value.expected is None else value.expected * multiplier
     return MetricRange(
         value.minimum * multiplier,
         value.maximum * multiplier,
@@ -281,9 +273,7 @@ def _normalized(
         _clip(direction * value.maximum / scale),
     )
     expected = (
-        None
-        if value.expected is None
-        else _clip(direction * value.expected / scale)
+        None if value.expected is None else _clip(direction * value.expected / scale)
     )
     return MetricRange(min(endpoints), max(endpoints), expected)
 
@@ -294,11 +284,10 @@ def _average(values: tuple[MetricRange, ...]) -> MetricRange:
     count = len(values)
     expected = None
     if all(value.expected is not None for value in values):
-        expected = sum(
-            value.expected
-            for value in values
-            if value.expected is not None
-        ) / count
+        expected = (
+            sum(value.expected for value in values if value.expected is not None)
+            / count
+        )
     return MetricRange(
         sum(value.minimum for value in values) / count,
         sum(value.maximum for value in values) / count,
@@ -320,11 +309,7 @@ def _add(values: tuple[MetricRange, ...]) -> MetricRange:
         return MetricRange.exact(0)
     expected = None
     if all(value.expected is not None for value in values):
-        expected = sum(
-            value.expected
-            for value in values
-            if value.expected is not None
-        )
+        expected = sum(value.expected for value in values if value.expected is not None)
     return MetricRange(
         sum(value.minimum for value in values),
         sum(value.maximum for value in values),
@@ -621,34 +606,21 @@ def score_candidate_features(
         actor_value,
         unit_value_policy.default_value,
     )
-    tactical_range = _add(
-        tuple(component.weighted for component in components)
-    )
-    base_selection_value = sum(
-        component.selection_value for component in components
-    )
+    tactical_range = _add(tuple(component.weighted for component in components))
+    base_selection_value = sum(component.selection_value for component in components)
     tail = _tail_risk(features, profile, actor_value)
     before_uncertainty = _subtract(tactical_range, tail.penalty)
-    uncertainty_span = (
-        before_uncertainty.maximum - before_uncertainty.minimum
-    )
+    uncertainty_span = before_uncertainty.maximum - before_uncertainty.minimum
     uncertainty_penalty = profile.uncertainty_weight * uncertainty_span
     ranking_range = _shift(before_uncertainty, -uncertainty_penalty)
-    ranking_value = (
-        base_selection_value
-        - tail.selection_penalty
-        - uncertainty_penalty
-    )
+    ranking_value = base_selection_value - tail.selection_penalty - uncertainty_penalty
     irreversible_resource_cost = (
-        features.resources.ammo_consumed
-        + features.resources.charges_consumed
+        features.resources.ammo_consumed + features.resources.charges_consumed
     )
 
     findings: tuple[str, ...] = ()
     threshold = profile.max_self_death_probability
-    if threshold is not None and (
-        tail.self_death_probability.maximum > threshold
-    ):
+    if threshold is not None and (tail.self_death_probability.maximum > threshold):
         findings = ("MAX_SELF_DEATH_PROBABILITY",)
 
     explanation = tuple(
@@ -699,14 +671,12 @@ def _dominates(
         >= right.tactical_value_range.maximum - _TOLERANCE
     )
     risk_no_worse = (
-        left.tail_risk.penalty.maximum
-        <= right.tail_risk.penalty.minimum + _TOLERANCE
+        left.tail_risk.penalty.maximum <= right.tail_risk.penalty.minimum + _TOLERANCE
     )
     strictly_better = (
         left.tactical_value_range.minimum
         > right.tactical_value_range.maximum + _TOLERANCE
-        or left.tail_risk.penalty.maximum
-        < right.tail_risk.penalty.minimum - _TOLERANCE
+        or left.tail_risk.penalty.maximum < right.tail_risk.penalty.minimum - _TOLERANCE
     )
     return benefit_no_worse and risk_no_worse and strictly_better
 
@@ -719,8 +689,7 @@ def _with_dominance(
         dominators = sorted(
             other.action_id
             for other in candidates
-            if other.action_id != candidate.action_id
-            and _dominates(other, candidate)
+            if other.action_id != candidate.action_id and _dominates(other, candidate)
         )
         updated.append(
             replace(
@@ -740,16 +709,13 @@ def _ranges_overlap(
         return False
     uncertain = (
         left.ranking_range.maximum - left.ranking_range.minimum > _TOLERANCE
-        or right.ranking_range.maximum - right.ranking_range.minimum
-        > _TOLERANCE
+        or right.ranking_range.maximum - right.ranking_range.minimum > _TOLERANCE
     )
     if not uncertain:
         return False
     return (
-        left.ranking_range.minimum
-        <= right.ranking_range.maximum + margin
-        and right.ranking_range.minimum
-        <= left.ranking_range.maximum + margin
+        left.ranking_range.minimum <= right.ranking_range.maximum + margin
+        and right.ranking_range.minimum <= left.ranking_range.maximum + margin
     )
 
 
@@ -795,10 +761,7 @@ def _score_groups(
     while pending:
         anchor = pending[0].ranking_value
         group = []
-        while (
-            pending
-            and anchor - pending[0].ranking_value <= margin + _TOLERANCE
-        ):
+        while pending and anchor - pending[0].ranking_value <= margin + _TOLERANCE:
             group.append(pending.pop(0))
         groups.append(tuple(sorted(group, key=_tie_key)))
     return tuple(groups)
@@ -812,9 +775,7 @@ def select_candidate_evaluations(
 
     if not candidates:
         raise ValueError("selection requires at least one candidate")
-    if len({candidate.action_id for candidate in candidates}) != len(
-        candidates
-    ):
+    if len({candidate.action_id for candidate in candidates}) != len(candidates):
         raise ValueError("selection requires unique action IDs")
 
     candidates = _with_dominance(candidates)
@@ -823,14 +784,10 @@ def select_candidate_evaluations(
         profile.near_tie_margin,
     )
     eligible = tuple(
-        candidate
-        for candidate in candidates
-        if not candidate.guardrail_excluded
+        candidate for candidate in candidates if not candidate.guardrail_excluded
     )
     excluded = tuple(
-        candidate
-        for candidate in candidates
-        if candidate.guardrail_excluded
+        candidate for candidate in candidates if candidate.guardrail_excluded
     )
     partitions = (eligible, excluded) if eligible else (excluded,)
     ordered_groups = tuple(
@@ -842,9 +799,7 @@ def select_candidate_evaluations(
             profile.near_tie_margin,
         )
     )
-    ordered = tuple(
-        candidate for group in ordered_groups for candidate in group
-    )
+    ordered = tuple(candidate for group in ordered_groups for candidate in group)
     near_ties = tuple(
         tuple(candidate.action_id for candidate in group)
         for group in ordered_groups

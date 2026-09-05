@@ -87,9 +87,7 @@ def test_incomplete_material_coverage_returns_no_ranking():
 
     assert result.status is ResultStatus.INCOMPLETE_COVERAGE
     assert result.value is None
-    assert any(
-        problem.mechanic_id == "mod.unknown_aoe" for problem in result.problems
-    )
+    assert any(problem.mechanic_id == "mod.unknown_aoe" for problem in result.problems)
 
 
 def test_high_mean_action_can_lose_to_materially_safer_candidate():
@@ -235,16 +233,13 @@ def test_uncertain_score_envelope_marks_information_sensitive_ranking():
     uncertain_score = score_candidate_features(uncertain, "brother")
     stable_score = score_candidate_features(stable, "brother")
 
-    uncertain_selection = select_candidate_evaluations(
-        (uncertain_score, stable_score)
-    )
+    uncertain_selection = select_candidate_evaluations((uncertain_score, stable_score))
 
     assert uncertain_score.mean_tactical_value is None
     assert uncertain_score.uncertainty_span > 0
     assert uncertain_selection.information_sensitive is True
     assert any(
-        candidate.information_sensitive
-        for candidate in uncertain_selection.candidates
+        candidate.information_sensitive for candidate in uncertain_selection.candidates
     )
 
     exact = replace(
