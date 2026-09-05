@@ -274,10 +274,32 @@ SEMANTIC_OWNERSHIP = (
 
 
 @dataclass(frozen=True, slots=True)
+class OutcomeModelFacts:
+    """Trace-facing facts about the deterministic outcome method used."""
+
+    method: str
+    branch_count: int
+    epistemic_scenario_count: int = 0
+    sample_count: int = 0
+    simulator_seed: str | None = None
+
+    def __post_init__(self) -> None:
+        if not self.method:
+            raise ValueError("outcome method must be nonempty")
+        if (
+            self.branch_count < 0
+            or self.epistemic_scenario_count < 0
+            or self.sample_count < 0
+        ):
+            raise ValueError("outcome diagnostic counts must be nonnegative")
+
+
+@dataclass(frozen=True, slots=True)
 class TacticalFeatures:
     action_id: str
     model_version: str
     outcome_model_version: str
+    outcome_facts: OutcomeModelFacts
     enemy_effect: EnemyEffectFeatures
     friendly_harm: FriendlyHarmFeatures
     threat: ThreatFeatures
@@ -1300,8 +1322,29 @@ def _build_features(
     )
     if attack is not None:
         outcome_model_version = attack.model_version
+        if attack.epistemic_scenarios:
+            branch_count = sum(
+                len(scenario.branches) for scenario in attack.epistemic_scenarios
+            )
+            epistemic_scenario_count = len(attack.epistemic_scenarios)
+        else:
+            branch_count = len(attack.branches)
+            epistemic_scenario_count = 0
+        outcome_facts = OutcomeModelFacts(
+            "exact_branch_enumeration",
+            branch_count,
+            epistemic_scenario_count,
+        )
     elif transition is not None:
         outcome_model_version = transition.model_version
+        outcome_facts = OutcomeModelFacts(
+            (
+                "deterministic_transition"
+                if len(transition.branches) == 1
+                else "exact_branch_enumeration"
+            ),
+            len(transition.branches),
+        )
     else:
         _invalid(action, "tactical features require an outcome model version")
 
@@ -1309,6 +1352,7 @@ def _build_features(
         action.action_id,
         MODEL_VERSION,
         outcome_model_version,
+        outcome_facts,
         _enemy_effect(attack),
         _friendly_harm(state, action, transition),
         threat,
