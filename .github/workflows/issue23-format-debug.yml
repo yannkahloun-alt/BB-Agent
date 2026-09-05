@@ -24,9 +24,33 @@ jobs:
       - name: Canonicalize and improve failure diagnostics
         run: |
           python -m ruff format src/bb_agent/validation.py tests/test_validation.py
-          python -m ruff check --fix src/bb_agent/validation.py tests/test_validation.py
           python - <<'PY'
           from pathlib import Path
+
+          path = Path("src/bb_agent/validation.py")
+          text = path.read_text()
+          text = text.replace(
+              '                "ranking assertions cannot be combined with a non-success expected status"\n',
+              '                "ranking assertions cannot be combined with a non-success "\n'
+              '                "expected status"\n',
+          )
+          text = text.replace(
+              '                "trace legal candidates exactly match the complete fixture affordance set",\n',
+              '                "trace legal candidates exactly match the complete fixture "\n'
+              '                "affordance set",\n',
+          )
+          text = text.replace(
+              '                f"decision status is {actual_status!r}; expected {expectations.expected_status!r}",\n',
+              '                f"decision status is {actual_status!r}; expected "\n'
+              '                f"{expectations.expected_status!r}",\n',
+          )
+          text = text.replace(
+              '                f"legal action IDs are {sorted(legal_ids)}; expected {sorted(expected)}",\n',
+              '                f"legal action IDs are {sorted(legal_ids)}; expected "\n'
+              '                f"{sorted(expected)}",\n',
+          )
+          path.write_text(text)
+
           path = Path("tests/test_validation.py")
           text = path.read_text()
           text = text.replace(
@@ -35,7 +59,8 @@ jobs:
           )
           path.write_text(text)
           PY
-          python -m ruff format tests/test_validation.py
+          python -m ruff format src/bb_agent/validation.py tests/test_validation.py
+          python -m ruff check --fix src/bb_agent/validation.py tests/test_validation.py
       - name: Commit and self-clean
         run: |
           rm .github/workflows/issue23-format-debug.yml
