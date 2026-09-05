@@ -114,46 +114,34 @@ helpers = dedent(
 )
 text = text.replace(anchor, anchor + helpers)
 
-old_create = dedent(
-    '''
-                "engine": engine,
-                "generation": generation,
-                "evaluations": list(evaluations),
-                "selection": selection,
-                "failure": failure,
-    '''
-)
-new_create = dedent(
-    '''
-                "engine": engine,
-                "generation": _semantic_generation_payload(generation),
-                "evaluations": _semantic_evaluation_payloads(evaluations),
-                "selection": selection,
-                "failure": _semantic_failure_payload(failure),
-    '''
-)
+old_create = '''            "engine": engine,
+            "generation": generation,
+            "evaluations": list(evaluations),
+            "selection": selection,
+            "failure": failure,
+'''
+new_create = '''            "engine": engine,
+            "generation": _semantic_generation_payload(generation),
+            "evaluations": _semantic_evaluation_payloads(evaluations),
+            "selection": selection,
+            "failure": _semantic_failure_payload(failure),
+'''
 if text.count(old_create) != 1:
     raise SystemExit(f"unexpected create fingerprint block count: {text.count(old_create)}")
 text = text.replace(old_create, new_create)
 
-old_instance = dedent(
-    '''
-                "engine": self.engine,
-                "generation": self.generation,
-                "evaluations": list(self.evaluations),
-                "selection": self.selection,
-                "failure": self.failure,
-    '''
-)
-new_instance = dedent(
-    '''
-                "engine": self.engine,
-                "generation": _semantic_generation_payload(self.generation),
-                "evaluations": _semantic_evaluation_payloads(self.evaluations),
-                "selection": self.selection,
-                "failure": _semantic_failure_payload(self.failure),
-    '''
-)
+old_instance = '''            "engine": self.engine,
+            "generation": self.generation,
+            "evaluations": list(self.evaluations),
+            "selection": self.selection,
+            "failure": self.failure,
+'''
+new_instance = '''            "engine": self.engine,
+            "generation": _semantic_generation_payload(self.generation),
+            "evaluations": _semantic_evaluation_payloads(self.evaluations),
+            "selection": self.selection,
+            "failure": _semantic_failure_payload(self.failure),
+'''
 if text.count(old_instance) != 1:
     raise SystemExit(
         f"unexpected instance fingerprint block count: {text.count(old_instance)}"
