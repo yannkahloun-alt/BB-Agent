@@ -1,21 +1,23 @@
-import base64
 import subprocess
 import sys
-from pathlib import Path
 
 
-def test_emit_exact_ruff_formatting() -> None:
-    paths = [
-        Path("src/bb_agent/evaluator.py"),
-        Path("tests/test_evaluator.py"),
-    ]
-    subprocess.run(
-        [sys.executable, "-m", "ruff", "format", *(str(path) for path in paths)],
-        check=True,
+def test_emit_exact_ruff_formatting_diff() -> None:
+    completed = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "ruff",
+            "format",
+            "--diff",
+            "src/bb_agent/evaluator.py",
+            "tests/test_evaluator.py",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
     )
-    for path in paths:
-        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-        print(f"RUFF_FORMAT_BEGIN:{path}")
-        print(encoded)
-        print(f"RUFF_FORMAT_END:{path}")
+    print("RUFF_DIFF_BEGIN")
+    print(completed.stdout)
+    print("RUFF_DIFF_END")
     raise AssertionError("temporary formatting probe")
