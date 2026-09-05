@@ -32,28 +32,25 @@ jobs:
 
           outcomes = Path("src/bb_agent/outcomes.py")
           text = outcomes.read_text()
-          old = '''    if (
-              weapon.content.value != "weapon.hand_axe"
-              or weapon_entry is None
-              or skill_entry is None
-              or skill_entry.family_id != "ordinary_attack"
-          ):
-              _unsupported("weapon or skill damage profile is unsupported", context)
-          weapon_facts, skill_facts = dict(weapon_entry.facts), dict(skill_entry.facts)
-          if "damage_min" not in weapon_facts:
-              _unsupported("weapon damage profile is unsupported", context)
-          '''
-          new = '''    if (
-              weapon.content.value != "weapon.hand_axe"
-              or weapon_entry is None
-              or context.skill_id != "actives.chop"
-              or skill_entry is None
-              or skill_entry.category != "skill"
-              or skill_entry.family_id != "ordinary_attack"
-          ):
-              _unsupported("weapon or skill damage profile is unsupported", context)
-          weapon_facts, skill_facts = dict(weapon_entry.facts), dict(skill_entry.facts)
-          required_weapon_facts = {
+          old = (
+              '        or weapon_entry is None\n'
+              '        or skill_entry is None\n'
+              '        or skill_entry.family_id != "ordinary_attack"\n'
+          )
+          new = (
+              '        or weapon_entry is None\n'
+              '        or context.skill_id != "actives.chop"\n'
+              '        or skill_entry is None\n'
+              '        or skill_entry.category != "skill"\n'
+              '        or skill_entry.family_id != "ordinary_attack"\n'
+          )
+          assert text.count(old) == 1, "ordinary attack skill boundary anchor changed"
+          text = text.replace(old, new, 1)
+          old = (
+              '    if "damage_min" not in weapon_facts:\n'
+              '        _unsupported("weapon damage profile is unsupported", context)\n'
+          )
+          new = '''    required_weapon_facts = {
               "damage_min",
               "damage_max",
               "armor_damage_multiplier",
@@ -67,52 +64,37 @@ jobs:
           if not required_skill_facts <= skill_facts.keys():
               _unsupported("skill damage profile is unsupported", context)
           '''
-          assert old in text, "ordinary attack support block changed"
+          assert text.count(old) == 1, "ordinary attack fact boundary anchor changed"
           outcomes.write_text(text.replace(old, new, 1))
 
           transitions = Path("src/bb_agent/transitions.py")
           text = transitions.read_text()
-          old = '''    if ap < 0 or fatigue > _exact(
-              actor.resources.fatigue_capacity, "fatigue capacity", action
-          ):
-              _unsupported(
-                  action, "resolved action costs exceed actor resources", "transition"
-              )
-          '''
-          new = '''    if ap < 0 or fatigue > _exact(
-              actor.resources.fatigue_capacity, "fatigue capacity", action
-          ):
-              _invalid(action, "resolved action costs exceed actor resources")
-          '''
-          assert old in text, "transition cost block changed"
+          old = '''        _unsupported(
+                      action, "resolved action costs exceed actor resources", "transition"
+                  )'''
+          new = '        _invalid(action, "resolved action costs exceed actor resources")'
+          assert text.count(old) == 1, "transition cost classification anchor changed"
           transitions.write_text(text.replace(old, new, 1))
 
           mechanics_tests = Path("tests/test_mechanics.py")
           text = mechanics_tests.read_text()
-          old = '''def test_move_costs_fail_closed_when_resolved_resources_are_insufficient():
-              authority = _authority()
-              move = _move_action(ap=10)
-              state = _movement_state(authority, move)
-
-              result = evaluate_transition(authority, state, state.action_affordances.actions[0])
-
-              assert result.status is ResultStatus.INCOMPLETE_COVERAGE
-              assert result.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
-              assert "costs exceed" in result.problems[0].message
-          '''
-          new = '''def test_move_costs_are_validation_failure_when_current_command_is_impossible():
-              authority = _authority()
-              move = _move_action(ap=10)
-              state = _movement_state(authority, move)
-
-              result = evaluate_transition(authority, state, state.action_affordances.actions[0])
-
-              assert result.status is ResultStatus.VALIDATION_FAILURE
-              assert result.problems[0].code is ErrorCode.VALIDATION_FAILED
-              assert "costs exceed" in result.problems[0].message
-          '''
-          assert old in text, "movement cost regression changed"
-          mechanics_tests.write_text(text.replace(old, new, 1))
+          old = 'def test_move_costs_fail_closed_when_resolved_resources_are_insufficient():'
+          new = 'def test_move_costs_are_validation_failure_when_current_command_is_impossible():'
+          assert text.count(old) == 1, "movement cost test name anchor changed"
+          text = text.replace(old, new, 1)
+          marker = new
+          before, after = text.split(marker, 1)
+          old_assertions = (
+              '    assert result.status is ResultStatus.INCOMPLETE_COVERAGE\n'
+              '    assert result.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED\n'
+          )
+          new_assertions = (
+              '    assert result.status is ResultStatus.VALIDATION_FAILURE\n'
+              '    assert result.problems[0].code is ErrorCode.VALIDATION_FAILED\n'
+          )
+          assert old_assertions in after, "movement cost expected classification changed"
+          after = after.replace(old_assertions, new_assertions, 1)
+          mechanics_tests.write_text(before + marker + after)
 
           hardening = Path("tests/test_candidate_hardening.py")
           text = hardening.read_text()
@@ -121,7 +103,7 @@ jobs:
               "from bb_agent.mechanics import MechanicsAuthority\n"
               "from bb_agent.outcomes import evaluate_ordinary_attack\n"
           )
-          assert import_old in text, "hardening import anchor changed"
+          assert text.count(import_old) == 1, "hardening import anchor changed"
           text = text.replace(import_old, import_new, 1)
           addition = '''
 
