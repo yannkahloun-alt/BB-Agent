@@ -835,15 +835,15 @@ def test_multistep_contingent_aoo_fails_closed_without_per_step_costs():
     assert "per-step resolved costs" in result.problems[0].message
 
 
-def test_move_costs_fail_closed_when_resolved_resources_are_insufficient():
+def test_move_costs_are_validation_failure_when_current_command_is_impossible():
     authority = _authority()
     move = _move_action(ap=10)
     state = _movement_state(authority, move)
 
     result = evaluate_transition(authority, state, state.action_affordances.actions[0])
 
-    assert result.status is ResultStatus.INCOMPLETE_COVERAGE
-    assert result.problems[0].code is ErrorCode.EVALUATION_UNSUPPORTED
+    assert result.status is ResultStatus.VALIDATION_FAILURE
+    assert result.problems[0].code is ErrorCode.VALIDATION_FAILED
     assert "costs exceed" in result.problems[0].message
 
 

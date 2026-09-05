@@ -30,8 +30,8 @@ class ContractVersions:
 CURRENT_VERSIONS: Final = ContractVersions(
     m1_spec="issues-1-through-13.freeze-1",
     information_policy="issue-2.amended-by-13",
-    tactical_state="issue-3.amended-by-13.contingent-reactions-19",
-    action_affordance="issue-4.amended-by-13.contingent-reactions-19",
+    tactical_state="issue-3.amended-by-13.contingent-reactions-19.identity-40",
+    action_affordance="issue-4.amended-by-13.contingent-reactions-19.identity-40",
     evaluation="issue-5.amended-by-13",
     uncertainty="issue-6.amended-by-13",
     decision_trace="issue-7.amended-by-13",

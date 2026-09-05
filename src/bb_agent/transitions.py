@@ -1,9 +1,10 @@
 """Deterministic post-command transitions for the narrow M1 mechanics subset.
 
-This module deliberately consumes only an already supplied affordance. It is
+This module consumes only canonical actions resolved from TacticalState. It is
 not a command generator, pathfinder, or enemy-legality engine. Contingent AOO
-reactions are supplied by the fixture/future adapter and are validated here only
-against the canonical path and actor geometry needed to resolve the transition.
+reactions are supplied by the fixture/future adapter and share the ordinary
+attack primitive through a narrow reaction context, never a synthetic enemy
+ActionAffordance.
 """
 
 from __future__ import annotations
@@ -11,22 +12,32 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from math import floor
 
-from bb_agent.mechanics import CoverageStatus, MechanicsAuthority
-from bb_agent.outcomes import HitResult, evaluate_ordinary_attack
-from bb_agent.results import ErrorCode, Problem, Result
+from bb_agent.candidates import (
+    CandidateReference,
+    EvaluationInvalid,
+    EvaluationUncertaintyUnsupported,
+    EvaluationUnsupported,
+    evaluation_failure_result,
+    resolve_current_candidate,
+)
+from bb_agent.mechanics import MechanicsAuthority, ResolutionLedger, RulesStage
+from bb_agent.outcomes import (
+    AttackOutcome,
+    HitResult,
+    _AttackEvaluationContext,
+    _evaluate_ordinary_attack_context,
+    _reaction_attack_context,
+)
+from bb_agent.results import Result
 from bb_agent.tactical_state import (
     ActionAffordance,
     ActionKind,
     Combatant,
     KnownValue,
     LifeState,
-    PlayerVisiblePreview,
     Relation,
     Representation,
-    ResolutionStage,
-    ResolvedCost,
     TacticalState,
-    TargetKind,
 )
 
 MODEL_VERSION = "transitions.v1"
@@ -52,41 +63,87 @@ class TransitionOutcome:
     action_id: str
     model_version: str
     branches: tuple[TransitionBranch, ...]
+    resolution_ledgers: tuple[tuple[str, ResolutionLedger], ...] = ()
 
 
-def _exact(value: KnownValue, name: str) -> int:
+def evaluate_ordinary_attack(
+    authority: MechanicsAuthority,
+    state: TacticalState,
+    context: _AttackEvaluationContext,
+) -> AttackOutcome:
+    """Internal reaction-evaluation seam; context is not an enemy affordance."""
+    return _evaluate_ordinary_attack_context(authority, state, context)
+
+
+def _path(action: ActionAffordance) -> str:
+    return f"action_affordances.{action.action_id}"
+
+
+def _unsupported(action: ActionAffordance, message: str, mechanic_id: str) -> None:
+    raise EvaluationUnsupported(message, path=_path(action), mechanic_id=mechanic_id)
+
+
+def _invalid(action: ActionAffordance, message: str) -> None:
+    raise EvaluationInvalid(message, path=_path(action))
+
+
+def _exact(value: KnownValue, name: str, action: ActionAffordance) -> int:
     if (
         value.representation is not Representation.EXACT
         or isinstance(value.value, bool)
         or not isinstance(value.value, int)
     ):
-        raise ValueError(f"{name} must be exact for this transition")
+        _unsupported(action, f"{name} must be exact for this transition", "transition")
     return value.value
 
 
 def _actor(state: TacticalState, action: ActionAffordance) -> Combatant:
-    return next(
-        actor for actor in state.combatants if actor.actor_id == action.actor_id
+    actor = next(
+        (item for item in state.combatants if item.actor_id == action.actor_id), None
     )
+    if actor is None:
+        _invalid(action, "transition actor is absent from canonical state")
+    return actor
 
 
-def _with_costs(actor: Combatant, action: ActionAffordance) -> Combatant:
-    ap = (
-        _exact(actor.resources.action_points, "actor action points")
-        - action.ap_cost.value
+def _cost_ledger(action: ActionAffordance, field: str) -> ResolutionLedger:
+    try:
+        ledger = ResolutionLedger.for_action_field(action, field)
+    except ValueError as exc:
+        _invalid(action, str(exc))
+    advanced = ledger.apply(RulesStage.OUTCOME)
+    if advanced.value is None:
+        _invalid(action, advanced.problems[0].message)
+    return advanced.value
+
+
+def _with_costs(
+    actor: Combatant, action: ActionAffordance
+) -> tuple[Combatant, tuple[tuple[str, ResolutionLedger], ...]]:
+    if action.ap_cost is None or action.fatigue_cost is None:
+        _invalid(action, "transition lacks resolved AP/FAT costs")
+    ledgers = (
+        ("ap_cost", _cost_ledger(action, "ap_cost")),
+        ("fatigue_cost", _cost_ledger(action, "fatigue_cost")),
     )
-    fatigue = (
-        _exact(actor.resources.fatigue, "actor fatigue") + action.fatigue_cost.value
-    )
-    if ap < 0 or fatigue > _exact(actor.resources.fatigue_capacity, "fatigue capacity"):
-        raise ValueError("resolved action costs exceed actor resources")
-    return replace(
-        actor,
-        resources=replace(
-            actor.resources,
-            action_points=KnownValue.exact(ap),
-            fatigue=KnownValue.exact(fatigue),
+    ap = _exact(actor.resources.action_points, "actor action points", action)
+    fatigue = _exact(actor.resources.fatigue, "actor fatigue", action)
+    ap -= action.ap_cost.value
+    fatigue += action.fatigue_cost.value
+    if ap < 0 or fatigue > _exact(
+        actor.resources.fatigue_capacity, "fatigue capacity", action
+    ):
+        _invalid(action, "resolved action costs exceed actor resources")
+    return (
+        replace(
+            actor,
+            resources=replace(
+                actor.resources,
+                action_points=KnownValue.exact(ap),
+                fatigue=KnownValue.exact(fatigue),
+            ),
         ),
+        ledgers,
     )
 
 
@@ -100,14 +157,16 @@ def _reaction_origin_tile(
     if mover.position.representation is not Representation.EXACT or not isinstance(
         mover.position.value, str
     ):
-        raise ValueError("mover position must be exact for movement")
+        _unsupported(action, "mover position must be exact for movement", "move")
     matches = [
         index
         for index, tile_id in enumerate(action.resolved_path)
         if tile_id == path_step_tile_id
     ]
     if len(matches) != 1:
-        raise ValueError("reaction trigger must identify one unique path step")
+        _unsupported(
+            action, "reaction trigger must identify one unique path step", "aoo"
+        )
     index = matches[0]
     return mover.position.value if index == 0 else action.resolved_path[index - 1]
 
@@ -123,7 +182,7 @@ def _validate_reaction_geometry(
     for reaction in action.contingent_reactions:
         identity = (reaction.path_step_tile_id, reaction.reacting_actor_id)
         if identity in seen:
-            raise ValueError("duplicate contingent AOO reaction")
+            _unsupported(action, "duplicate contingent AOO reaction", "aoo")
         seen.add(identity)
         origin_tile_id = _reaction_origin_tile(
             state, mover, action, reaction.path_step_tile_id
@@ -136,13 +195,39 @@ def _validate_reaction_geometry(
             or reactor.position.representation is not Representation.EXACT
             or not isinstance(reactor.position.value, str)
         ):
-            raise ValueError("contingent AOO reactor is not a known living hostile")
+            _unsupported(
+                action, "contingent AOO reactor is not a known living hostile", "aoo"
+            )
+        origin = tiles.get(origin_tile_id)
+        if origin is None:
+            _invalid(action, "reaction trigger origin is absent from canonical map")
         if reactor.position.value not in {
-            neighbor
-            for neighbor in tiles[origin_tile_id].neighbors
-            if neighbor is not None
+            neighbor for neighbor in origin.neighbors if neighbor is not None
         }:
-            raise ValueError("contingent AOO reactor is not adjacent to trigger origin")
+            _unsupported(
+                action,
+                "contingent AOO reactor is not adjacent to trigger origin",
+                "aoo",
+            )
+
+
+def _unwrap_reaction_attack(
+    action: ActionAffordance,
+    evaluated: AttackOutcome | Result[AttackOutcome],
+) -> AttackOutcome:
+    """Accept the historical Result-returning test seam without hiding failures."""
+    if isinstance(evaluated, Result):
+        if evaluated.value is None:
+            problem = evaluated.problems[0]
+            if problem.code.value == "VALIDATION_FAILED":
+                raise EvaluationInvalid(problem.message, path=_path(action))
+            raise EvaluationUnsupported(
+                problem.message,
+                path=_path(action),
+                mechanic_id=problem.mechanic_id or "ordinary_attack",
+            )
+        return evaluated.value
+    return evaluated
 
 
 def _move(
@@ -150,58 +235,46 @@ def _move(
 ) -> TransitionOutcome:
     mover = _actor(state, action)
     _validate_reaction_geometry(state, mover, action)
-    if any(
-        reaction.unsupported_mechanic_id for reaction in action.contingent_reactions
-    ):
-        raise ValueError("unsupported contingent AOO mechanic")
 
     if action.contingent_reactions and len(action.resolved_path) != 1:
-        raise ValueError(
-            "contingent AOO on multi-step movement requires per-step resolved costs"
+        _unsupported(
+            action,
+            "contingent AOO on multi-step movement requires per-step resolved costs",
+            "move",
         )
 
     if action.contingent_reactions:
         if mover.position.representation is not Representation.EXACT or not isinstance(
             mover.position.value, str
         ):
-            raise ValueError("mover position must be exact for movement")
+            _unsupported(action, "mover position must be exact for movement", "move")
         origin_tile_id = mover.position.value
-        zero = ResolvedCost(
-            0, ResolutionStage.PREVIEW_RESOLVED, action.ap_cost.authority
-        )
-        paid = _with_costs(mover, action)
+        paid, ledgers = _with_costs(mover, action)
+        reaction_ledgers: dict[str, ResolutionLedger] = {}
         # Battle Brothers resolves disengagement while the mover is attempting to
-        # leave the controlled hex. All applicable reactions on that attempt may
-        # resolve; any hit interrupts the step, while only the all-miss branch
-        # reaches the destination. Death suppresses later reactions.
+        # leave the controlled hex. All applicable supplied reactions may resolve;
+        # any hit interrupts the step, while only the all-miss branch reaches the
+        # destination. Death suppresses later reactions.
         pending = [(1.0, paid, False, ())]
         for reaction in sorted(
             action.contingent_reactions,
             key=lambda item: item.reacting_actor_id,
         ):
+            context = _reaction_attack_context(
+                action.action_id, reaction, mover.actor_id
+            )
+            prefix = f"aoo:{reaction.path_step_tile_id}:{reaction.reacting_actor_id}"
+            for name, ledger in context.resolution_ledgers:
+                scoped_name = f"{prefix}.{name}"
+                prior = reaction_ledgers.get(scoped_name)
+                if prior is not None and prior != ledger:
+                    _invalid(action, "reaction resolution provenance changed by branch")
+                reaction_ledgers[scoped_name] = ledger
             next_pending = []
             for probability, actor, interrupted, effects in pending:
                 if actor.life_state is not LifeState.ALIVE:
                     next_pending.append((probability, actor, True, effects))
                     continue
-                synthetic = ActionAffordance(
-                    "contingent-aoo",
-                    reaction.reacting_actor_id,
-                    ActionKind.USE_SKILL,
-                    action.provenance,
-                    action.source_generation,
-                    ap_cost=zero,
-                    fatigue_cost=zero,
-                    charge_cost=zero,
-                    ammo_cost=zero,
-                    item_action_cost=zero,
-                    skill_id=reaction.skill_id,
-                    target_kind=TargetKind.ACTOR,
-                    target_actor_id=mover.actor_id,
-                    preview=PlayerVisiblePreview(
-                        displayed_hit_chance=reaction.hit_chance
-                    ),
-                )
                 variant = replace(
                     state,
                     combatants=tuple(
@@ -209,18 +282,35 @@ def _move(
                         for item in state.combatants
                     ),
                 )
-                attack = evaluate_ordinary_attack(authority, variant, synthetic)
-                if (
-                    attack.value is None
-                    or attack.value.epistemic
-                    or attack.value.epistemic_scenarios
-                    or not attack.value.branches
-                ):
-                    raise ValueError(
-                        "contingent AOO cannot represent its outcome uncertainty"
+                try:
+                    evaluated = evaluate_ordinary_attack(authority, variant, context)
+                except EvaluationUncertaintyUnsupported:
+                    _unsupported(
+                        action,
+                        "contingent AOO cannot represent its outcome uncertainty",
+                        "aoo",
                     )
-                for branch in attack.value.branches:
+                attack = _unwrap_reaction_attack(action, evaluated)
+                if (
+                    attack.epistemic
+                    or attack.epistemic_scenarios
+                    or not attack.branches
+                ):
+                    _unsupported(
+                        action,
+                        "contingent AOO cannot represent its outcome uncertainty",
+                        "aoo",
+                    )
+                for branch in attack.branches:
                     hit = branch.result is not HitResult.MISS
+                    if (
+                        branch.target_hp is None
+                        or branch.target_head_armor is None
+                        or branch.target_body_armor is None
+                    ):
+                        _invalid(
+                            action, "contingent AOO returned incomplete target state"
+                        )
                     updated = replace(
                         actor,
                         resources=replace(
@@ -229,9 +319,9 @@ def _move(
                             head_armor=KnownValue.exact(int(branch.target_head_armor)),
                             body_armor=KnownValue.exact(int(branch.target_body_armor)),
                         ),
-                        life_state=LifeState.REMOVED
-                        if branch.killed
-                        else actor.life_state,
+                        life_state=(
+                            LifeState.REMOVED if branch.killed else actor.life_state
+                        ),
                     )
                     next_pending.append(
                         (
@@ -267,21 +357,22 @@ def _move(
                 )
                 for probability, actor, interrupted, effects in pending
             ),
+            ledgers + tuple(sorted(reaction_ledgers.items())),
         )
 
-    moved = replace(
-        _with_costs(mover, action),
-        position=KnownValue.exact(action.destination_tile_id),
-    )
+    moved, ledgers = _with_costs(mover, action)
+    moved = replace(moved, position=KnownValue.exact(action.destination_tile_id))
     return TransitionOutcome(
         action.action_id,
         MODEL_VERSION,
         (TransitionBranch(1.0, True, False, moved, action.destination_tile_id),),
+        ledgers,
     )
 
 
 def _simple(state: TacticalState, action: ActionAffordance) -> TransitionOutcome:
-    actor = _with_costs(_actor(state, action), action)
+    actor, ledgers = _with_costs(_actor(state, action), action)
+    outcome_ledgers = list(ledgers)
     effects: tuple[tuple[str, object], ...] = ()
     waited: bool | None = None
     may_wait: bool | None = None
@@ -291,33 +382,49 @@ def _simple(state: TacticalState, action: ActionAffordance) -> TransitionOutcome
     elif action.kind is ActionKind.END_TURN:
         ended = True
     elif action.skill_id == "actives.recover":
-        fatigue = floor(_exact(actor.resources.fatigue, "actor fatigue") / 2 + 0.5)
+        fatigue = floor(
+            _exact(actor.resources.fatigue, "actor fatigue", action) / 2 + 0.5
+        )
         actor = replace(
             actor, resources=replace(actor.resources, fatigue=KnownValue.exact(fatigue))
         )
         effects = (("fatigue_recovered", True),)
     elif action.skill_id == "actives.reload_bolt":
+        if action.ammo_cost is None:
+            _invalid(action, "reload lacks resolved ammo cost")
+        outcome_ledgers.append(("ammo_cost", _cost_ledger(action, "ammo_cost")))
         effects = (("loaded", True), ("ammo_consumed", action.ammo_cost.value))
     elif action.kind is ActionKind.EQUIP_ITEM:
-        item = next(item for item in actor.equipment if item.item_id == action.item_id)
+        item = next(
+            (item for item in actor.equipment if item.item_id == action.item_id), None
+        )
+        if item is None:
+            _invalid(action, "equipment source item is absent from canonical actor")
         if (
             item.slot.representation is not Representation.EXACT
             or item.slot.value != action.source_location
         ):
-            raise ValueError("equipment source location is not exact")
+            _unsupported(action, "equipment source location is not exact", "equip")
         equipped = replace(item, slot=KnownValue.exact(action.target_slot))
         displaced = None
         if action.displaced_item_id is not None:
             displaced = next(
-                candidate
-                for candidate in actor.equipment
-                if candidate.item_id == action.displaced_item_id
+                (
+                    candidate
+                    for candidate in actor.equipment
+                    if candidate.item_id == action.displaced_item_id
+                ),
+                None,
             )
+            if displaced is None:
+                _invalid(action, "displaced item is absent from canonical actor")
             if (
                 displaced.slot.representation is not Representation.EXACT
                 or displaced.slot.value != action.target_slot
             ):
-                raise ValueError("displaced item is not in the target slot")
+                _unsupported(
+                    action, "displaced item is not in the target slot", "equip"
+                )
             displaced = replace(
                 displaced, slot=KnownValue.exact(action.displaced_item_destination)
             )
@@ -334,7 +441,7 @@ def _simple(state: TacticalState, action: ActionAffordance) -> TransitionOutcome
         )
         effects = (("equipped_item_id", item.item_id),)
     else:
-        raise ValueError("unsupported deterministic transition")
+        _unsupported(action, "unsupported deterministic transition", "transition")
     return TransitionOutcome(
         action.action_id,
         MODEL_VERSION,
@@ -343,34 +450,30 @@ def _simple(state: TacticalState, action: ActionAffordance) -> TransitionOutcome
                 1.0, True, False, actor, None, waited, may_wait, ended, effects
             ),
         ),
+        tuple(outcome_ledgers),
     )
 
 
 def evaluate_transition(
-    authority: MechanicsAuthority, state: TacticalState, action: ActionAffordance
+    authority: MechanicsAuthority,
+    state: TacticalState,
+    action: CandidateReference,
 ) -> Result[TransitionOutcome]:
-    """Evaluate one declared transition; reject unsupported mechanics visibly."""
+    """Evaluate one canonical current transition and preserve failure classes.
+
+    Legacy callers may pass an ActionAffordance reference, but only its action_id is
+    consumed; all transition fields are resolved from normalized TacticalState.
+    """
+
+    candidate = resolve_current_candidate(authority, state, action)
+    if candidate.value is None:
+        return Result(candidate.status, problems=candidate.problems)
     try:
-        coverage = authority.classify(state)
-        item = next(
-            entry
-            for entry in coverage.value.affordances
-            if entry.action_id == action.action_id
-        )
-        if item.status is not CoverageStatus.SUPPORTED:
-            raise ValueError("action is not covered by the active manifest")
         outcome = (
-            _move(authority, state, action)
-            if action.kind is ActionKind.MOVE_TO
-            else _simple(state, action)
+            _move(authority, candidate.value.state, candidate.value.action)
+            if candidate.value.action.kind is ActionKind.MOVE_TO
+            else _simple(candidate.value.state, candidate.value.action)
         )
         return Result.success(outcome)
-    except (AttributeError, StopIteration, TypeError, ValueError) as exc:
-        return Result.incomplete_coverage(
-            Problem(
-                ErrorCode.EVALUATION_UNSUPPORTED,
-                str(exc),
-                f"action_affordances.{action.action_id}",
-                "transition",
-            )
-        )
+    except (EvaluationUnsupported, EvaluationInvalid) as exc:
+        return evaluation_failure_result(exc)

@@ -61,6 +61,8 @@ complete executable affordance is authoritative for current reload usability.
 `ItemState` schema can express a loaded-state mutation that does not exist in the
 contract.
 
+## Structural coverage versus concrete candidate evaluation
+
 `MechanicsAuthority.classify(state)` validates the state/freshness/completeness
 and its exact ruleset identity, then returns one structural classification for
 every affordance in stable action-ID order. A report records state/profile
@@ -70,12 +72,20 @@ versions, and structured problems. Any structurally unsupported command yields
 candidates. It never drops a command, supplies a score, or returns a
 recommendation.
 
-Structural family coverage does not by itself establish that a particular
-actor/target state can be evaluated. Model-specific checks may still reject
-unsupported perks, effects, uncertainty, reaction context, item state, or other
-inputs. Those failures must remain visible through the same structured result
-boundary; a manifest declaration alone is not proof that every instance of the
-family is evaluable.
+Structural family coverage does not establish that a particular actor/target
+state is concretely evaluable. The #40 current-candidate boundary resolves a
+requested action from normalized `TacticalState` by `action_id`, then inspects the
+structural classification for that canonical action. Evaluator-facing structural
+failures use `MECHANICS_UNSUPPORTED`; a structurally supported family whose actual
+perks, effects, equipment, knowledge or reaction context cannot be modeled uses
+`EVALUATION_UNSUPPORTED`. Both remain `INCOMPLETE_COVERAGE`, while malformed,
+stale or ruleset-incompatible inputs remain `VALIDATION_FAILURE`.
+
+For compatibility, the public outcome/transition functions may still receive an
+`ActionAffordance` reference from older callers, but only its `action_id` is read.
+AP/FAT, preview, target, path and other executable fields are always re-resolved
+from the normalized canonical state. A divergent object with the same command ID
+therefore cannot alter production evaluation.
 
 Unknown skill IDs never fall back to an ordinary attack. Mappings distinguish
 skill and item content, enforce action kind and the ordinary/self-skill target
@@ -84,6 +94,37 @@ preview facts. EQUIP_ITEM resolves the actual inventory item's content; unknown
 identity or undeclared slots remain unsupported. Movement structurally requires
 the AOO family but the concrete contingent-reaction set comes from the fixture or
 future adapter rather than inferred current-command legality.
+
+## Contingent-reaction attack reuse
+
+A contingent AOO is not converted into an enemy `ActionAffordance` and does not
+create a second enemy current-action set. #40 introduces only the small internal
+attack-evaluation context needed to carry attacker, target, skill, resolved hit
+chance and resolution provenance into the same ordinary-attack primitive used by
+a canonical player attack. Common weapon/content/effect/perk/target-knowledge
+checks and the same damage formulas therefore govern both paths.
+
+The reaction context does not invent AP/FAT costs for the hostile reactor. The
+canonical movement command owns the mover's resolved cost, while the supplied
+reaction owns only the legitimate reaction inputs present in the contingent
+reaction contract. Unsupported or insufficient reaction context remains visible
+as concrete evaluation incompleteness.
+
+## Command and state identity
+
+The `identity-40` tactical-state/action-affordance contract amendment clarifies
+that `action_id` identifies the player's executable command. It includes command
+parameters such as actor, action kind, target, mode, destination/path and equipment
+transition fields, but excludes contingent-reaction consequences and acquisition
+provenance. The same movement command therefore keeps the same `action_id` when
+reaction knowledge or provider provenance changes.
+
+Contingent-reaction facts are still serialized inside the canonical tactical
+state and remain part of semantic `state_id`. A change to supplied reaction skill,
+hit chance or reaction authority is therefore not replay-equivalent even though
+it no longer renames the player's command. Existing state identity rules continue
+to strip ordinary affordance acquisition provenance and resolved cost/preview
+authority where those facts do not define semantic decision input.
 
 ## Catalog identity and provenance
 
@@ -130,10 +171,16 @@ ledger records each consumed stage for later traces.
 Calculated inputs begin with `ResolutionLedger.calculated(model_version)` and
 retain `BB_AGENT_RULES:<version>` authority. Opaque fields with no registered
 stage, static values mislabeled as resolved previews, and debug-oracle inputs are
-rejected at this production boundary. The ledger does not execute formulas; the
-outcome/transition layers must preserve the same single-authority/no-double-
-application contract when composing mechanics and later traces.
+rejected at this production boundary.
 
-Focused regression coverage lives in `tests/test_mechanics.py`; authoritative PR
-validation is provided by the repository's stable `tests`, `ruff`, and
-`pyflakes` CI checks.
+As of #40, the real ordinary-attack and transition paths use this boundary before
+consuming canonical AP/FAT or displayed hit chance. Contingent reaction hit chance
+is bound with the same `from_resolved(..., CURRENT_HIT_CHANCE)` contract. Returned
+attack/transition outcomes retain their resolution ledgers so #22 can later emit
+trace provenance without reconstructing ownership after the fact. Deliberate
+stage/authority violations become validation failures; unexpected programming
+exceptions are not caught and relabelled as honest-looking coverage gaps.
+
+Focused regression coverage lives in `tests/test_mechanics.py` and
+`tests/test_candidate_hardening.py`; authoritative PR validation is provided by
+the repository's stable `tests`, `ruff`, and `pyflakes` CI checks.

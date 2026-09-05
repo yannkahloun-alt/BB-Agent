@@ -8,9 +8,9 @@ BB-Agent is in the M1 offline tactical decision-kernel implementation phase.
 
 M1 consumes a canonical tactical state plus a complete current `ActionAffordanceSet`, evaluates only explicitly supported mechanics, later ranks them with risk-sensitive logic, and emits deterministic/replayable traces. Live game capture, execution automation, generalized future-state legality/search, campaign automation, and ML remain outside M1.
 
-## Implemented through #19
+## Implemented through #40
 
-Completed implementation tickets:
+Completed implementation/hardening tickets:
 
 - #14 — project, test, CI, deterministic serialization/hash and version skeleton.
 - #15 — canonical tactical state and `ActionAffordance` contracts.
@@ -18,6 +18,8 @@ Completed implementation tickets:
 - #17 — mechanics coverage manifest and immutable local rules/content catalog substrate.
 - #18 — ordinary single-target attack outcome model.
 - #19 — `MOVE_TO`, contingent AOO representation, and simple deterministic action transitions.
+- #37 — source-faithful disengagement/AOO movement semantics and transition fixtures.
+- #40 — canonical candidate resolution, reaction attack context, resolution ownership, failure-class and identity hardening.
 
 ### #18 supported outcome boundary
 
@@ -78,7 +80,22 @@ The supported boundary is:
 - transition regression fixtures use action-specific movement/Wait/Recover/reload costs and coherent map states;
 - reload fixtures include the item-bound executable `reload_bolt` context, a mainhand crossbow and nonempty bolt ammunition. The current canonical `ItemState` does not encode a loaded/unloaded flag, so the complete executable reload affordance is authoritative for current usability while transition effects record `loaded` and `ammo_consumed` consequences.
 
-#20 must consume only movement semantics at or beyond this #37 boundary.
+## Pre-#20 evaluation hardening — #40
+
+#40 closes the remaining seam between canonical current commands, structural mechanics coverage and concrete outcome/transition evaluation.
+
+The hardened boundary is:
+
+- current-candidate evaluators resolve the canonical action from normalized `TacticalState` plus `action_id`; a legacy caller may still pass an `ActionAffordance` reference, but only its `action_id` is consumed and divergent AP/FAT/preview/action fields are ignored;
+- manifest/family support remains structural coverage, while concrete supported-family gaps such as unsupported effects, equipment or insufficient knowledge remain per-candidate `EVALUATION_UNSUPPORTED`; evaluator-facing structural failures are distinguished with `MECHANICS_UNSUPPORTED`;
+- invalid/stale state, ruleset or candidate identity remains `VALIDATION_FAILURE` rather than being relabelled as incomplete coverage;
+- outcome/transition code catches only deliberate evaluation boundary errors; unexpected programmer exceptions are allowed to surface;
+- canonical AP/FAT and displayed-hit-chance consumption now passes through the #17 `ResolutionLedger` ownership checks, and returned outcomes retain the resulting ledgers for later trace provenance;
+- contingent AOOs no longer synthesize enemy `ActionAffordance` commands. A small internal attack-evaluation context lets canonical player attacks and supplied AOOs use the same ordinary-attack content/effect/damage primitive;
+- contingent-reaction consequence data is not part of the player's command identity. Equivalent commands keep the same `action_id` across acquisition provenance and reaction-knowledge changes, while the reaction facts remain in semantic state identity and therefore still change replay/evaluation identity;
+- the canonical tactical-state/action-affordance contract identifiers carry the explicit `identity-40` amendment.
+
+#20 must consume only candidate outcomes at or beyond the #40 boundary.
 
 ## Frozen M1 invariants
 
@@ -97,7 +114,7 @@ The supported boundary is:
 
 ## Remaining M1 sequence
 
-After the #37 movement-hardening boundary is present on `main`:
+After the #40 candidate-evaluation hardening boundary is present on `main`:
 
 - #20 — tactical positioning, threat, formation and future-capacity features.
 - #21 — risk-sensitive evaluator, deterministic selection and explanation facts.
