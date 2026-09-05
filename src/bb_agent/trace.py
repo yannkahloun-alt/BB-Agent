@@ -23,7 +23,7 @@ from bb_agent.evaluator import (
 )
 from bb_agent.fixtures import FixtureEnvelope, ReplayInput
 from bb_agent.mechanics import MechanicsAuthority
-from bb_agent.results import Problem, ResultStatus
+from bb_agent.results import ErrorCode, Problem, ResultStatus
 from bb_agent.serialization import JsonValue, canonical_json_bytes, canonical_sha256
 from bb_agent.tactical_state import TacticalState
 from bb_agent.versions import CURRENT_VERSIONS
@@ -381,6 +381,7 @@ def _engine_payload(
         "unit_value_policy_fingerprint": unit_value_policy.fingerprint,
         "mechanics_manifest_version": CURRENT_VERSIONS.mechanics_manifest,
         "mechanics_manifest_fingerprint": authority.manifest.fingerprint,
+        "declared_outcome_model_version": CURRENT_VERSIONS.outcome_model,
         "outcome_model_versions": outcome_versions,
         "simulator_settings": {
             "mode": "exact_or_analytic_current_models",
@@ -541,7 +542,12 @@ def run_decision_trace(
         "legal_candidates": list(actions),
         "legal_candidate_count": len(actions),
         "rejected_probe_counts": {},
-        "indeterminate_count": len(problems),
+        "diagnostic_problem_count": len(problems),
+        "indeterminate_count": sum(
+            problem.code
+            in (ErrorCode.EVALUATION_UNSUPPORTED, ErrorCode.MECHANICS_UNSUPPORTED)
+            for problem in problems
+        ),
         "coverage_diagnostics": [_problem_payload(problem) for problem in problems],
     }
 
@@ -692,18 +698,23 @@ def replay_decision_trace(
     state = TacticalState.from_dict(state_payload)
     profile = _profile_from_trace(expected.engine)
     policy = _unit_value_policy_from_trace(expected.engine)
-    replay_input = ReplayInput(
-        fixture_id=str(expected.input.get("fixture_id") or ""),
-        state=state,
-        state_id=state.state_id,
-        information_profile=state.information_profile,
-        ruleset_content_fingerprint=state.ruleset.content_fingerprint,
-    )
+    fixture_value = expected.input.get("fixture_id")
+    replay_source: ReplayInput | TacticalState
+    if fixture_value is None:
+        replay_source = state
+    else:
+        replay_source = ReplayInput(
+            fixture_id=str(fixture_value),
+            state=state,
+            state_id=state.state_id,
+            information_profile=state.information_profile,
+            ruleset_content_fingerprint=state.ruleset.content_fingerprint,
+        )
     revision_value = expected.engine.get("implementation_revision")
     revision = revision_value if isinstance(revision_value, str) else None
     actual = run_decision_trace(
         authority,
-        replay_input,
+        replay_source,
         profile,
         policy,
         implementation_revision=revision,

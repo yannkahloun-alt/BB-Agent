@@ -90,9 +90,7 @@ def test_trace_candidate_records_expose_action_outcome_scoring_risk_and_explanat
     assert evaluation["components"]
     assert evaluation["tail_risk"]
     assert evaluation["ranking_value"] is not None
-    contributions = [
-        fact["contribution"] for fact in evaluation["explanation_facts"]
-    ]
+    contributions = [fact["contribution"] for fact in evaluation["explanation_facts"]]
     assert sum(contributions) == pytest.approx(evaluation["ranking_value"])
 
 
@@ -156,7 +154,7 @@ def test_player_legal_and_debug_traces_identify_profile_and_shared_raw_capture()
 
 def test_trace_diff_reports_component_and_rank_deltas():
     authority = _authority()
-    state = _scenario_flip_state(authority)
+    state = _scenario_flip_state(authority, omniscient_hp=20)
     baseline = EvaluationProfile(
         weights=replace(
             DEFAULT_EVALUATION_PROFILE.weights,
