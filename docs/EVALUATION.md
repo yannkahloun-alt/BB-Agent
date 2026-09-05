@@ -108,5 +108,3 @@ fingerprint, all candidate evaluations, total deterministic ranking, chosen
 action, near-tie groups, tie-break paths, dominance/guardrail findings, and
 information-sensitivity status. Ticket #22 builds the replay-complete
 `DecisionTrace` and deterministic output fingerprint around this record.
-
-<!-- temporary ci retrigger -->
