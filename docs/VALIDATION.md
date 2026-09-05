@@ -89,7 +89,7 @@ Always-hard checks include:
 
 For `CORE`, `QUALITY`, and `SAFETY_CRITICAL` fixtures, tactical expectation failures (`acceptable_top1`, forbidden top1, ordering, top-K, near ties, component/risk relations, information sensitivity, explanation IDs) are gated failures.
 
-For `CALIBRATION` fixtures, the same tactical mismatches are emitted as `REVIEW` findings and do not by themselves fail M1 acceptance. Structural/replay/legality corruption still fails even on a calibration fixture.
+For `CALIBRATION` fixtures, those tactical-value/ranking disagreements are emitted as `REVIEW` findings and do not by themselves fail M1 acceptance. Structural/replay/legality/coverage correctness remains hard on every severity: an explicit decision-status assertion is always gated, and any fixture that asks for ranking semantics must actually produce a successful complete-coverage ranking.
 
 An `INCOMPLETE_COVERAGE` fixture can explicitly assert that status and its mechanic/error diagnostics. Any fixture carrying ranking assertions implicitly requires a successful complete-coverage ranking; the harness therefore fails closed rather than scoring around unsupported legal affordances.
 

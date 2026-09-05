@@ -389,3 +389,46 @@ def test_expectation_schema_rejects_ranking_assertion_on_expected_failure():
         assert "ranking assertions" in str(exc)
     else:
         raise AssertionError("invalid expectation combination should fail")
+
+
+def test_calibration_still_hard_fails_status_and_missing_ranking_coverage():
+    authority = _authority()
+    state = _snapshot(authority, _wait(), _attack("mod.unknown_aoe"))
+    status_fixture = _fixture(
+        state,
+        {"version": EXPECTATION_VERSION, "expected_status": "SUCCESS"},
+        fixture_id="calibration-status",
+        severity=FixtureSeverity.CALIBRATION,
+        review_status=ReviewStatus.REVIEWED,
+    )
+    ranking_fixture = _fixture(
+        state,
+        {
+            "version": EXPECTATION_VERSION,
+            "acceptable_top1": [state.action_affordances.actions[0].action_id],
+        },
+        fixture_id="calibration-ranking-coverage",
+        severity=FixtureSeverity.CALIBRATION,
+        review_status=ReviewStatus.REVIEWED,
+    )
+
+    status_report = run_fixture_validation(authority, status_fixture)
+    ranking_report = run_fixture_validation(authority, ranking_fixture)
+
+    assert status_report.passed is False
+    status_assertion = next(
+        item
+        for item in status_report.assertions
+        if item.assertion_id == "expected_status"
+    )
+    assert status_assertion.status is AssertionStatus.FAIL
+    assert status_assertion.gated is True
+
+    assert ranking_report.passed is False
+    ranking_assertion = next(
+        item
+        for item in ranking_report.assertions
+        if item.assertion_id == "ranking_available"
+    )
+    assert ranking_assertion.status is AssertionStatus.FAIL
+    assert ranking_assertion.gated is True

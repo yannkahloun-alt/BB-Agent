@@ -641,10 +641,9 @@ def _evaluate_expectations(
 
     if expectations.expected_status is not None:
         results.append(
-            _policy_assertion(
+            _hard_assertion(
                 "expected_status",
                 actual_status == expectations.expected_status,
-                tactical_gate,
                 f"decision status is {actual_status!r}; expected "
                 f"{expectations.expected_status!r}",
             )
@@ -652,10 +651,9 @@ def _evaluate_expectations(
 
     if expectations.has_ranking_assertions:
         results.append(
-            _policy_assertion(
+            _hard_assertion(
                 "ranking_available",
                 actual_status == "SUCCESS" and trace.selection is not None,
-                tactical_gate,
                 "ranking expectations require a successful complete-coverage decision",
             )
         )
