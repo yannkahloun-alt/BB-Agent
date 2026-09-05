@@ -1,4 +1,4 @@
-"""Risk-sensitive deterministic evaluation and selection for M1 current decisions.
+"""Risk-sensitive deterministic evaluation and selection for M1 decisions.
 
 The evaluator consumes #20 raw features. It does not invent commands, reconstruct
 hidden state, search future turns, or turn uncertain ranges into midpoint facts.
@@ -10,7 +10,11 @@ from __future__ import annotations
 import math
 from dataclasses import asdict, dataclass, replace
 
-from bb_agent.features import MetricRange, TacticalFeatures, extract_candidate_features
+from bb_agent.features import (
+    MetricRange,
+    TacticalFeatures,
+    extract_candidate_features,
+)
 from bb_agent.mechanics import MechanicsAuthority
 from bb_agent.results import ErrorCode, Problem, Result, ResultStatus
 from bb_agent.serialization import canonical_sha256
@@ -24,7 +28,7 @@ _TOLERANCE = 1e-9
 
 @dataclass(frozen=True, slots=True)
 class EvaluationWeights:
-    """Versioned family weights; calibration may replace these generically later."""
+    """Versioned family weights; calibration may replace these generically."""
 
     enemy_effect: float = 1.25
     immediate_friendly_harm: float = 1.25
@@ -67,7 +71,7 @@ class EvaluationProfile:
     def __post_init__(self) -> None:
         if not self.version:
             raise ValueError("evaluation profile version must be nonempty")
-        weight_values = (
+        nonnegative = (
             self.weights.enemy_effect,
             self.weights.immediate_friendly_harm,
             self.weights.post_action_exposure,
@@ -78,9 +82,13 @@ class EvaluationProfile:
             self.uncertainty_weight,
             self.near_tie_margin,
         )
-        if any(not math.isfinite(value) or value < 0 for value in weight_values):
-            raise ValueError("evaluation weights and margins must be finite and nonnegative")
-        scale_values = (
+        if any(
+            not math.isfinite(value) or value < 0 for value in nonnegative
+        ):
+            raise ValueError(
+                "evaluation weights and margins must be finite and nonnegative"
+            )
+        positive = (
             self.scales.hp_damage,
             self.scales.armor_damage,
             self.scales.hostile_pressure,
@@ -94,7 +102,7 @@ class EvaluationProfile:
             self.scales.fatigue_headroom,
             self.scales.resource_units,
         )
-        if any(not math.isfinite(value) or value <= 0 for value in scale_values):
+        if any(not math.isfinite(value) or value <= 0 for value in positive):
             raise ValueError("evaluation scales must be finite and positive")
         threshold = self.max_self_death_probability
         if threshold is not None and (
@@ -109,12 +117,7 @@ class EvaluationProfile:
 
 @dataclass(frozen=True, slots=True)
 class UnitValuePolicy:
-    """External evaluation context for friendly-life preservation.
-
-    The default gives all player-controlled lives the same strong common value.
-    A strategic layer may inject actor-specific multipliers without changing
-    TacticalState or creating a BB-Save-Toolkit runtime dependency.
-    """
+    """External evaluation context for friendly-life preservation."""
 
     version: str = UNIT_VALUE_POLICY_VERSION
     default_value: float = 1.0
@@ -137,7 +140,11 @@ class UnitValuePolicy:
 
     def value_for(self, actor_id: str) -> float:
         return next(
-            (value for candidate_id, value in self.actor_values if candidate_id == actor_id),
+            (
+                value
+                for candidate_id, value in self.actor_values
+                if candidate_id == actor_id
+            ),
             self.default_value,
         )
 
@@ -199,9 +206,13 @@ class CandidateEvaluation:
     information_sensitive: bool = False
 
     def __post_init__(self) -> None:
-        reconciled = sum(fact.contribution for fact in self.explanation_facts)
+        reconciled = sum(
+            fact.contribution for fact in self.explanation_facts
+        )
         if not math.isclose(reconciled, self.ranking_value, abs_tol=1e-9):
-            raise ValueError("explanation facts do not reconcile to ranking value")
+            raise ValueError(
+                "explanation facts do not reconcile to ranking value"
+            )
 
     @property
     def guardrail_excluded(self) -> bool:
@@ -250,7 +261,9 @@ def _clip(value: float) -> float:
 def _multiply(value: MetricRange, multiplier: float) -> MetricRange:
     if multiplier < 0:
         raise ValueError("metric multiplier must be nonnegative")
-    expected = None if value.expected is None else value.expected * multiplier
+    expected = (
+        None if value.expected is None else value.expected * multiplier
+    )
     return MetricRange(
         value.minimum * multiplier,
         value.maximum * multiplier,
@@ -258,7 +271,11 @@ def _multiply(value: MetricRange, multiplier: float) -> MetricRange:
     )
 
 
-def _normalized(value: MetricRange, scale: float, direction: float = 1.0) -> MetricRange:
+def _normalized(
+    value: MetricRange,
+    scale: float,
+    direction: float = 1.0,
+) -> MetricRange:
     endpoints = (
         _clip(direction * value.minimum / scale),
         _clip(direction * value.maximum / scale),
@@ -277,7 +294,11 @@ def _average(values: tuple[MetricRange, ...]) -> MetricRange:
     count = len(values)
     expected = None
     if all(value.expected is not None for value in values):
-        expected = sum(value.expected for value in values if value.expected is not None) / count
+        expected = sum(
+            value.expected
+            for value in values
+            if value.expected is not None
+        ) / count
     return MetricRange(
         sum(value.minimum for value in values) / count,
         sum(value.maximum for value in values) / count,
@@ -287,7 +308,11 @@ def _average(values: tuple[MetricRange, ...]) -> MetricRange:
 
 def _weighted(value: MetricRange, weight: float) -> MetricRange:
     expected = None if value.expected is None else value.expected * weight
-    return MetricRange(value.minimum * weight, value.maximum * weight, expected)
+    return MetricRange(
+        value.minimum * weight,
+        value.maximum * weight,
+        expected,
+    )
 
 
 def _add(values: tuple[MetricRange, ...]) -> MetricRange:
@@ -295,7 +320,11 @@ def _add(values: tuple[MetricRange, ...]) -> MetricRange:
         return MetricRange.exact(0)
     expected = None
     if all(value.expected is not None for value in values):
-        expected = sum(value.expected for value in values if value.expected is not None)
+        expected = sum(
+            value.expected
+            for value in values
+            if value.expected is not None
+        )
     return MetricRange(
         sum(value.minimum for value in values),
         sum(value.maximum for value in values),
@@ -316,17 +345,21 @@ def _subtract(left: MetricRange, right: MetricRange) -> MetricRange:
 
 def _shift(value: MetricRange, amount: float) -> MetricRange:
     expected = None if value.expected is None else value.expected + amount
-    return MetricRange(value.minimum + amount, value.maximum + amount, expected)
+    return MetricRange(
+        value.minimum + amount,
+        value.maximum + amount,
+        expected,
+    )
 
 
 def _selection_value(value: MetricRange) -> float:
-    """Use justified expectation when available, otherwise conservative lower bound."""
+    """Use expectation when justified, otherwise the conservative lower bound."""
 
     return value.expected if value.expected is not None else value.minimum
 
 
 def _penalty_selection(value: MetricRange) -> float:
-    """Use justified expectation when available, otherwise conservative upper loss."""
+    """Use expectation when justified, otherwise the conservative upper loss."""
 
     return value.expected if value.expected is not None else value.maximum
 
@@ -347,33 +380,51 @@ def _component(
     )
 
 
-def _components(
+def _enemy_component(
+    features: TacticalFeatures,
+    profile: EvaluationProfile,
+) -> ComponentContribution:
+    scales = profile.scales
+    return _component(
+        "enemy_effect",
+        (
+            _normalized(
+                features.enemy_effect.expected_hp_damage,
+                scales.hp_damage,
+            ),
+            _normalized(
+                features.enemy_effect.expected_armor_damage,
+                scales.armor_damage,
+            ),
+            _normalized(features.enemy_effect.kill_probability, 1.0),
+        ),
+        profile.weights.enemy_effect,
+    )
+
+
+def _friendly_component(
     features: TacticalFeatures,
     profile: EvaluationProfile,
     actor_value: float,
     ally_value: float,
-) -> tuple[ComponentContribution, ...]:
+) -> ComponentContribution:
     scales = profile.scales
-    weights = profile.weights
-    enemy = _component(
-        "enemy_effect",
-        (
-            _normalized(features.enemy_effect.expected_hp_damage, scales.hp_damage),
-            _normalized(features.enemy_effect.expected_armor_damage, scales.armor_damage),
-            _normalized(features.enemy_effect.kill_probability, 1.0),
-        ),
-        weights.enemy_effect,
-    )
-    friendly = _component(
+    return _component(
         "immediate_friendly_harm",
         (
             _normalized(
-                _multiply(features.friendly_harm.expected_self_hp_damage, actor_value),
+                _multiply(
+                    features.friendly_harm.expected_self_hp_damage,
+                    actor_value,
+                ),
                 scales.hp_damage,
                 -1.0,
             ),
             _normalized(
-                _multiply(features.friendly_harm.expected_ally_hp_damage, ally_value),
+                _multiply(
+                    features.friendly_harm.expected_ally_hp_damage,
+                    ally_value,
+                ),
                 scales.hp_damage,
                 -1.0,
             ),
@@ -383,9 +434,16 @@ def _components(
                 -1.0,
             ),
         ),
-        weights.immediate_friendly_harm,
+        profile.weights.immediate_friendly_harm,
     )
-    exposure = _component(
+
+
+def _exposure_component(
+    features: TacticalFeatures,
+    profile: EvaluationProfile,
+) -> ComponentContribution:
+    scales = profile.scales
+    return _component(
         "post_action_exposure",
         (
             _normalized(
@@ -404,12 +462,22 @@ def _components(
                 -1.0,
             ),
         ),
-        weights.post_action_exposure,
+        profile.weights.post_action_exposure,
     )
-    position = _component(
+
+
+def _position_component(
+    features: TacticalFeatures,
+    profile: EvaluationProfile,
+) -> ComponentContribution:
+    scales = profile.scales
+    return _component(
         "position_control_ally_protection",
         (
-            _normalized(features.position.elevation_change, scales.elevation_delta),
+            _normalized(
+                features.position.elevation_change,
+                scales.elevation_delta,
+            ),
             _normalized(
                 features.position.elevation_advantage_contacts,
                 scales.elevation_contacts,
@@ -437,10 +505,18 @@ def _components(
                 scales.open_reposition_tiles,
             ),
         ),
-        weights.position_control_protection,
+        profile.weights.position_control_protection,
     )
-    template_scale = max(1.0, float(features.future_capacity.current_cost_template_count))
-    resources = _component(
+
+
+def _resource_component(
+    features: TacticalFeatures,
+    profile: EvaluationProfile,
+) -> ComponentContribution:
+    scales = profile.scales
+    template_count = features.future_capacity.current_cost_template_count
+    template_scale = max(1.0, float(template_count))
+    return _component(
         "resource_fat_future_capacity",
         (
             _normalized(
@@ -471,18 +547,44 @@ def _components(
                 -1.0,
             ),
         ),
-        weights.resource_future_capacity,
+        profile.weights.resource_future_capacity,
     )
-    tempo = _component(
+
+
+def _tempo_component(
+    features: TacticalFeatures,
+    profile: EvaluationProfile,
+) -> ComponentContribution:
+    return _component(
         "tempo_turn_order",
         (
             _normalized(features.tempo.actor_has_waited, 1.0),
             _normalized(features.tempo.actor_may_wait, 1.0),
             _normalized(features.tempo.turn_ended, 1.0, -1.0),
         ),
-        weights.tempo,
+        profile.weights.tempo,
     )
-    return enemy, friendly, exposure, position, resources, tempo
+
+
+def _components(
+    features: TacticalFeatures,
+    profile: EvaluationProfile,
+    actor_value: float,
+    ally_value: float,
+) -> tuple[ComponentContribution, ...]:
+    return (
+        _enemy_component(features, profile),
+        _friendly_component(
+            features,
+            profile,
+            actor_value,
+            ally_value,
+        ),
+        _exposure_component(features, profile),
+        _position_component(features, profile),
+        _resource_component(features, profile),
+        _tempo_component(features, profile),
+    )
 
 
 def _tail_risk(
@@ -491,7 +593,8 @@ def _tail_risk(
     unit_value: float,
 ) -> TailRiskRecord:
     death = features.friendly_harm.self_death_probability
-    penalty = _multiply(death, profile.tail_risk_weight * unit_value)
+    multiplier = profile.tail_risk_weight * unit_value
+    penalty = _multiply(death, multiplier)
     return TailRiskRecord(
         death,
         features.friendly_harm.movement_interruption_probability,
@@ -518,30 +621,51 @@ def score_candidate_features(
         actor_value,
         unit_value_policy.default_value,
     )
-    tactical_range = _add(tuple(component.weighted for component in components))
-    mean_tactical_value = tactical_range.expected
-    base_selection_value = sum(component.selection_value for component in components)
+    tactical_range = _add(
+        tuple(component.weighted for component in components)
+    )
+    base_selection_value = sum(
+        component.selection_value for component in components
+    )
     tail = _tail_risk(features, profile, actor_value)
     before_uncertainty = _subtract(tactical_range, tail.penalty)
-    uncertainty_span = before_uncertainty.maximum - before_uncertainty.minimum
+    uncertainty_span = (
+        before_uncertainty.maximum - before_uncertainty.minimum
+    )
     uncertainty_penalty = profile.uncertainty_weight * uncertainty_span
     ranking_range = _shift(before_uncertainty, -uncertainty_penalty)
     ranking_value = (
-        base_selection_value - tail.selection_penalty - uncertainty_penalty
+        base_selection_value
+        - tail.selection_penalty
+        - uncertainty_penalty
     )
     irreversible_resource_cost = (
-        features.resources.ammo_consumed + features.resources.charges_consumed
+        features.resources.ammo_consumed
+        + features.resources.charges_consumed
     )
-    findings = ()
+
+    findings: tuple[str, ...] = ()
     threshold = profile.max_self_death_probability
-    if threshold is not None and tail.self_death_probability.maximum > threshold:
+    if threshold is not None and (
+        tail.self_death_probability.maximum > threshold
+    ):
         findings = ("MAX_SELF_DEATH_PROBABILITY",)
+
     explanation = tuple(
-        ExplanationFact(component.component_id, component.selection_value)
+        ExplanationFact(
+            component.component_id,
+            component.selection_value,
+        )
         for component in components
     ) + (
-        ExplanationFact("tail_risk_penalty", -tail.selection_penalty),
-        ExplanationFact("uncertainty_robustness_adjustment", -uncertainty_penalty),
+        ExplanationFact(
+            "tail_risk_penalty",
+            -tail.selection_penalty,
+        ),
+        ExplanationFact(
+            "uncertainty_robustness_adjustment",
+            -uncertainty_penalty,
+        ),
     )
     return CandidateEvaluation(
         features.action_id,
@@ -552,7 +676,7 @@ def score_candidate_features(
         unit_value_policy.fingerprint,
         features,
         components,
-        mean_tactical_value,
+        tactical_range.expected,
         tactical_range,
         base_selection_value,
         tail,
@@ -566,7 +690,10 @@ def score_candidate_features(
     )
 
 
-def _dominates(left: CandidateEvaluation, right: CandidateEvaluation) -> bool:
+def _dominates(
+    left: CandidateEvaluation,
+    right: CandidateEvaluation,
+) -> bool:
     benefit_no_worse = (
         left.tactical_value_range.minimum
         >= right.tactical_value_range.maximum - _TOLERANCE
@@ -592,10 +719,14 @@ def _with_dominance(
         dominators = sorted(
             other.action_id
             for other in candidates
-            if other.action_id != candidate.action_id and _dominates(other, candidate)
+            if other.action_id != candidate.action_id
+            and _dominates(other, candidate)
         )
         updated.append(
-            replace(candidate, dominated_by=dominators[0] if dominators else None)
+            replace(
+                candidate,
+                dominated_by=dominators[0] if dominators else None,
+            )
         )
     return tuple(updated)
 
@@ -609,13 +740,16 @@ def _ranges_overlap(
         return False
     uncertain = (
         left.ranking_range.maximum - left.ranking_range.minimum > _TOLERANCE
-        or right.ranking_range.maximum - right.ranking_range.minimum > _TOLERANCE
+        or right.ranking_range.maximum - right.ranking_range.minimum
+        > _TOLERANCE
     )
     if not uncertain:
         return False
     return (
-        left.ranking_range.minimum <= right.ranking_range.maximum + margin
-        and right.ranking_range.minimum <= left.ranking_range.maximum + margin
+        left.ranking_range.minimum
+        <= right.ranking_range.maximum + margin
+        and right.ranking_range.minimum
+        <= left.ranking_range.maximum + margin
     )
 
 
@@ -636,7 +770,9 @@ def _with_information_sensitivity(
     )
 
 
-def _tie_key(candidate: CandidateEvaluation) -> tuple[float, float, int, str]:
+def _tie_key(
+    candidate: CandidateEvaluation,
+) -> tuple[float, float, int, str]:
     return (
         candidate.tail_risk.selection_penalty,
         candidate.uncertainty_span,
@@ -649,12 +785,20 @@ def _score_groups(
     candidates: tuple[CandidateEvaluation, ...],
     margin: float,
 ) -> tuple[tuple[CandidateEvaluation, ...], ...]:
-    pending = list(sorted(candidates, key=lambda item: (-item.ranking_value, item.action_id)))
+    pending = list(
+        sorted(
+            candidates,
+            key=lambda item: (-item.ranking_value, item.action_id),
+        )
+    )
     groups = []
     while pending:
         anchor = pending[0].ranking_value
         group = []
-        while pending and anchor - pending[0].ranking_value <= margin + _TOLERANCE:
+        while (
+            pending
+            and anchor - pending[0].ranking_value <= margin + _TOLERANCE
+        ):
             group.append(pending.pop(0))
         groups.append(tuple(sorted(group, key=_tie_key)))
     return tuple(groups)
@@ -664,39 +808,59 @@ def select_candidate_evaluations(
     candidates: tuple[CandidateEvaluation, ...],
     profile: EvaluationProfile = DEFAULT_EVALUATION_PROFILE,
 ) -> DecisionSelection:
-    """Apply dominance diagnostics, guardrails, near ties and frozen tie sequence."""
+    """Apply dominance diagnostics, guardrails, near ties, and frozen ties."""
 
     if not candidates:
         raise ValueError("selection requires at least one candidate")
-    if len({candidate.action_id for candidate in candidates}) != len(candidates):
+    if len({candidate.action_id for candidate in candidates}) != len(
+        candidates
+    ):
         raise ValueError("selection requires unique action IDs")
+
     candidates = _with_dominance(candidates)
-    candidates = _with_information_sensitivity(candidates, profile.near_tie_margin)
-    eligible = tuple(candidate for candidate in candidates if not candidate.guardrail_excluded)
-    excluded = tuple(candidate for candidate in candidates if candidate.guardrail_excluded)
+    candidates = _with_information_sensitivity(
+        candidates,
+        profile.near_tie_margin,
+    )
+    eligible = tuple(
+        candidate
+        for candidate in candidates
+        if not candidate.guardrail_excluded
+    )
+    excluded = tuple(
+        candidate
+        for candidate in candidates
+        if candidate.guardrail_excluded
+    )
     partitions = (eligible, excluded) if eligible else (excluded,)
     ordered_groups = tuple(
         group
         for partition in partitions
         if partition
-        for group in _score_groups(partition, profile.near_tie_margin)
+        for group in _score_groups(
+            partition,
+            profile.near_tie_margin,
+        )
     )
-    ordered = tuple(candidate for group in ordered_groups for candidate in group)
+    ordered = tuple(
+        candidate for group in ordered_groups for candidate in group
+    )
     near_ties = tuple(
         tuple(candidate.action_id for candidate in group)
         for group in ordered_groups
         if len(group) > 1
     )
+    criteria = (
+        "lower_tail_risk",
+        "lower_epistemic_uncertainty",
+        "lower_irreversible_resource_cost",
+        "stable_action_id",
+    )
     tie_breaks = tuple(
         TieBreakRecord(
             tuple(candidate.action_id for candidate in group),
             group[0].action_id,
-            (
-                "lower_tail_risk",
-                "lower_epistemic_uncertainty",
-                "lower_irreversible_resource_cost",
-                "stable_action_id",
-            ),
+            criteria,
         )
         for group in ordered_groups
         if len(group) > 1
@@ -724,11 +888,19 @@ def evaluate_decision(
         normalized = state.normalized()
     except (TypeError, ValueError) as exc:
         return Result.validation_failure(
-            Problem(ErrorCode.VALIDATION_FAILED, str(exc), "state")
+            Problem(
+                ErrorCode.VALIDATION_FAILED,
+                str(exc),
+                "state",
+            )
         )
+
     coverage = authority.classify(normalized)
     if coverage.status is not ResultStatus.SUCCESS:
-        return Result(coverage.status, problems=coverage.problems)
+        return Result(
+            coverage.status,
+            problems=coverage.problems,
+        )
     if not normalized.action_affordances.actions:
         return Result.validation_failure(
             Problem(
@@ -739,17 +911,21 @@ def evaluate_decision(
         )
 
     evaluations = []
-    for action in sorted(
+    actions = sorted(
         normalized.action_affordances.actions,
         key=lambda candidate: candidate.action_id,
-    ):
+    )
+    for action in actions:
         feature_result = extract_candidate_features(
             authority,
             normalized,
             action.action_id,
         )
         if feature_result.value is None:
-            return Result(feature_result.status, problems=feature_result.problems)
+            return Result(
+                feature_result.status,
+                problems=feature_result.problems,
+            )
         evaluations.append(
             score_candidate_features(
                 feature_result.value,
@@ -759,7 +935,10 @@ def evaluate_decision(
             )
         )
 
-    selection = select_candidate_evaluations(tuple(evaluations), profile)
+    selection = select_candidate_evaluations(
+        tuple(evaluations),
+        profile,
+    )
     assert coverage.value is not None
     return Result.success(
         DecisionEvaluation(
