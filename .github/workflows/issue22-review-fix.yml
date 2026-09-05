@@ -1,0 +1,219 @@
+name: Issue 22 review fixes
+on:
+  push:
+    branches:
+      - codex/issue-22-decision-trace
+    paths:
+      - .github/workflows/issue22-review-fix.yml
+permissions:
+  contents: write
+jobs:
+  apply:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/issue-22-decision-trace
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/verify_workflow_dependency.py
+      - run: python -m pip install -e '.[dev]'
+      - name: Apply review fixes
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          evaluator = Path('src/bb_agent/evaluator.py')
+          text = evaluator.read_text()
+          text = text.replace(
+              'StageTimingSink = Callable[[str, int], None]\nCounterSink = Callable[[str, int], None]\n',
+              'StageTimingSink = Callable[[str, int], None]\nStageObserver = Callable[[str], None]\nCounterSink = Callable[[str, int], None]\n',
+          )
+          text = text.replace(
+              '    timing_sink: StageTimingSink | None = None,\n    counter_sink: CounterSink | None = None,\n',
+              '    timing_sink: StageTimingSink | None = None,\n    stage_observer: StageObserver | None = None,\n    counter_sink: CounterSink | None = None,\n',
+          )
+          text = text.replace(
+              '    def record_timing(stage: str, started_ns: int) -> None:\n        if timing_sink is not None:\n            timing_sink(stage, perf_counter_ns() - started_ns)\n\n    def record_counter(name: str, value: int) -> None:\n',
+              '    def record_timing(stage: str, started_ns: int) -> None:\n        if timing_sink is not None:\n            timing_sink(stage, perf_counter_ns() - started_ns)\n\n    def record_stage(stage: str) -> None:\n        if stage_observer is not None:\n            stage_observer(stage)\n\n    def record_counter(name: str, value: int) -> None:\n',
+          )
+          for needle in (
+              '    stage_started = perf_counter_ns()\n    try:\n        normalized = state.normalized()',
+              '    stage_started = perf_counter_ns()\n    try:\n        coverage = authority.classify(normalized)',
+              '        stage_started = perf_counter_ns()\n        try:\n            feature_result = extract_candidate_features(',
+              '        stage_started = perf_counter_ns()\n        try:\n            evaluations.append(',
+              '    stage_started = perf_counter_ns()\n    try:\n        selection = select_candidate_evaluations(',
+          ):
+              if needle not in text:
+                  raise SystemExit(f'missing evaluator needle: {needle[:60]}')
+          text = text.replace(
+              '    stage_started = perf_counter_ns()\n    try:\n        normalized = state.normalized()',
+              '    record_stage("validation")\n    stage_started = perf_counter_ns()\n    try:\n        normalized = state.normalized()',
+          )
+          text = text.replace(
+              '    stage_started = perf_counter_ns()\n    try:\n        coverage = authority.classify(normalized)',
+              '    record_stage("coverage")\n    stage_started = perf_counter_ns()\n    try:\n        coverage = authority.classify(normalized)',
+          )
+          text = text.replace(
+              '        stage_started = perf_counter_ns()\n        try:\n            feature_result = extract_candidate_features(',
+              '        record_stage("outcome_and_features")\n        stage_started = perf_counter_ns()\n        try:\n            feature_result = extract_candidate_features(',
+          )
+          text = text.replace(
+              '        stage_started = perf_counter_ns()\n        try:\n            evaluations.append(',
+              '        record_stage("scoring")\n        stage_started = perf_counter_ns()\n        try:\n            evaluations.append(',
+          )
+          text = text.replace(
+              '    stage_started = perf_counter_ns()\n    try:\n        selection = select_candidate_evaluations(',
+              '    record_stage("selection")\n    stage_started = perf_counter_ns()\n    try:\n        selection = select_candidate_evaluations(',
+          )
+          evaluator.write_text(text)
+
+          trace = Path('src/bb_agent/trace.py')
+          text = trace.read_text()
+          raw_line = '                "raw_capture_id": input.get("raw_capture_id"),\n'
+          if text.count(raw_line) != 2:
+              raise SystemExit(f'expected 2 raw_capture identity lines, got {text.count(raw_line)}')
+          text = text.replace(raw_line, '')
+          old_exception = '''def _exception_stage(timings: Mapping[str, int]) -> str:\n    for stage in (\n        "selection",\n        "scoring",\n        "outcome_and_features",\n        "coverage",\n        "validation",\n    ):\n        if stage in timings:\n            return stage\n    return "evaluation"\n\n\n'''
+          if old_exception not in text:
+              raise SystemExit('missing _exception_stage block')
+          text = text.replace(old_exception, '')
+          text = text.replace(
+              '    timings: dict[str, int] = {}\n    counters: dict[str, int] = {}\n\n    def timing_sink(stage: str, elapsed_ns: int) -> None:\n',
+              '    timings: dict[str, int] = {}\n    counters: dict[str, int] = {}\n    current_stage = "evaluation"\n\n    def timing_sink(stage: str, elapsed_ns: int) -> None:\n',
+          )
+          text = text.replace(
+              '    def counter_sink(name: str, value: int) -> None:\n        counters[name] = value\n\n    result = None\n',
+              '    def stage_observer(stage: str) -> None:\n        nonlocal current_stage\n        current_stage = stage\n\n    def counter_sink(name: str, value: int) -> None:\n        counters[name] = value\n\n    result = None\n',
+          )
+          text = text.replace(
+              '            timing_sink=timing_sink,\n            counter_sink=counter_sink,\n',
+              '            timing_sink=timing_sink,\n            stage_observer=stage_observer,\n            counter_sink=counter_sink,\n',
+          )
+          text = text.replace(
+              '            "stage": _exception_stage(timings),\n',
+              '            "stage": current_stage,\n',
+          )
+          old_eval_helper = '''def _evaluation_by_action(trace: DecisionTrace) -> dict[str, dict[str, JsonValue]]:\n    result = {}\n    for candidate in trace.evaluations:\n        action_id = candidate.get("action_id")\n        if isinstance(action_id, str):\n            result[action_id] = candidate\n    return result\n\n\n'''
+          new_eval_helper = old_eval_helper + '''def _legal_candidate_ids(trace: DecisionTrace) -> set[str]:\n    actions = trace.generation.get("legal_candidates")\n    if not isinstance(actions, Sequence) or isinstance(actions, str | bytes | bytearray):\n        return set()\n    return {\n        action_id\n        for action in actions\n        if isinstance(action, Mapping)\n        and isinstance((action_id := action.get("action_id")), str)\n    }\n\n\n'''
+          if old_eval_helper not in text:
+              raise SystemExit('missing evaluation helper block')
+          text = text.replace(old_eval_helper, new_eval_helper)
+          old_compare = '''    before_by_action = _evaluation_by_action(before)\n    after_by_action = _evaluation_by_action(after)\n    before_ids = set(before_by_action)\n    after_ids = set(after_by_action)\n    added = tuple(sorted(after_ids - before_ids))\n    removed = tuple(sorted(before_ids - after_ids))\n'''
+          new_compare = '''    before_by_action = _evaluation_by_action(before)\n    after_by_action = _evaluation_by_action(after)\n    before_ids = _legal_candidate_ids(before)\n    after_ids = _legal_candidate_ids(after)\n    added = tuple(sorted(after_ids - before_ids))\n    removed = tuple(sorted(before_ids - after_ids))\n'''
+          if old_compare not in text:
+              raise SystemExit('missing compare candidate block')
+          text = text.replace(old_compare, new_compare)
+          text = text.replace(
+              '    for action_id in sorted(before_ids & after_ids):\n        left = _component_values(before_by_action[action_id])\n        right = _component_values(after_by_action[action_id])\n',
+              '    for action_id in sorted(before_by_action.keys() & after_by_action.keys()):\n        left = _component_values(before_by_action[action_id])\n        right = _component_values(after_by_action[action_id])\n',
+          )
+          trace.write_text(text)
+
+          tests = Path('tests/test_trace.py')
+          text = tests.read_text()
+          text = text.replace(
+              'import pytest\n\nfrom bb_agent.evaluator import (',
+              'import pytest\n\nimport bb_agent.evaluator as evaluator_module\nfrom bb_agent.evaluator import (',
+          )
+          text = text.replace(
+              'from bb_agent.tactical_state import TacticalState\n',
+              'from bb_agent.tactical_state import ActionKind, TacticalState\n',
+          )
+          additions = r'''
+
+
+def test_raw_capture_linkage_does_not_change_semantic_output_identity():
+    authority = _authority()
+    base = _ordinary_attack_state(authority)
+    first = run_decision_trace(authority, _with_raw_capture(base, "capture-a"))
+    second = run_decision_trace(authority, _with_raw_capture(base, "capture-b"))
+
+    assert first.input["state_id"] == second.input["state_id"]
+    assert first.input["raw_capture_id"] == "capture-a"
+    assert second.input["raw_capture_id"] == "capture-b"
+    assert first.output_fingerprint == second.output_fingerprint
+    assert first.trace_id == second.trace_id
+
+
+def test_trace_diff_uses_authoritative_legal_candidates_across_coverage_failure():
+    authority = _authority()
+    before = run_decision_trace(authority, _snapshot(authority, _wait()))
+    after = run_decision_trace(
+        authority,
+        _snapshot(authority, _wait(), _attack("mod.unknown_aoe")),
+    )
+
+    before_ids = {
+        action["action_id"] for action in before.generation["legal_candidates"]
+    }
+    after_ids = {
+        action["action_id"] for action in after.generation["legal_candidates"]
+    }
+    assert after.failure is not None
+    assert after.failure["status"] == ResultStatus.INCOMPLETE_COVERAGE.value
+    assert after.evaluations == ()
+
+    diff = compare_traces(before, after)
+
+    assert diff.added_action_ids == tuple(sorted(after_ids - before_ids))
+    assert diff.removed_action_ids == tuple(sorted(before_ids - after_ids))
+    assert diff.added_action_ids
+
+
+def test_unexpected_second_candidate_outcome_exception_keeps_current_stage(monkeypatch):
+    authority = _authority()
+    state = _snapshot(authority, _wait(), _wait(ActionKind.END_TURN))
+    original = evaluator_module.extract_candidate_features
+    calls = 0
+
+    def explode_on_second_candidate(*args, **kwargs):
+        nonlocal calls
+        calls += 1
+        if calls == 2:
+            raise RuntimeError("second candidate outcome failure")
+        return original(*args, **kwargs)
+
+    monkeypatch.setattr(
+        evaluator_module,
+        "extract_candidate_features",
+        explode_on_second_candidate,
+    )
+
+    trace = run_decision_trace(authority, state)
+
+    assert trace.failure is not None
+    assert trace.failure["status"] == "EVALUATION_EXCEPTION"
+    assert trace.failure["stage"] == "outcome_and_features"
+'''
+          if 'test_raw_capture_linkage_does_not_change_semantic_output_identity' in text:
+              raise SystemExit('review regression tests already present')
+          tests.write_text(text + additions)
+
+          docs = Path('docs/TRACE.md')
+          text = docs.read_text()
+          text = text.replace(
+              '- wall-clock timestamps;\n',
+              '- wall-clock timestamps;\n- `raw_capture_id` provenance/linkage labels (still retained in trace input);\n',
+          )
+          text = text.replace(
+              '`compare_traces()` provides structured deltas for:\n',
+              '`compare_traces()` uses `generation.legal_candidates` as the authoritative candidate set, including when coverage prevents evaluations, and provides structured deltas for:\n',
+          )
+          docs.write_text(text)
+          PY
+      - name: Canonicalize and lint touched Python
+        run: |
+          python -m ruff format src/bb_agent/evaluator.py src/bb_agent/trace.py tests/test_trace.py
+          python -m ruff check --fix src/bb_agent/evaluator.py src/bb_agent/trace.py tests/test_trace.py
+      - name: Remove temporary helper
+        run: rm .github/workflows/issue22-review-fix.yml
+      - name: Commit review fixes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/bb_agent/evaluator.py src/bb_agent/trace.py tests/test_trace.py docs/TRACE.md .github/workflows/issue22-review-fix.yml
+          git commit -m 'Fix #22 trace identity and diagnostics review findings'
+          git push origin HEAD:codex/issue-22-decision-trace
