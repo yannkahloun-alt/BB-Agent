@@ -12,7 +12,9 @@ def _read(path: Path) -> str:
 def test_affordance_source_identity_is_loaded_after_capture_substrate() -> None:
     preload = _read(PRELOAD)
     substrate = preload.index('::include("scripts/bb_agent/capture_substrate")')
-    identity = preload.index('::include("scripts/bb_agent/affordance_source_identity")')
+    identity = preload.index(
+        '::include("scripts/bb_agent/affordance_source_identity")'
+    )
     memory = preload.index('::include("scripts/bb_agent/observation_memory")')
     assert substrate < identity < memory
 
