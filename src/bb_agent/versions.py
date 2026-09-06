@@ -40,3 +40,4 @@ CURRENT_VERSIONS: Final = ContractVersions(
     evaluation_config="m1-evaluation-profile.v2",
     fixture="bb-agent-fixture.v1",
 )
+
