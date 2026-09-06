@@ -61,6 +61,9 @@ def test_player_legal_projection_keeps_hidden_truth_out_of_normal_payload() -> N
     assert '"tile-memory:" + id' in source
     assert "position = wire.unknownValue()" in source
     assert "last_seen = {" in source
+    assert "delete sanitized.faction;" in hardening
+    assert "projected.faction = wire.unknownValue();" in hardening
+    assert "faction = wire.unknownValue()" in hardening
     assert (
         "if (!_actor.isAlive() || !_actor.isPlacedOnMap()) return false;" in hardening
     )
@@ -120,6 +123,8 @@ def test_affordance_acquisition_uses_game_authority_and_never_executes_commands(
         "source.getAmmoCost()",
         "navigator.findPath(",
         "navigator.getCostForPath(",
+        'this._movementCost(costs, "ActionPointsRequired", "ActionPoints")',
+        'this._movementCost(costs, "FatigueRequired", "Fatigue")',
         "navigator.clearPath()",
         "canEntityWait(active)",
         "helper_queryEquipmentTargetItems",
@@ -160,6 +165,10 @@ def test_live_export_is_transactional_strict_and_player_legal_only() -> None:
         assert record_type in source
     assert "MaxDecodedRecordBytes = 2097152" in source
     assert "MaxEncodedFrameBytes = 3145728" in source
+    assert "StreamStarted = false" in source
+    assert "if (this.StreamStarted) return true;" in source
+    assert "this._requireStream();" in source
+    assert source.count('this._emit(this._common("STREAM_START"));') == 1
     assert 'record.information_profile <- "player_legal"' in source
     assert "capture generation changed during canonical acquisition" in source
     assert "raw source changed during canonical acquisition" in source
