@@ -69,6 +69,7 @@ capture._setProvenanceFailure <- function(_reason)
         CompatibilityReason = _reason
     };
     this.State.LastError = "runtime provenance unavailable: " + _reason;
+    this.invalidate("runtime_incompatible");
     ::logError("[BB-Agent Capture] runtime provenance unavailable; capture disabled reason=" + _reason);
     return false;
 };
@@ -104,6 +105,7 @@ capture._refreshRuntimeProvenance <- function()
         if (reason != null)
         {
             this.State.LastError = "runtime incompatibility: " + reason;
+            this.invalidate("runtime_incompatible");
             ::logError(
                 "[BB-Agent Capture] incompatible runtime; capture disabled reason=" + reason
                 + " game=" + runtimeGameVersion
