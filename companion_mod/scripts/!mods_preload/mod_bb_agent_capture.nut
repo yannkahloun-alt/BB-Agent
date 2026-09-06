@@ -17,6 +17,7 @@ mod.queue(function()
     ::include("scripts/bb_agent/player_legal_hardening");
     ::include("scripts/bb_agent/canonical_identity");
     ::include("scripts/bb_agent/affordance_export");
+    ::include("scripts/bb_agent/affordance_export_hardening");
     ::include("scripts/bb_agent/live_export");
     ::include("scripts/bb_agent/hooks/tactical_state");
 });
