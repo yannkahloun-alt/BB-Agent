@@ -12,7 +12,7 @@ from bb_agent.validation import FixtureExpectations, run_validation_corpus
 from test_mechanics import _authority
 
 CORPUS_DIR = Path(__file__).parent / "fixtures" / "ticket_24"
-EXPECTED_FIXTURE_COUNT = 32
+EXPECTED_FIXTURE_COUNT = 33
 EXPECTED_SAFETY_COUNT = 10
 COVERAGE_FIXTURE_IDS = {
     "t24-core-coverage-impossible-aoo-geometry",
@@ -181,6 +181,20 @@ def test_affordability_range_target_and_terrain_boundaries_are_explicit() -> Non
     assert all(
         action.kind is ActionKind.WAIT
         for action in affordability.state.action_affordances.actions
+    )
+
+    fatigue = _fixture(fixtures, "t24-core-fatigue-affordability-attack-excluded")
+    fatigue_actor = next(
+        combatant
+        for combatant in fatigue.state.combatants
+        if combatant.actor_id == fatigue.state.decision.active_actor_id
+    )
+    assert fatigue_actor.resources.fatigue.value == 95
+    assert fatigue_actor.resources.fatigue_capacity.value == 100
+    assert any(skill.skill_id == "actives.chop" for skill in fatigue_actor.skills)
+    assert all(
+        action.kind is ActionKind.WAIT
+        for action in fatigue.state.action_affordances.actions
     )
 
     ranged = _fixture(fixtures, "t24-core-range-attack-excluded")
