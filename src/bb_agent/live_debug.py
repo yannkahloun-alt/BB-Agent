@@ -106,7 +106,9 @@ class LiveDebugTwinTracker:
             "source_generation",
             "raw_source_fingerprint",
         )
-        mismatched = [name for name in fields if getattr(left, name) != getattr(right, name)]
+        mismatched = [
+            name for name in fields if getattr(left, name) != getattr(right, name)
+        ]
         if mismatched:
             joined = ", ".join(mismatched)
             raise ValueError(f"debug twin identity mismatch: {joined}")
