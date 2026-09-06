@@ -62,7 +62,9 @@ def _contains_debug_ground_truth(value) -> bool:
 def _evaluation_by_kind(report, kind: str):
     assert report.trace is not None
     return next(
-        record for record in report.trace.evaluations if record["action"]["kind"] == kind
+        record
+        for record in report.trace.evaluations
+        if record["action"]["kind"] == kind
     )
 
 
@@ -116,8 +118,12 @@ def test_player_legal_debug_pairs_share_capture_without_debug_truth_leakage() ->
     assert not _contains_debug_ground_truth(stable_player.state)
 
     assert flip_player.state.information_profile is InformationProfile.PLAYER_LEGAL
-    assert flip_debug_low.state.information_profile is InformationProfile.OMNISCIENT_DEBUG
-    assert flip_debug_high.state.information_profile is InformationProfile.OMNISCIENT_DEBUG
+    assert (
+        flip_debug_low.state.information_profile is InformationProfile.OMNISCIENT_DEBUG
+    )
+    assert (
+        flip_debug_high.state.information_profile is InformationProfile.OMNISCIENT_DEBUG
+    )
     assert flip_player.state.raw_capture_id == flip_debug_low.state.raw_capture_id
     assert flip_player.state.raw_capture_id == flip_debug_high.state.raw_capture_id
     assert not _contains_debug_ground_truth(flip_player.state)
@@ -134,9 +140,10 @@ def test_player_legal_debug_pairs_share_capture_without_debug_truth_leakage() ->
     assert player_report.trace.selection["information_sensitive"] is True
     assert low_report.trace.selection["information_sensitive"] is False
     assert high_report.trace.selection["information_sensitive"] is False
-    assert low_report.trace.selection["chosen_action_id"] != high_report.trace.selection[
-        "chosen_action_id"
-    ]
+    assert (
+        low_report.trace.selection["chosen_action_id"]
+        != high_report.trace.selection["chosen_action_id"]
+    )
 
 
 def test_displayed_hit_chance_is_legal_without_hidden_enemy_defense() -> None:
@@ -144,7 +151,9 @@ def test_displayed_hit_chance_is_legal_without_hidden_enemy_defense() -> None:
         _load_directory(TICKET_25_DIR),
         "t25-no-cheat-preview-hidden-defense",
     )
-    enemy = next(actor for actor in fixture.state.combatants if actor.actor_id == "enemy")
+    enemy = next(
+        actor for actor in fixture.state.combatants if actor.actor_id == "enemy"
+    )
     attack = next(
         action
         for action in fixture.state.action_affordances.actions
@@ -208,6 +217,7 @@ def test_unit_value_policy_pair_changes_loss_cost_without_state_mutation() -> No
     assert high_tail["selection_penalty"] > default_tail["selection_penalty"]
     assert default_report.trace is not None and high_report.trace is not None
     assert default_report.trace.input["state_id"] == high_report.trace.input["state_id"]
-    assert default_report.trace.engine["unit_value_policy_fingerprint"] != high_report.trace.engine[
-        "unit_value_policy_fingerprint"
-    ]
+    assert (
+        default_report.trace.engine["unit_value_policy_fingerprint"]
+        != high_report.trace.engine["unit_value_policy_fingerprint"]
+    )
