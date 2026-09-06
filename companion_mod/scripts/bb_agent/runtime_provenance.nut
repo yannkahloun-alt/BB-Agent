@@ -13,6 +13,7 @@ capture.AllowedRuntimeModIDs <- {
     mod_modern_hooks = true,
     mod_bb_agent_capture = true
 };
+capture.ExpectedProvenance <- null;
 
 capture._arraysEqual <- function(_left, _right)
 {
@@ -43,6 +44,16 @@ capture._runtimeModIdentities <- function()
     };
 };
 
+capture._matchesExpectedProvenance <- function(_runtimeGameVersion, _runtimeMods)
+{
+    if (this.ExpectedProvenance == null) return true;
+
+    return this.ExpectedProvenance.GameVersion == _runtimeGameVersion
+        && this.ExpectedProvenance.RulesetGameVersion == this.SupportedGameVersion
+        && this.ExpectedProvenance.RulesetContentFingerprint == this.RulesetContentFingerprint
+        && this._arraysEqual(this.ExpectedProvenance.Mods, _runtimeMods.Identities);
+};
+
 capture._refreshRuntimeProvenance <- function()
 {
     local runtimeGameVersion = ::GameInfo.getVersionNumber();
@@ -53,6 +64,8 @@ capture._refreshRuntimeProvenance <- function()
         reason = "game_version_mismatch";
     else if (runtimeMods.Unsupported.len() != 0)
         reason = "unsupported_mod_stack";
+    else if (!this._matchesExpectedProvenance(runtimeGameVersion, runtimeMods))
+        reason = "explicit_provenance_mismatch";
 
     this.State.Provenance = {
         GameVersion = runtimeGameVersion,
@@ -86,29 +99,25 @@ capture.isRuntimeCompatible <- function()
         && this.State.Provenance.IsCompatible;
 };
 
-// Optional stricter validation hook for #57. It may verify the exact expected
-// runtime mod identities but cannot override the built-in supported-build gate.
+// Optional stricter validation hook for #57. The expectation is persistent so
+// battle initialization cannot silently erase an explicit incompatibility.
 capture.configureProvenance = function(_gameVersion, _rulesetGameVersion, _contentFingerprint, _mods)
 {
-    this._refreshRuntimeProvenance();
+    if (_gameVersion == null || _gameVersion == "") throw "game version is required";
+    if (_rulesetGameVersion == null || _rulesetGameVersion == "") throw "ruleset game version is required";
+    if (_contentFingerprint == null || _contentFingerprint == "") throw "content fingerprint is required";
+    if (_mods == null) throw "mod identities are required";
 
     local expectedMods = this._copyArray(_mods);
     expectedMods.sort();
-    local configuredMatch = _gameVersion == this.State.Provenance.GameVersion
-        && _rulesetGameVersion == this.SupportedGameVersion
-        && _contentFingerprint == this.RulesetContentFingerprint
-        && this._arraysEqual(expectedMods, this.State.Provenance.Mods);
+    this.ExpectedProvenance = {
+        GameVersion = _gameVersion,
+        RulesetGameVersion = _rulesetGameVersion,
+        RulesetContentFingerprint = _contentFingerprint,
+        Mods = expectedMods
+    };
 
-    if (!configuredMatch)
-    {
-        this.State.Provenance.IsCompatible = false;
-        this.State.Provenance.CompatibilityReason = "explicit_provenance_mismatch";
-        this.State.LastError = "runtime incompatibility: explicit_provenance_mismatch";
-        ::logError("[BB-Agent Capture] incompatible runtime; capture disabled reason=explicit_provenance_mismatch");
-        return false;
-    }
-
-    return this.isRuntimeCompatible();
+    return this._refreshRuntimeProvenance();
 };
 
 capture._refreshRuntimeProvenance();
