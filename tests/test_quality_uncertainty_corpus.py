@@ -54,7 +54,7 @@ def _contains_debug_ground_truth(value) -> bool:
         )
     if isinstance(value, dict):
         return any(_contains_debug_ground_truth(item) for item in value.values())
-    if isinstance(value, (tuple, list)):
+    if isinstance(value, tuple | list):
         return any(_contains_debug_ground_truth(item) for item in value)
     return False
 
