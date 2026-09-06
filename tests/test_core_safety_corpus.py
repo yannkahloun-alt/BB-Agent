@@ -59,8 +59,7 @@ def test_ticket_24_corpus_is_promoted_gated_and_harness_green() -> None:
     assert len(fixtures) == EXPECTED_FIXTURE_COUNT
     assert len({fixture.metadata.fixture_id for fixture in fixtures}) == len(fixtures)
     assert all(
-        fixture.metadata.review_status is ReviewStatus.PROMOTED
-        for fixture in fixtures
+        fixture.metadata.review_status is ReviewStatus.PROMOTED for fixture in fixtures
     )
     assert all(
         fixture.metadata.severity
@@ -75,9 +74,7 @@ def test_ticket_24_corpus_is_promoted_gated_and_harness_green() -> None:
         == EXPECTED_SAFETY_COUNT
     )
 
-    taxonomy = {
-        tag for fixture in fixtures for tag in fixture.metadata.taxonomy
-    }
+    taxonomy = {tag for fixture in fixtures for tag in fixture.metadata.taxonomy}
     assert REQUIRED_TAXONOMY <= taxonomy
 
     for fixture in fixtures:
@@ -103,9 +100,7 @@ def test_ticket_24_corpus_is_promoted_gated_and_harness_green() -> None:
 def test_ticket_24_safety_and_coverage_cases_fail_closed() -> None:
     fixtures = _load_corpus()
     corpus = run_validation_corpus(_authority(), fixtures)
-    reports = {
-        report.fixture_id: report for report in corpus.fixtures
-    }
+    reports = {report.fixture_id: report for report in corpus.fixtures}
 
     for fixture in fixtures:
         report = reports[fixture.metadata.fixture_id]
@@ -141,8 +136,9 @@ def test_ticket_24_safety_and_coverage_cases_fail_closed() -> None:
         move = _evaluation_by_kind(report, ActionKind.MOVE_TO)
         assert move["evaluation"]["tail_risk"]["selection_penalty"] > 0
         assert (
-            move["evaluation"]["features"]["friendly_harm"]
-            ["movement_interruption_probability"]["expected"]
+            move["evaluation"]["features"]["friendly_harm"][
+                "movement_interruption_probability"
+            ]["expected"]
             > 0
         )
 
@@ -162,18 +158,18 @@ def test_high_damage_temptation_loses_to_immediate_flank_protection() -> None:
     attack = _evaluation_by_kind(report, ActionKind.USE_SKILL)
     move = _evaluation_by_kind(report, ActionKind.MOVE_TO)
     assert (
-        attack["evaluation"]["features"]["enemy_effect"]
-        ["expected_hp_damage"]["expected"]
+        attack["evaluation"]["features"]["enemy_effect"]["expected_hp_damage"][
+            "expected"
+        ]
         > 20
     )
     assert (
-        move["evaluation"]["features"]["formation"]
-        ["created_direct_screen_links"]["expected"]
+        move["evaluation"]["features"]["formation"]["created_direct_screen_links"][
+            "expected"
+        ]
         == 1
     )
     assert (
-        move["evaluation"]["features"]["position"]
-        ["elevation_change"]["expected"]
-        == 2
+        move["evaluation"]["features"]["position"]["elevation_change"]["expected"] == 2
     )
     assert report.trace.selection["chosen_action_id"] == move["action_id"]
