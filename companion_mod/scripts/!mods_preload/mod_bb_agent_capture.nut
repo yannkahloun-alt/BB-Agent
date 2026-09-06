@@ -8,6 +8,6 @@ local mod = def.mh <- ::Hooks.register(def.ID, def.Version, def.Name);
 
 mod.queue(function()
 {
-    ::include("bb_agent/capture_substrate");
-    ::include("bb_agent/hooks/tactical_state");
+    ::include("scripts/bb_agent/capture_substrate");
+    ::include("scripts/bb_agent/hooks/tactical_state");
 });
