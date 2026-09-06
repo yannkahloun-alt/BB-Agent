@@ -9,7 +9,8 @@ layer.
 
 The implementation follows the resolved post-M1 contracts from issues #50, #51
 and #52. Runtime evidence is pinned to Battle Brothers Scripts revision
-`162f498ac7c49b4c317bbf54718a595ecef6a65a`.
+`162f498ac7c49b4c317bbf54718a595ecef6a65a`, whose source import identifies the
+running baseline as Battle Brothers `1.5.2.2`.
 
 The key rule from #51 is that advice exists only during an explicit
 **command-ready generation**. Capture is therefore a post-update observer, not a
@@ -30,14 +31,50 @@ companion_mod/
       mod_bb_agent_capture.nut
     bb_agent/
       capture_substrate.nut
+      runtime_provenance.nut
       hooks/
         tactical_state.nut
 ```
 
 The preload file registers `mod_bb_agent_capture` with Modern Hooks and loads the
-capture substrate plus the tactical-state hook. The hook wraps vanilla
-`tactical_state.onInit`, `onUpdate`, `onBattleEnded`, and `onDestroy`; every
-vanilla method is still invoked. No vanilla script file is replaced.
+capture substrate, runtime-provenance gate, and tactical-state hook. The hook
+wraps vanilla `tactical_state.onInit`, `onUpdate`, `onBattleEnded`, and
+`onDestroy`; every vanilla method is still invoked. No vanilla script file is
+replaced.
+
+## Runtime provenance and compatibility
+
+The selected static rules/content identity is the pinned scripts revision plus
+content fingerprint
+`4c4b714832d1989740a6f07dce058c11aa1e9123056966ede06ce42d1df182bd`.
+That selected identity is not treated as proof of the running game.
+
+`runtime_provenance.nut` separately probes the live process using supported
+runtime authorities:
+
+- `GameInfo.getVersionNumber()` for the actual Battle Brothers version;
+- `Const.Serialization.Version` as an additional runtime compatibility fact;
+- `Hooks.getMods()` plus each mod object's version for the normalized live
+  registered-mod stack.
+
+The initial supported runtime is exactly Battle Brothers `1.5.2.2` plus the
+base `vanilla` registration, official DLC registrations, Modern Hooks, and the
+BB-Agent capture mod itself. Any different game version or additional
+unrecognized mod registration is conservatively `runtime_incompatible`.
+Overhaul/content mods are therefore never silently assigned the selected vanilla
+ruleset fingerprint.
+
+Runtime provenance is refreshed when a tactical battle initializes. The raw
+acquisition provenance records the actual game version, serialization version,
+full sorted `id@version` mod identities, selected scripts/ruleset identity,
+unsupported mod IDs, compatibility verdict, and incompatibility reason. An
+incompatible process never calls the capture observer; if advice had somehow
+been READY it is invalidated, and `LastError` records a visible generic runtime
+incompatibility reason. Normal Battle Brothers play continues unaffected.
+
+`configureProvenance()` remains as an optional stricter #57 validation hook. It
+may require an exact expected runtime mod-identity list, but it cannot override
+the built-in game-version/unsupported-mod gate.
 
 ## Command-ready predicate
 
@@ -54,8 +91,9 @@ hold:
 - no virtual-time event remains scheduled;
 - known flee/exit modal tactical states are absent.
 
-The implementation may become stricter after #58 real-game smoke evidence, but
-must not loosen these guards merely to produce more snapshots.
+Runtime compatibility is an outer gate before this observer runs. The
+implementation may become stricter after #58 real-game smoke evidence, but must
+not loosen these guards merely to produce more snapshots.
 
 ## In-process raw acquisition API
 
@@ -83,12 +121,19 @@ Within one battle, `source_generation` starts at `-1` and increments when a
 newly command-ready deterministic source signature differs from the prior READY
 signature.
 
-Fingerprint inputs are stable string tokens over capture/ruleset provenance,
-battle/turn/actor validation context, sorted mod identities, sorted raw actor
-source facts, current turn-sequence order, and deterministic tactical-map tile
-facts. Map tokens cover valid tile coordinates, elevation, terrain type/subtype,
+Fingerprint inputs are stable string tokens over runtime/capture/ruleset
+provenance, battle/turn/actor validation context, sorted mod identities, sorted
+raw actor source facts, current turn-sequence order, current active-player
+skill-affordance authority, and deterministic tactical-map tile facts. Primitive
+skill/item/current-property state remains an in-process raw source for all
+actors; resolved `queryActives()` usability/affordability/AP/FAT/target metadata
+is queried only for the command-ready active player actor. Wait authority and
+movement-cost state are also part of the source signature.
+
+Map tokens cover valid tile coordinates, elevation, terrain type/subtype,
 empty/occupied state, player visibility and discovery state. This prevents a
-map/turn change that #57 may consume from silently reusing a prior generation.
+map/turn/affordance-source change that #57 may consume from silently reusing a
+prior generation.
 
 The internal joined signature is used only for duplicate comparison. It is
 intentionally **not** called the external `raw_source_fingerprint`: #57 converts
@@ -113,13 +158,15 @@ for `ObservationPoint`, REMEMBERED/INFERRED/UNKNOWN semantics and the detailed
 ## Diagnostics and failure behavior
 
 The mod logs only non-sensitive capture lifecycle/health information: battle
-sequence, generation, active actor ID, invalidation reason and generic capture
-errors. It does not log raw actors, `CurrentProperties`, entity lists,
-fingerprint material or observation-memory payloads.
+sequence, generation, active actor ID, invalidation reason, runtime compatibility
+reason/version, and generic capture errors. It does not log raw actors,
+`CurrentProperties`, entity lists, fingerprint material or observation-memory
+payloads.
 
-Capture errors fail closed. If advice was READY, a capture failure invalidates
-it immediately. The game-side observer never requires an external process, so
-external absence/failure cannot block normal Battle Brothers play.
+Capture and compatibility errors fail closed. If advice was READY, a capture
+failure invalidates it immediately. The game-side observer never requires an
+external process, so external absence/failure cannot block normal Battle
+Brothers play.
 
 ## Explicit non-goals / prohibited paths
 
@@ -135,5 +182,6 @@ Ticket #55 contains no calls that:
 - perform tactical evaluation inside the game;
 - generically serialize hidden actor/current-property/object graphs.
 
-#57 owns projection plus affordance export; #58 owns real-game smoke and latency
-evidence. This substrate alone does not authorize advisor promotion or execution.
+#57 owns projection plus affordance export; #58 owns real-game compile, oracle,
+and latency evidence. This substrate alone does not authorize advisor promotion
+or execution.
