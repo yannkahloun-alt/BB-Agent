@@ -58,6 +58,10 @@ capture.rememberPlayerLegalFact = function(_key, _value, _round, _decision)
     if (typeof _key != "string" || _key == "") throw "observation-memory key is required";
     if (!this._isPlayerLegalMemoryValue(_value))
         throw "observation-memory value must be player-legal data";
+    if (typeof _round != "integer" || _round < 0)
+        throw "observation-memory round must be a non-negative integer";
+    if (typeof _decision != "integer" || _decision < 0)
+        throw "observation-memory decision must be a non-negative integer";
 
     this.State.ObservationMemory[_key] <- {
         Value = this._copyPlayerLegalMemoryValue(_value),
