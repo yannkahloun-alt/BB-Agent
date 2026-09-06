@@ -60,15 +60,34 @@ local legal = ::BBAGENT_PlayerLegal;
         return _action;
     },
 
-    function _skillResourceCosts(_skill)
+    function _skillResourceCosts(_active, _skill)
     {
-        local ammo = "consumeAmmo" in _skill ? 1 : 0;
         local item = _skill.getItem();
         if (item != null && item.isItemType(::Const.Items.ItemType.Usable)
             && !item.isItemType(::Const.Items.ItemType.Weapon))
         {
             throw "legal consumable skill has no canonical charge/item resource extractor";
         }
+        if (!("consumeAmmo" in _skill))
+            return { ammo = 0, charge = 0, item_action = 0 };
+
+        local source = null;
+        if (item != null && "getAmmoMax" in item && "getAmmoCost" in item
+            && item.getAmmoMax() > 0)
+        {
+            source = item;
+        }
+        else
+        {
+            local ammoItem = _active.getItems().getItemAtSlot(::Const.ItemSlot.Ammo);
+            if (ammoItem != null && "getAmmo" in ammoItem && "getAmmoCost" in ammoItem)
+                source = ammoItem;
+        }
+        if (source == null)
+            throw "legal ammo-consuming skill has no supported player-visible ammo source";
+        local ammo = source.getAmmoCost();
+        if (typeof ammo != "integer" || ammo < 0)
+            throw "ammo source returned an invalid canonical cost";
         return { ammo = ammo, charge = 0, item_action = 0 };
     },
 
@@ -91,6 +110,22 @@ local legal = ::BBAGENT_PlayerLegal;
         return ret;
     },
 
+    function _affectedTilePreview(_skill, _targetTile, _projection)
+    {
+        if (!_skill.isAOE()) return null;
+        local ids = [];
+        foreach (tile in _skill.getAffectedTiles(_targetTile))
+        {
+            if (tile == null) continue;
+            local id = legal.tileID(tile);
+            if (!(id in _projection.runtime.tile_records))
+                throw "player-visible AOE preview references a tile outside canonical projection";
+            ids.push(id);
+        }
+        ids.sort();
+        return wire.resolvedPreview(ids);
+    },
+
     function _skillActions(_raw, _projection)
     {
         local ret = [];
@@ -100,7 +135,7 @@ local legal = ::BBAGENT_PlayerLegal;
         foreach (skill in active.getSkills().queryActives())
         {
             if (!skill.isUsable() || !skill.isAffordable()) continue;
-            local resources = this._skillResourceCosts(skill);
+            local resources = this._skillResourceCosts(active, skill);
             if (!skill.isTargeted())
             {
                 local action = this._baseAction(actorId, "USE_SKILL");
@@ -142,7 +177,7 @@ local legal = ::BBAGENT_PlayerLegal;
                         local chance = skill.getHitchance(target);
                         if (typeof chance != "integer" || chance < 0 || chance > 100)
                             throw "player-visible hit chance is outside canonical integer bounds";
-                        action.preview.displayed_hit_chance = wire.resolvedPreview(chance, "PLAYER_UI");
+                        action.preview.displayed_hit_chance = wire.resolvedPreview(chance);
                     }
                 }
                 else
@@ -150,6 +185,7 @@ local legal = ::BBAGENT_PlayerLegal;
                     action.target_kind = skill.isAOE() ? "AREA" : "TILE";
                     action.target_tile_id = legal.tileID(tile);
                 }
+                action.preview.affected_tile_ids = this._affectedTilePreview(skill, tile, _projection);
                 this._resolvedCosts(
                     action,
                     skill.getActionPointCost(),
@@ -351,7 +387,7 @@ local legal = ::BBAGENT_PlayerLegal;
             local target = screen.helper_queryEquipmentTargetItems(inventory, item);
             local items = [item, target.firstItem, target.secondItem];
             local blocked = screen.helper_isActionAllowed(active, items, false);
-            if (blocked != null) continue;
+            if (blocked != null || !inventory.isActionAffordable(items)) continue;
             if (inventory.getNumberOfEmptySlots(::Const.ItemSlot.Bag) < target.slotsNeeded - 1) continue;
             if (target.secondItem != null)
                 throw "legal equipment command has two displaced items and is not canonically representable";
