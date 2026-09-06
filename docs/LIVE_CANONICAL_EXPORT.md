@@ -43,7 +43,7 @@ live_export.nut
 hooks/tactical_state.nut
 ```
 
-The first four modules are the #55 substrate. The following six implement #57,
+The first four modules are the #55 substrate. The following seven implement #57,
 and the tactical hook emits lifecycle records only after every dependency is
 loaded.
 
