@@ -1,6 +1,6 @@
 local def = ::BBAGENT_Mod <- {
     ID = "mod_bb_agent_capture",
-    Version = "0.2.1",
+    Version = "0.2.2",
     Name = "BB-Agent Capture"
 };
 
@@ -9,6 +9,7 @@ local mod = def.mh <- ::Hooks.register(def.ID, def.Version, def.Name);
 mod.queue(function()
 {
     ::include("scripts/bb_agent/capture_substrate");
+    ::include("scripts/bb_agent/capture_diagnostics");
     ::include("scripts/bb_agent/affordance_source_identity");
     ::include("scripts/bb_agent/observation_memory");
     ::include("scripts/bb_agent/runtime_provenance");
