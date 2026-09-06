@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
+from collections.abc import Mapping, Sequence
 
 from bb_agent.live_ingest import AcceptedLiveDecision
+from bb_agent.serialization import JsonValue
 from bb_agent.tactical_state import InformationProfile, TacticalState
 
 
@@ -18,6 +19,15 @@ def live_battle_id(battle_sequence: int) -> str:
     return f"live-battle:{battle_sequence}"
 
 
+def _thaw_live_json(value: JsonValue) -> JsonValue:
+    """Detach recursively frozen ingest payloads into mutable JSON containers."""
+    if isinstance(value, Mapping):
+        return {key: _thaw_live_json(child) for key, child in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return [_thaw_live_json(child) for child in value]
+    return value
+
+
 def materialize_live_tactical_state(decision: AcceptedLiveDecision) -> TacticalState:
     """Validate one accepted live payload and attach its host capture identity.
 
@@ -28,13 +38,20 @@ def materialize_live_tactical_state(decision: AcceptedLiveDecision) -> TacticalS
     record = decision.record
     if record.payload is None:
         raise ValueError("accepted READY record is missing canonical payload")
-    payload = deepcopy(dict(record.payload))
+    if record.battle_sequence is None or record.source_generation is None:
+        raise ValueError("accepted READY record is missing generation identity")
+    payload_value = _thaw_live_json(record.payload)
+    if not isinstance(payload_value, dict):
+        raise ValueError("accepted READY payload must be a canonical object")
+    payload = payload_value
     if payload.get("raw_capture_id") is not None:
         raise ValueError("producer canonical payload must leave raw_capture_id null")
 
     payload["raw_capture_id"] = decision.raw_capture_id
     state = TacticalState.from_dict(payload)
 
+    if state.raw_capture_id != decision.raw_capture_id:
+        raise ValueError("canonical raw_capture_id disagrees with accepted stream identity")
     if state.information_profile.value != record.information_profile:
         raise ValueError("canonical information profile disagrees with live envelope")
     if state.information_profile is not InformationProfile.PLAYER_LEGAL:
