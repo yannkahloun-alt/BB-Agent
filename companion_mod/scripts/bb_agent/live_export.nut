@@ -5,6 +5,7 @@ local identity = ::BBAGENT_CanonicalIdentity;
 ::BBAGENT_LiveExport <- {
     MaxDecodedRecordBytes = 2097152,
     MaxEncodedFrameBytes = 3145728,
+    StreamStarted = false,
 
     function _common(_recordType)
     {
@@ -35,21 +36,34 @@ local identity = ::BBAGENT_CanonicalIdentity;
         ::logInfo(frame);
     },
 
+    // Called for every tactical battle, but STREAM_START belongs to the continuous
+    // companion/log stream. The process-global exporter table survives across
+    // battles and emits exactly one stream boundary until the mod is reloaded.
     function beginBattle()
     {
+        if (this.StreamStarted) return true;
         try
         {
             this._emit(this._common("STREAM_START"));
+            this.StreamStarted = true;
+            return true;
         }
         catch (error)
         {
             capture.State.LastError = "live STREAM_START export failed";
             ::logError("[BB-Agent Capture] live STREAM_START export failed");
+            return false;
         }
+    },
+
+    function _requireStream()
+    {
+        if (!this.StreamStarted) throw "live stream has not started";
     },
 
     function _emitInvalidated(_event)
     {
+        this._requireStream();
         local record = this._common("DECISION_INVALIDATED");
         record.battle_sequence <- _event.BattleSequence;
         record.source_generation <- _event.SourceGeneration;
@@ -83,6 +97,7 @@ local identity = ::BBAGENT_CanonicalIdentity;
 
     function _emitReady(_event)
     {
+        this._requireStream();
         local raw = capture.getCurrentRawAcquisition();
         if (raw == null
             || raw.BattleSequence != _event.BattleSequence
