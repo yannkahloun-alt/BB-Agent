@@ -26,9 +26,9 @@ mod.hook("scripts/states/tactical_state", function(q)
         return __original();
     }
 
-    q.onDestroy = @(__original) function()
+    q.onFinish = @(__original) function()
     {
-        ::BBAGENT_Capture.endBattle("tactical_state_destroyed");
+        ::BBAGENT_Capture.endBattle("tactical_state_finished");
         return __original();
     }
 });
