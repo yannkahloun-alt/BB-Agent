@@ -50,7 +50,7 @@ def test_lifecycle_is_post_update_and_fails_closed() -> None:
     assert original < observe
     assert 'RecordType = "DECISION_READY"' in substrate
     assert 'RecordType = "DECISION_INVALIDATED"' in substrate
-    assert 'this.invalidate(readiness.Reason);' in substrate
+    assert "this.invalidate(readiness.Reason);" in substrate
     assert 'this.invalidate("capture_error");' in substrate
     assert "++this.State.SourceGeneration" in substrate
     assert "LastReadySignature == signature" in substrate
@@ -102,7 +102,9 @@ def test_observation_memory_is_separate_and_player_legal_only_api() -> None:
     assert "forgetPlayerLegalFact" in text
     assert "getObservationMemory" in text
     assert "Raw runtime objects must never be inserted into ObservationMemory" in text
-    acquisition = text[text.index("function _acquireRaw") : text.index("function observe")]
+    acquisition = text[
+        text.index("function _acquireRaw") : text.index("function observe")
+    ]
     assert "ObservationMemory" not in acquisition
 
 
@@ -110,8 +112,12 @@ def test_fingerprint_material_is_deterministic_and_versioned() -> None:
     text = _read(SUBSTRATE)
     assert '"capture_contract=" + this.CaptureContractVersion' in text
     assert '"game_version=" + this.State.Provenance.GameVersion' in text
-    assert '"ruleset_game_version=" + this.State.Provenance.RulesetGameVersion' in text
-    assert '"ruleset_content=" + this.State.Provenance.RulesetContentFingerprint' in text
+    assert (
+        '"ruleset_game_version=" + this.State.Provenance.RulesetGameVersion' in text
+    )
+    assert (
+        '"ruleset_content=" + this.State.Provenance.RulesetContentFingerprint' in text
+    )
     assert '"battle=" + this.State.BattleSequence' in text
     assert '"round=" + turnBar.getCurrentRound()' in text
     assert '"turn_position=" + turnBar.getTurnPosition()' in text
