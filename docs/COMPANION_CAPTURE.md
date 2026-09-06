@@ -40,8 +40,10 @@ companion_mod/
 The preload file registers `mod_bb_agent_capture` with Modern Hooks and loads the
 capture substrate, legal observation-memory boundary, runtime-provenance gate,
 and tactical-state hook. The hook wraps vanilla `tactical_state.onInit`,
-`onUpdate`, `onBattleEnded`, and `onDestroy`; every vanilla method is still
-invoked. No vanilla script file is replaced.
+`onUpdate`, `onBattleEnded`, and `onFinish`; every vanilla method is still
+invoked. `onFinish` is the supported state teardown lifecycle inherited from
+`scripts/states/state`; the companion does not attempt to wrap a nonexistent
+`onDestroy` method. No vanilla script file is replaced.
 
 ## Runtime provenance and compatibility
 
@@ -73,8 +75,9 @@ incompatible process never calls the capture observer; if advice had somehow
 been READY it is invalidated immediately, and `LastError` records a visible
 generic runtime incompatibility reason. Runtime-probe exceptions are contained
 inside the provenance gate, converted to `runtime_provenance_error`, and disable
-capture instead of escaping into vanilla tactical initialization. Normal Battle
-Brothers play continues unaffected.
+capture instead of escaping into vanilla tactical initialization. A later
+successful compatibility refresh clears that stale provenance health error.
+Normal Battle Brothers play continues unaffected.
 
 `configureProvenance()` remains as an optional stricter #57 validation hook. It
 may require an exact expected runtime mod-identity list, but it cannot override
