@@ -159,6 +159,27 @@
         return _value ? "1" : "0";
     },
 
+    function _primitiveStateTokens(_prefix, _state)
+    {
+        local ret = [];
+        foreach (key, value in _state)
+        {
+            local kind = typeof value;
+            if (kind != "null" && kind != "bool" && kind != "integer" && kind != "float" && kind != "string")
+                continue;
+            ret.push(_prefix + ":" + key + ":" + kind + ":" + value);
+        }
+        ret.sort();
+        return ret;
+    },
+
+    function _arrayToken(_prefix, _values)
+    {
+        local parts = [];
+        foreach (value in _values) parts.push(value.tostring());
+        return _prefix + ":" + parts.join(",");
+    },
+
     function _tileToken(_actor)
     {
         if (!_actor.isPlacedOnMap()) return "tile:none";
@@ -172,7 +193,25 @@
         foreach (skill in _actor.getSkills().m.Skills)
         {
             if (skill == null || skill.isGarbage()) continue;
-            ret.push(skill.getID() + ":hidden=" + this._boolToken(skill.isHidden()));
+            local prefix = "skill=" + skill.getID();
+            ret.push(prefix + ":hidden=" + this._boolToken(skill.isHidden()));
+            foreach (stateToken in this._primitiveStateTokens(prefix + ":m", skill.m))
+                ret.push(stateToken);
+
+            if (skill.isActive())
+            {
+                ret.push(prefix + ":usable=" + this._boolToken(skill.isUsable()));
+                ret.push(prefix + ":affordable=" + this._boolToken(skill.isAffordable()));
+                ret.push(prefix + ":ap=" + skill.getActionPointCost());
+                ret.push(prefix + ":fatigue=" + skill.getFatigueCost());
+                ret.push(prefix + ":targeted=" + this._boolToken(skill.isTargeted()));
+                ret.push(prefix + ":target_actor=" + this._boolToken(skill.isTargetingActor()));
+                ret.push(prefix + ":aoe=" + this._boolToken(skill.isAOE()));
+                ret.push(prefix + ":ranged=" + this._boolToken(skill.isRanged()));
+                ret.push(prefix + ":min_range=" + skill.getMinRange());
+                ret.push(prefix + ":max_range=" + skill.getMaxRange());
+                ret.push(prefix + ":max_level=" + skill.getMaxLevelDifference());
+            }
         }
         ret.sort();
         return ret;
@@ -184,12 +223,17 @@
         foreach (item in _actor.getItems().getAllItems())
         {
             if (item == null || item == -1 || item.isGarbage()) continue;
+            local prefix = "item=" + item.getID();
             ret.push(
-                item.getID()
+                prefix
                 + ":slot=" + item.getCurrentSlotType()
                 + ":condition=" + item.getCondition()
             );
+            foreach (stateToken in this._primitiveStateTokens(prefix + ":m", item.m))
+                ret.push(stateToken);
         }
+        foreach (containerToken in this._primitiveStateTokens("items:m", _actor.getItems().m))
+            ret.push(containerToken);
         ret.sort();
         return ret;
     },
@@ -204,17 +248,29 @@
             this._tileToken(_actor),
             "hp=" + _actor.getHitpoints(),
             "hpmax=" + _actor.getHitpointsMax(),
+            "armor_body=" + _actor.getArmor(::Const.BodyPart.Body),
+            "armor_head=" + _actor.getArmor(::Const.BodyPart.Head),
             "ap=" + _actor.getActionPoints(),
             "fatigue=" + _actor.getFatigue(),
             "fatiguemax=" + _actor.getFatigueMax(),
             "morale=" + _actor.getMoraleState(),
             "waitspent=" + this._boolToken(_actor.isWaitActionSpent()),
             "turnstarted=" + this._boolToken(_actor.isTurnStarted()),
-            "turndone=" + this._boolToken(_actor.isTurnDone())
+            "turndone=" + this._boolToken(_actor.isTurnDone()),
+            "movement_type=" + _actor.m.CurrentMovementType,
+            "level_ap=" + _actor.m.LevelActionPointCost,
+            "level_fatigue=" + _actor.m.LevelFatigueCost,
+            "max_traversible_levels=" + _actor.m.MaxTraversibleLevels,
+            "uses_zoc=" + this._boolToken(_actor.m.IsUsingZoneOfControl),
+            "exerts_zoc=" + this._boolToken(_actor.m.IsExertingZoneOfControl),
+            this._arrayToken("movement_ap", _actor.m.ActionPointCosts),
+            this._arrayToken("movement_fatigue", _actor.m.FatigueCosts)
         ];
 
-        foreach (skill in this._skillTokens(_actor)) tokens.push("skill=" + skill);
-        foreach (item in this._itemTokens(_actor)) tokens.push("item=" + item);
+        foreach (propertyToken in this._primitiveStateTokens("properties", _actor.getCurrentProperties()))
+            tokens.push(propertyToken);
+        foreach (skillToken in this._skillTokens(_actor)) tokens.push(skillToken);
+        foreach (itemToken in this._itemTokens(_actor)) tokens.push(itemToken);
         tokens.sort();
         return tokens.join(",");
     },
@@ -284,6 +340,8 @@
             "turn_position=" + turnBar.getTurnPosition(),
             "active_actor=" + _active.getID(),
             "waitspent=" + this._boolToken(_active.isWaitActionSpent()),
+            "may_wait_actor=" + this._boolToken(_active.isAbleToWait()),
+            "may_wait_bar=" + this._boolToken(turnBar.canEntityWait(_active)),
             "turnstarted=" + this._boolToken(_active.isTurnStarted())
         ];
 
