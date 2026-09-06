@@ -172,9 +172,7 @@
         foreach (skill in _actor.getSkills().m.Skills)
         {
             if (skill == null || skill.isGarbage()) continue;
-            ret.push(
-                skill.getID() + ":hidden=" + this._boolToken(skill.isHidden())
-            );
+            ret.push(skill.getID() + ":hidden=" + this._boolToken(skill.isHidden()));
         }
         ret.sort();
         return ret;
@@ -237,6 +235,42 @@
         return ret;
     },
 
+    function _turnSequenceTokens()
+    {
+        local ret = [];
+        local entities = ::Tactical.TurnSequenceBar.getCurrentEntities();
+        foreach (index, actor in entities)
+        {
+            if (actor == null || actor.isNull()) continue;
+            ret.push("turn=" + index + ":" + actor.getID());
+        }
+        return ret;
+    },
+
+    function _mapTokens()
+    {
+        local ret = [];
+        local size = ::Tactical.getMapSize();
+        for (local x = 0; x < size.X; x = ++x)
+        {
+            for (local y = 0; y < size.Y; y = ++y)
+            {
+                if (!::Tactical.isValidTileSquare(x, y)) continue;
+                local tile = ::Tactical.getTileSquare(x, y);
+                ret.push(
+                    "map=" + x + ":" + y
+                    + ":level=" + tile.Level
+                    + ":type=" + tile.Type
+                    + ":subtype=" + tile.Subtype
+                    + ":empty=" + this._boolToken(tile.IsEmpty)
+                    + ":visible=" + this._boolToken(tile.IsVisibleForPlayer)
+                    + ":discovered=" + this._boolToken(tile.IsDiscovered)
+                );
+            }
+        }
+        return ret;
+    },
+
     function _fingerprintInputs(_state, _active)
     {
         local turnBar = ::Tactical.TurnSequenceBar;
@@ -255,6 +289,8 @@
 
         foreach (modID in this.State.Provenance.Mods) ret.push("mod=" + modID);
         foreach (actorToken in this._entityTokens()) ret.push("entity=" + actorToken);
+        foreach (turnToken in this._turnSequenceTokens()) ret.push(turnToken);
+        foreach (mapToken in this._mapTokens()) ret.push(mapToken);
         ret.sort();
         return ret;
     },
@@ -300,11 +336,17 @@
                 return this.State.LastEvent;
             }
 
+            local wasReady = this.State.IsReady;
             local active = readiness.Active;
             local inputs = this._fingerprintInputs(_state, active);
             local signature = this._sourceSignature(inputs);
             local duplicate = this.State.LastReadySignature != null
                 && this.State.LastReadySignature == signature;
+
+            // An unchanged source on an uninterrupted ready frame is not a new
+            // lifecycle event. The same unchanged source after INVALIDATED is a
+            // deliberate duplicate READY re-emission on the same generation.
+            if (duplicate && wasReady) return null;
 
             if (!duplicate)
             {
