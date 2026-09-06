@@ -12,10 +12,27 @@ capture._activeItemSlotTopologyTokens <- function(_active)
     {
         foreach (position, item in slotItems)
         {
-            local identity = item == null ? "empty" : item == -1 ? "blocked" : item.getID();
-            ret.push(
-                "active_item_slot=" + slotIndex + ":" + position + ":" + identity
-            );
+            local slotPrefix = "active_item_slot=" + slotIndex + ":" + position;
+            if (item == null)
+            {
+                ret.push(slotPrefix + ":empty");
+                continue;
+            }
+            if (item == -1)
+            {
+                ret.push(slotPrefix + ":blocked");
+                continue;
+            }
+
+            local itemPrefix = slotPrefix + ":item=" + item.getID();
+            ret.push(itemPrefix + ":condition=" + item.getCondition());
+            foreach (
+                stateToken in this._primitiveStateTokens(
+                    itemPrefix + ":m",
+                    item.m
+                )
+            )
+                ret.push(stateToken);
         }
     }
     ret.sort();
