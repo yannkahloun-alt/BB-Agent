@@ -1,8 +1,13 @@
 local def = ::BBAGENT_Mod <- {
     ID = "mod_bb_agent_capture",
-    Version = "0.2.13",
+    Version = "0.2.14",
     Name = "BB-Agent Capture"
 };
+
+// Smoke/debug branch opt-in. The debug-oracle implementation itself defaults
+// to disabled unless this explicit root flag is true. Remove this line before
+// the final production merge so normal builds remain player_legal only.
+::BBAGENT_ENABLE_DEBUG_ORACLE <- true;
 
 local mod = def.mh <- ::Hooks.register(def.ID, def.Version, def.Name);
 
@@ -26,5 +31,6 @@ mod.queue(function()
     ::include("scripts/bb_agent/runtime_sha256_compat");
     ::include("scripts/bb_agent/runtime_entity_fingerprint_compat");
     ::include("scripts/bb_agent/runtime_ready_failure_latch");
+    ::include("scripts/bb_agent/runtime_debug_oracle");
     ::include("scripts/bb_agent/hooks/tactical_state");
 });
