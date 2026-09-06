@@ -22,6 +22,15 @@ local joinCompat = ::BBAGENT_RuntimeJoinCompat;
         return text;
     },
 
+    function _idListToken(_values)
+    {
+        if (_values == null) return "null";
+        local parts = [];
+        foreach (value in _values)
+            parts.push(value == null ? "null" : value.tostring());
+        return joinCompat.joinStrings(parts, ",");
+    },
+
     function _tileID(_tile)
     {
         return legal.tileID(_tile);
@@ -138,6 +147,11 @@ local joinCompat = ::BBAGENT_RuntimeJoinCompat;
         local runtimeNeighbors = fromInProjection
             ? _projection.runtime.tile_records[_fromId].neighbor_ids
             : null;
+        local stateNeighbors = fromInProjection
+            ? this._stateNeighbors(_projection, _fromId)
+            : null;
+        local rawFrom = this._rawTile(fromTile);
+        local rawTo = this._rawTile(toTile);
 
         this.LastAdjacencyMismatch = {
             from_tile_id = _fromId,
@@ -146,13 +160,33 @@ local joinCompat = ::BBAGENT_RuntimeJoinCompat;
             to_in_projection = toInProjection,
             from_visible_in_projection = _fromId in _projection.runtime.tile_visible,
             to_visible_in_projection = _toId in _projection.runtime.tile_visible,
-            raw_from = this._rawTile(fromTile),
-            raw_to = this._rawTile(toTile),
+            raw_from = rawFrom,
+            raw_to = rawTo,
             projected_runtime_neighbor_ids = runtimeNeighbors,
-            projected_state_neighbors = fromInProjection
-                ? this._stateNeighbors(_projection, _fromId)
-                : null
+            projected_state_neighbors = stateNeighbors
         };
+
+        ::logInfo(
+            "[BB-Agent Oracle] adjacency_mismatch"
+            + " from=" + _fromId
+            + " to=" + _toId
+            + " from_projected=" + fromInProjection
+            + " to_projected=" + toInProjection
+            + " from_visible=" + (_fromId in _projection.runtime.tile_visible)
+            + " to_visible=" + (_toId in _projection.runtime.tile_visible)
+        );
+        ::logInfo(
+            "[BB-Agent Oracle] raw_from_neighbors="
+            + this._idListToken(rawFrom == null ? null : rawFrom.native_neighbor_ids)
+        );
+        ::logInfo(
+            "[BB-Agent Oracle] projected_runtime_neighbors="
+            + this._idListToken(runtimeNeighbors)
+        );
+        ::logInfo(
+            "[BB-Agent Oracle] projected_state_neighbors="
+            + this._idListToken(stateNeighbors)
+        );
     },
 
     function snapshot(_raw)
