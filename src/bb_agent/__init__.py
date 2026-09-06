@@ -41,6 +41,22 @@ from bb_agent.fixtures import (
     save_fixture,
     validate_fixture_pair,
 )
+from bb_agent.live_ingest import (
+    LIVE_CAPTURE_VERSION,
+    LIVE_ENVELOPE_VERSION,
+    AcceptedLiveDecision,
+    LiveCompatibility,
+    LiveIngestEvent,
+    LiveIngestMachine,
+    LiveIngestStatus,
+    LiveKernelIdentity,
+    LiveLogTailer,
+    LiveRecord,
+    LiveRecordType,
+    current_live_kernel_identity,
+    decode_live_frame,
+    encode_live_frame,
+)
 from bb_agent.outcomes import AttackOutcome, OutcomeBranch, evaluate_ordinary_attack
 from bb_agent.tactical_state import TacticalState
 from bb_agent.trace import (
@@ -82,6 +98,20 @@ __all__ = [
     "CURRENT_VERSIONS",
     "EXPECTATION_VERSION",
     "HARNESS_VERSION",
+    "LIVE_CAPTURE_VERSION",
+    "LIVE_ENVELOPE_VERSION",
+    "AcceptedLiveDecision",
+    "LiveCompatibility",
+    "LiveIngestEvent",
+    "LiveIngestMachine",
+    "LiveIngestStatus",
+    "LiveKernelIdentity",
+    "LiveLogTailer",
+    "LiveRecord",
+    "LiveRecordType",
+    "current_live_kernel_identity",
+    "decode_live_frame",
+    "encode_live_frame",
     "TRACE_VERSION",
     "ActionFactExpectation",
     "AssertionStatus",
