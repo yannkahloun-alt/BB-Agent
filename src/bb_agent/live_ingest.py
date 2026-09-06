@@ -144,17 +144,30 @@ class LiveCompatibility:
     allow_debug: bool = False
 
     def __post_init__(self) -> None:
-        if not self.ruleset_game_version:
+        if not isinstance(self.ruleset_game_version, str) or not self.ruleset_game_version:
             raise ValueError("ruleset_game_version cannot be empty")
-        if not _SHA256_RE.fullmatch(self.ruleset_content_fingerprint):
+        if (
+            not isinstance(self.ruleset_content_fingerprint, str)
+            or _SHA256_RE.fullmatch(self.ruleset_content_fingerprint) is None
+        ):
             raise ValueError("ruleset_content_fingerprint must be lowercase SHA-256")
         if self.expected_mods is not None:
+            if isinstance(self.expected_mods, str | bytes | bytearray) or not isinstance(
+                self.expected_mods, Sequence
+            ):
+                raise ValueError("expected_mods must be an array of strings")
             object.__setattr__(self, "expected_mods", tuple(self.expected_mods))
             if any(not isinstance(mod, str) or not mod for mod in self.expected_mods):
                 raise ValueError("expected_mods entries must be nonempty strings")
-        if self.expected_companion_version == "":
+        if self.expected_companion_version is not None and (
+            not isinstance(self.expected_companion_version, str)
+            or not self.expected_companion_version
+        ):
             raise ValueError("expected_companion_version cannot be empty")
-        if self.expected_runtime_game_version == "":
+        if self.expected_runtime_game_version is not None and (
+            not isinstance(self.expected_runtime_game_version, str)
+            or not self.expected_runtime_game_version
+        ):
             raise ValueError("expected_runtime_game_version cannot be empty")
         if self.expected_mods is not None and self.expected_mods != tuple(
             sorted(self.expected_mods)
@@ -166,6 +179,8 @@ class LiveCompatibility:
             raise ValueError("unsupported live capture contract version")
         if not isinstance(self.expected_kernel_identity, LiveKernelIdentity):
             raise ValueError("expected_kernel_identity must be LiveKernelIdentity")
+        if not isinstance(self.allow_debug, bool):
+            raise ValueError("allow_debug must be a boolean")
 
 
 @dataclass(frozen=True, slots=True)
@@ -288,10 +303,18 @@ class LiveIngestMachine:
     def invalidate_for_discontinuity(self) -> None:
         self._state.clear_stream()
 
+    def invalidate_current_readiness(self) -> None:
+        """Clear advice without discarding accepted stream/generation identity."""
+
+        self._state.current_decision = None
+
     def accept(self, record: LiveRecord) -> LiveIngestEvent:
         incompatible = _compatibility_problem(record, self.compatibility)
         if incompatible is not None:
-            self._state.current_decision = None
+            if record.record_type is LiveRecordType.STREAM_START:
+                self._state.clear_stream()
+            else:
+                self.invalidate_current_readiness()
             return LiveIngestEvent(
                 LiveIngestStatus.REJECTED_INCOMPATIBLE, incompatible, record=record
             )
@@ -529,14 +552,6 @@ class LiveIngestMachine:
                 capture_stream_id, raw_capture_id, payload_digest, current_record
             )
         if (
-            last_record_type is LiveRecordType.DECISION_READY
-            and current_decision is None
-        ):
-            # READY may be poisoned by a hard same-generation conflict; it must not
-            # silently recover on restart.
-            if raw_capture_id is not None or payload_digest is not None:
-                raise ValueError("persisted READY validity is incomplete")
-        if (
             last_record_type is not LiveRecordType.DECISION_READY
             and current_decision is not None
         ):
@@ -687,17 +702,20 @@ class LiveLogTailer:
                 ),
             )
 
-        if self._had_persisted_state and not self._cursor_anchor_matches():
-            self._invalidate_discontinuity(
+        if not self._cursor_anchor_matches():
+            reason = (
                 "persisted cursor anchor no longer matches log"
+                if self._had_persisted_state
+                else "live cursor anchor no longer matches log"
             )
+            self._invalidate_discontinuity(reason)
             self._cursor = self._cursor_at_eof(identity, stat.st_size)
             self._had_persisted_state = False
             self._persist_state()
             return (
                 LiveIngestEvent(
                     LiveIngestStatus.STREAM_DISCONTINUITY,
-                    "persisted cursor is ambiguous; waiting for fresh STREAM_START",
+                    f"{reason}; waiting for fresh STREAM_START",
                 ),
             )
         self._had_persisted_state = False
@@ -734,7 +752,7 @@ class LiveLogTailer:
                         )
                         event = self._machine.accept(record)
                     except ValueError as exc:
-                        self._machine._state.current_decision = None
+                        self._machine.invalidate_current_readiness()
                         event = LiveIngestEvent(
                             LiveIngestStatus.REJECTED_MALFORMED, str(exc)
                         )
@@ -805,6 +823,8 @@ class LiveLogTailer:
         )
         if self._cursor.anchor_start > self._cursor.offset:
             raise ValueError("live ingest anchor_start exceeds offset")
+        if self._cursor.offset - self._cursor.anchor_start > self.ANCHOR_BYTES:
+            raise ValueError("live ingest cursor anchor exceeds maximum span")
         self._machine = LiveIngestMachine.from_persisted_dict(
             self.compatibility,
             machine,
@@ -971,11 +991,18 @@ def _kernel_identity_from_wire(value: Mapping[str, JsonValue]) -> LiveKernelIden
 
 
 def _validate_record(record: LiveRecord) -> None:
-    if not record.companion_version or not record.runtime_game_version:
-        raise ValueError("live producer version fields cannot be empty")
-    if not record.ruleset_game_version:
-        raise ValueError("live ruleset_game_version cannot be empty")
+    if not isinstance(record.record_type, LiveRecordType):
+        raise ValueError("live record_type is invalid")
+    for name, value in (
+        ("companion_version", record.companion_version),
+        ("runtime_game_version", record.runtime_game_version),
+        ("ruleset_game_version", record.ruleset_game_version),
+    ):
+        if not isinstance(value, str) or not value:
+            raise ValueError(f"live {name} cannot be empty")
     _sha(record.ruleset_content_fingerprint, "ruleset_content_fingerprint")
+    if not isinstance(record.mods, tuple):
+        raise ValueError("live mods must be a tuple of strings")
     if any(not isinstance(mod, str) or not mod for mod in record.mods):
         raise ValueError("live mod identifiers must be nonempty strings")
     if len(record.mods) != len(set(record.mods)):
