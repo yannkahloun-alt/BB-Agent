@@ -12,12 +12,30 @@ from bb_agent.validation import FixtureExpectations, run_validation_corpus
 from test_mechanics import _authority
 
 CORPUS_DIR = Path(__file__).parent / "fixtures" / "ticket_24"
-EXPECTED_FIXTURE_COUNT = 25
-EXPECTED_SAFETY_COUNT = 11
+EXPECTED_FIXTURE_COUNT = 32
+EXPECTED_SAFETY_COUNT = 10
 COVERAGE_FIXTURE_IDS = {
     "t24-core-coverage-impossible-aoo-geometry",
     "t24-core-coverage-multistep-aoo-costs",
     "t24-core-coverage-unknown-special",
+}
+KILL_SECURE_CORE_IDS = {
+    "t24-safety-kill-secure-1hp",
+    "t24-safety-kill-secure-5hp",
+    "t24-safety-kill-secure-10hp",
+    "t24-safety-kill-secure-15hp",
+}
+SAFETY_FIXTURE_IDS = {
+    "t24-safety-double-aoo-20hp",
+    "t24-safety-high-aoo-10hp",
+    "t24-safety-high-damage-vs-protect-flank",
+    "t24-safety-lethal-aoo-1hp",
+    "t24-safety-lethal-aoo-5hp",
+    "t24-safety-low-probability-lethal-aoo",
+    "t24-safety-uphill-aoo-trap",
+    "t24-safety-vacate-screen",
+    "t24-safety-vacate-screen-1hp",
+    "t24-safety-vacate-screen-5hp",
 }
 REQUIRED_TAXONOMY = {
     "core_legality_affordability",
@@ -44,6 +62,10 @@ def _load_corpus() -> tuple[FixtureEnvelope, ...]:
     return tuple(fixtures)
 
 
+def _fixture(fixtures: tuple[FixtureEnvelope, ...], fixture_id: str) -> FixtureEnvelope:
+    return next(item for item in fixtures if item.metadata.fixture_id == fixture_id)
+
+
 def _evaluation_by_kind(report, kind: ActionKind):
     assert report.trace is not None
     return next(
@@ -66,13 +88,16 @@ def test_ticket_24_corpus_is_promoted_gated_and_harness_green() -> None:
         in {FixtureSeverity.CORE, FixtureSeverity.SAFETY_CRITICAL}
         for fixture in fixtures
     )
-    assert (
-        sum(
-            fixture.metadata.severity is FixtureSeverity.SAFETY_CRITICAL
-            for fixture in fixtures
-        )
-        == EXPECTED_SAFETY_COUNT
-    )
+
+    safety_ids = {
+        fixture.metadata.fixture_id
+        for fixture in fixtures
+        if fixture.metadata.severity is FixtureSeverity.SAFETY_CRITICAL
+    }
+    assert safety_ids == SAFETY_FIXTURE_IDS
+    assert len(safety_ids) == EXPECTED_SAFETY_COUNT
+    for fixture_id in KILL_SECURE_CORE_IDS:
+        assert _fixture(fixtures, fixture_id).metadata.severity is FixtureSeverity.CORE
 
     taxonomy = {tag for fixture in fixtures for tag in fixture.metadata.taxonomy}
     assert REQUIRED_TAXONOMY <= taxonomy
@@ -103,17 +128,17 @@ def test_ticket_24_safety_and_coverage_cases_fail_closed() -> None:
     corpus = run_validation_corpus(_authority(), fixtures)
     reports = {report.fixture_id: report for report in corpus.fixtures}
 
-    for fixture in fixtures:
-        report = reports[fixture.metadata.fixture_id]
-        if fixture.metadata.severity is FixtureSeverity.SAFETY_CRITICAL:
-            assert report.trace is not None
-            assert report.trace.selection is not None
-            expectations = FixtureExpectations.from_json(fixture.expectations)
-            assert expectations.forbidden_top1
-            assert (
-                report.trace.selection["chosen_action_id"]
-                not in expectations.forbidden_top1
-            )
+    for fixture_id in SAFETY_FIXTURE_IDS:
+        fixture = _fixture(fixtures, fixture_id)
+        report = reports[fixture_id]
+        assert report.trace is not None
+        assert report.trace.selection is not None
+        expectations = FixtureExpectations.from_json(fixture.expectations)
+        assert expectations.forbidden_top1
+        assert (
+            report.trace.selection["chosen_action_id"]
+            not in expectations.forbidden_top1
+        )
 
     for fixture_id in COVERAGE_FIXTURE_IDS:
         report = reports[fixture_id]
@@ -128,11 +153,11 @@ def test_ticket_24_safety_and_coverage_cases_fail_closed() -> None:
         )
 
     aoo_reports = [
-        report
-        for fixture_id, report in reports.items()
-        if fixture_id.startswith("t24-safety-") and "aoo" in fixture_id
+        reports[fixture_id]
+        for fixture_id in SAFETY_FIXTURE_IDS
+        if "aoo" in fixture_id
     ]
-    assert len(aoo_reports) == 5
+    assert len(aoo_reports) == 6
     for report in aoo_reports:
         move = _evaluation_by_kind(report, ActionKind.MOVE_TO)
         assert move["evaluation"]["tail_risk"]["selection_penalty"] > 0
@@ -144,12 +169,80 @@ def test_ticket_24_safety_and_coverage_cases_fail_closed() -> None:
         )
 
 
-def test_high_damage_temptation_loses_to_immediate_flank_protection() -> None:
-    fixture = next(
-        item
-        for item in _load_corpus()
-        if item.metadata.fixture_id == "t24-safety-high-damage-vs-protect-flank"
+def test_affordability_range_target_and_terrain_boundaries_are_explicit() -> None:
+    fixtures = _load_corpus()
+
+    affordability = _fixture(fixtures, "t24-core-affordability-attack-excluded")
+    actor = next(
+        combatant
+        for combatant in affordability.state.combatants
+        if combatant.actor_id == affordability.state.decision.active_actor_id
     )
+    assert actor.resources.action_points.value == 3
+    assert any(skill.skill_id == "actives.chop" for skill in actor.skills)
+    assert all(
+        action.kind is ActionKind.WAIT
+        for action in affordability.state.action_affordances.actions
+    )
+
+    ranged = _fixture(fixtures, "t24-core-range-attack-excluded")
+    ranged_actor = next(
+        combatant
+        for combatant in ranged.state.combatants
+        if combatant.actor_id == ranged.state.decision.active_actor_id
+    )
+    hostile = next(
+        combatant
+        for combatant in ranged.state.combatants
+        if combatant.actor_id == "enemy"
+    )
+    actor_tile = next(
+        tile for tile in ranged.state.tiles if tile.tile_id == ranged_actor.position.value
+    )
+    hostile_tile = next(
+        tile for tile in ranged.state.tiles if tile.tile_id == hostile.position.value
+    )
+    assert actor_tile.coordinate.distance_to(hostile_tile.coordinate) > 1
+    assert all(
+        action.kind is not ActionKind.USE_SKILL
+        for action in ranged.state.action_affordances.actions
+    )
+
+    target = _fixture(fixtures, "t24-core-target-affordance-integrity")
+    attack = next(
+        action
+        for action in target.state.action_affordances.actions
+        if action.kind is ActionKind.USE_SKILL
+    )
+    assert attack.target_actor_id == "enemy"
+    assert attack.target_kind is not None and attack.target_kind.value == "ACTOR"
+    assert attack.preview.affected_tile_ids is not None
+    assert attack.preview.affected_tile_ids.value == ("east",)
+
+    terrain = _fixture(fixtures, "t24-core-terrain-resolved-move-cost")
+    move = next(
+        action
+        for action in terrain.state.action_affordances.actions
+        if action.kind is ActionKind.MOVE_TO
+    )
+    destination = next(
+        tile for tile in terrain.state.tiles if tile.tile_id == move.destination_tile_id
+    )
+    assert destination.terrain.value == "swamp"
+    assert move.ap_cost is not None and move.ap_cost.value == 4
+    assert move.fatigue_cost is not None and move.fatigue_cost.value == 8
+
+
+def test_high_damage_temptation_commits_turn_and_loses_to_flank_protection() -> None:
+    fixtures = _load_corpus()
+    fixture = _fixture(fixtures, "t24-safety-high-damage-vs-protect-flank")
+    actor = next(
+        combatant
+        for combatant in fixture.state.combatants
+        if combatant.actor_id == fixture.state.decision.active_actor_id
+    )
+    assert actor.resources.action_points.value == 4
+
     corpus = run_validation_corpus(_authority(), (fixture,))
     assert corpus.passed, corpus.blocking_failures
     report = corpus.fixtures[0]
@@ -158,6 +251,20 @@ def test_high_damage_temptation_loses_to_immediate_flank_protection() -> None:
 
     attack = _evaluation_by_kind(report, ActionKind.USE_SKILL)
     move = _evaluation_by_kind(report, ActionKind.MOVE_TO)
+    assert attack["action"]["ap_cost"]["value"] == 4
+    assert move["action"]["ap_cost"]["value"] == 2
+    assert (
+        attack["evaluation"]["features"]["resources"]["remaining_action_points"][
+            "expected"
+        ]
+        == 0
+    )
+    assert (
+        move["evaluation"]["features"]["resources"]["remaining_action_points"][
+            "expected"
+        ]
+        == 2
+    )
     assert (
         attack["evaluation"]["features"]["enemy_effect"]["expected_hp_damage"][
             "expected"
