@@ -4,9 +4,9 @@ Ticket #24 contributes the mechanics-correctness and catastrophic-safety half of
 
 ## Corpus shape
 
-The durable corpus lives in `tests/fixtures/ticket_24/` as canonical `FixtureEnvelope` JSON. It contains **32 promoted gated fixtures**:
+The durable corpus lives in `tests/fixtures/ticket_24/` as canonical `FixtureEnvelope` JSON. It contains **33 promoted gated fixtures**:
 
-- **22 CORE** mechanics/offense/coverage fixtures;
+- **23 CORE** mechanics/offense/coverage fixtures;
 - **10 SAFETY_CRITICAL** catastrophic-risk fixtures;
 - **0 CALIBRATION** fixtures.
 
@@ -20,6 +20,7 @@ The CORE fixtures cover:
 - ordinary attack HP/armor/kill effects;
 - four kill-secure choices against Wait/End Turn as `obvious_offense_kill_secure` CORE cases rather than catastrophic-risk cases;
 - a 3-AP affordability boundary where the brother still possesses Chop and the Hand Axe but the complete current affordance set excludes the 4-AP attack;
+- a 95/100-fatigue affordability boundary where the same brother retains Chop and the Hand Axe but has only 5 fatigue headroom, so the complete current affordance set excludes the 10-FAT attack;
 - a canonical range boundary where a visible hostile is more than one hex away and the complete current affordance set contains no melee attack;
 - explicit ordinary-attack target actor, target kind, and affected-tile integrity;
 - canonical `MOVE_TO` destination/path and resolved AP/FAT cost use;
@@ -51,13 +52,15 @@ These are handcrafted canonical fixtures, not claims of fresh live-game capture.
 
 The catalog records the reviewed upstream paths and source blobs for Chop, Recover, Reload Bolt and Hand Axe. Runtime state also carries the ruleset/content fingerprint used by trace/replay.
 
-Per #13, this corpus does **not** reconstruct hypothetical Battle Brothers legality. A fixture's complete canonical `ActionAffordanceSet` is authoritative for the current executable commands. The affordability and range fixtures therefore assert the contents of a complete supplied current affordance set; they do not add a second legality engine. Resolved current costs, paths and previews are consumed as supplied and are not re-derived or applied a second time.
+Per #13, this corpus does **not** reconstruct hypothetical Battle Brothers legality. A fixture's complete canonical `ActionAffordanceSet` is authoritative for the current executable commands. The AP, FAT, and range boundary fixtures therefore assert the contents of a complete supplied current affordance set; they do not add a second legality engine. Resolved current costs, paths and previews are consumed as supplied and are not re-derived or applied a second time.
 
 No game-oracle annotation is smuggled into player-legal decision input. State-level helper annotations are stripped from this corpus. Later captured fixtures may add envelope-only oracle annotations for affordance completeness, but those remain diagnostic validation data.
 
 ## Affordability, range, targeting, and terrain boundaries
 
-`t24-core-affordability-attack-excluded` keeps Chop possession and the Hand Axe in canonical state while the active brother has only 3 AP. The complete current affordance set contains only executable Wait, making the source-owned affordability boundary reviewable without independently reconstructing legality.
+`t24-core-affordability-attack-excluded` keeps Chop possession and the Hand Axe in canonical state while the active brother has only 3 AP. The complete current affordance set contains only executable Wait, making the source-owned AP affordability boundary reviewable without independently reconstructing legality.
+
+`t24-core-fatigue-affordability-attack-excluded` keeps the same skill and weapon while the active brother is at 95/100 fatigue. With only 5 fatigue headroom versus the known supplied current Chop fatigue cost of 10, the complete current affordance set again contains only executable Wait. This is the distinct FAT affordability boundary required by #24.
 
 `t24-core-range-attack-excluded` places the visible hostile more than one canonical hex away and likewise asserts the complete supplied set contains no ordinary melee attack. `t24-core-target-affordance-integrity` complements it with the valid adjacent case, pinning the exact target actor, `ACTOR` target kind, and affected current tile supplied by the affordance.
 
