@@ -16,7 +16,15 @@ from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
 
-from bb_agent.evaluator import MODEL_VERSION as EVALUATOR_MODEL_VERSION
+from bb_agent.evaluator import (
+    DEFAULT_EVALUATION_PROFILE,
+    DEFAULT_UNIT_VALUE_POLICY,
+)
+from bb_agent.evaluator import (
+    MODEL_VERSION as EVALUATOR_MODEL_VERSION,
+)
+from bb_agent.mechanics import load_builtin_mechanics
+from bb_agent.results import ResultStatus
 from bb_agent.serialization import JsonValue, canonical_json_bytes, canonical_sha256
 from bb_agent.trace import TRACE_VERSION
 from bb_agent.versions import CURRENT_VERSIONS
@@ -47,12 +55,23 @@ class LiveKernelIdentity:
     evaluator_model: str
     evaluation_config: str
     mechanics_manifest: str
+    mechanics_manifest_fingerprint: str
+    evaluation_profile_fingerprint: str
+    unit_value_policy_version: str
+    unit_value_policy_fingerprint: str
     outcome_model: str
 
     def __post_init__(self) -> None:
         for name, value in asdict(self).items():
             if not isinstance(value, str) or not value:
                 raise ValueError(f"kernel identity {name} must be a nonempty string")
+        for name in (
+            "mechanics_manifest_fingerprint",
+            "evaluation_profile_fingerprint",
+            "unit_value_policy_fingerprint",
+        ):
+            if _SHA256_RE.fullmatch(getattr(self, name)) is None:
+                raise ValueError(f"kernel identity {name} must be lowercase SHA-256")
 
     def to_wire_dict(self) -> dict[str, str]:
         return asdict(self)
@@ -61,6 +80,14 @@ class LiveKernelIdentity:
 def current_live_kernel_identity() -> LiveKernelIdentity:
     """Return the exact closed-M1 identities expected by the live adapter."""
 
+    authority_result = load_builtin_mechanics()
+    if (
+        authority_result.status is not ResultStatus.SUCCESS
+        or authority_result.value is None
+    ):
+        raise RuntimeError(
+            f"built-in mechanics identity unavailable: {authority_result.problems}"
+        )
     return LiveKernelIdentity(
         m1_spec=CURRENT_VERSIONS.m1_spec,
         information_policy=CURRENT_VERSIONS.information_policy,
@@ -73,6 +100,10 @@ def current_live_kernel_identity() -> LiveKernelIdentity:
         evaluator_model=EVALUATOR_MODEL_VERSION,
         evaluation_config=CURRENT_VERSIONS.evaluation_config,
         mechanics_manifest=CURRENT_VERSIONS.mechanics_manifest,
+        mechanics_manifest_fingerprint=authority_result.value.manifest.fingerprint,
+        evaluation_profile_fingerprint=DEFAULT_EVALUATION_PROFILE.fingerprint,
+        unit_value_policy_version=DEFAULT_UNIT_VALUE_POLICY.version,
+        unit_value_policy_fingerprint=DEFAULT_UNIT_VALUE_POLICY.fingerprint,
         outcome_model=CURRENT_VERSIONS.outcome_model,
     )
 
@@ -332,6 +363,8 @@ class LiveIngestMachine:
 
         if key == prior and self._state.current_raw_capture_id is not None:
             if raw_capture_id != self._state.current_raw_capture_id:
+                self._state.current_raw_capture_id = None
+                self._state.current_payload_digest = None
                 self._state.current_decision = None
                 return LiveIngestEvent(
                     LiveIngestStatus.REJECTED_CONFLICT,
@@ -339,6 +372,8 @@ class LiveIngestMachine:
                     record=record,
                 )
             if payload_digest != self._state.current_payload_digest:
+                self._state.current_raw_capture_id = None
+                self._state.current_payload_digest = None
                 self._state.current_decision = None
                 return LiveIngestEvent(
                     LiveIngestStatus.REJECTED_CONFLICT,
@@ -390,8 +425,11 @@ class LiveIngestMachine:
                 if self._state.last_record_type is not None
                 else None
             ),
-            # A restarted process must re-read the canonical READY record if it needs
-            # its payload; persisted state only preserves ordering/restart identity.
+            "current_ready_record": (
+                self._state.current_decision.record.to_wire_dict()
+                if self._state.current_decision is not None
+                else None
+            ),
         }
 
     @classmethod
@@ -409,6 +447,7 @@ class LiveIngestMachine:
             "current_raw_capture_id",
             "current_payload_digest",
             "last_record_type",
+            "current_ready_record",
         }
         if set(value) != required:
             raise ValueError("persisted live-ingest state fields do not match schema")
@@ -450,8 +489,58 @@ class LiveIngestMachine:
                 )
         if (raw_capture_id is None) != (payload_digest is None):
             raise ValueError("persisted current decision identity is incomplete")
-        if last_record_type is LiveRecordType.DECISION_READY and raw_capture_id is None:
-            raise ValueError("persisted READY state requires decision identity")
+        current_ready_value = value["current_ready_record"]
+        current_decision = None
+        if current_ready_value is not None:
+            if not isinstance(current_ready_value, Mapping):
+                raise ValueError("persisted current_ready_record must be an object")
+            current_record = _record_from_wire_dict(current_ready_value)
+            if current_record.record_type is not LiveRecordType.DECISION_READY:
+                raise ValueError("persisted current_ready_record must be READY")
+            problem = _compatibility_problem(current_record, compatibility)
+            if problem is not None:
+                raise ValueError(f"persisted current READY is incompatible: {problem}")
+            if (
+                capture_stream_id is None
+                or raw_capture_id is None
+                or payload_digest is None
+            ):
+                raise ValueError("persisted current READY identity is incomplete")
+            if (current_record.battle_sequence, current_record.source_generation) != (
+                battle_sequence,
+                source_generation,
+            ):
+                raise ValueError("persisted current READY generation mismatch")
+            expected_digest = canonical_sha256(_thaw_json(current_record.payload))
+            expected_raw_capture_id = canonical_sha256(
+                {
+                    "capture_stream_id": capture_stream_id,
+                    "battle_sequence": current_record.battle_sequence,
+                    "source_generation": current_record.source_generation,
+                    "raw_source_fingerprint": current_record.raw_source_fingerprint,
+                }
+            )
+            if (
+                expected_digest != payload_digest
+                or expected_raw_capture_id != raw_capture_id
+            ):
+                raise ValueError("persisted current READY digest/identity mismatch")
+            current_decision = AcceptedLiveDecision(
+                capture_stream_id, raw_capture_id, payload_digest, current_record
+            )
+        if (
+            last_record_type is LiveRecordType.DECISION_READY
+            and current_decision is None
+        ):
+            # READY may be poisoned by a hard same-generation conflict; it must not
+            # silently recover on restart.
+            if raw_capture_id is not None or payload_digest is not None:
+                raise ValueError("persisted READY validity is incomplete")
+        if (
+            last_record_type is not LiveRecordType.DECISION_READY
+            and current_decision is not None
+        ):
+            raise ValueError("persisted current READY contradicts last record type")
         state = _MachineState(
             capture_stream_id=capture_stream_id,
             battle_sequence=battle_sequence,
@@ -459,7 +548,7 @@ class LiveIngestMachine:
             current_raw_capture_id=raw_capture_id,
             current_payload_digest=payload_digest,
             last_record_type=last_record_type,
-            current_decision=None,
+            current_decision=current_decision,
         )
         return cls(compatibility, stream_id_factory=stream_id_factory, state=state)
 
@@ -505,11 +594,17 @@ def decode_live_frame(
     if hashlib.sha256(payload).hexdigest() != digest:
         raise ValueError("live payload SHA-256 mismatch")
     try:
-        decoded = json.loads(payload)
+        decoded = json.loads(
+            payload,
+            object_pairs_hook=_unique_json_object,
+            parse_constant=_reject_json_constant,
+        )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise ValueError("live payload JSON decode failed") from exc
     if not isinstance(decoded, dict):
         raise ValueError("live payload root must be an object")
+    if canonical_json_bytes(decoded) != payload:
+        raise ValueError("live payload is not canonical JSON")
     return _record_from_wire_dict(decoded)
 
 
@@ -862,6 +957,10 @@ def _kernel_identity_from_wire(value: Mapping[str, JsonValue]) -> LiveKernelIden
         "evaluator_model",
         "evaluation_config",
         "mechanics_manifest",
+        "mechanics_manifest_fingerprint",
+        "evaluation_profile_fingerprint",
+        "unit_value_policy_version",
+        "unit_value_policy_fingerprint",
         "outcome_model",
     }
     if set(value) != required:
@@ -984,6 +1083,19 @@ def _thaw_json(value: JsonValue) -> JsonValue:
     if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
         return [_thaw_json(child) for child in value]
     return value
+
+
+def _unique_json_object(pairs: list[tuple[str, JsonValue]]) -> dict[str, JsonValue]:
+    result: dict[str, JsonValue] = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError(f"duplicate live JSON field: {key}")
+        result[key] = value
+    return result
+
+
+def _reject_json_constant(value: str) -> JsonValue:
+    raise ValueError(f"non-finite live JSON constant is forbidden: {value}")
 
 
 def _string(value: JsonValue, name: str) -> str:

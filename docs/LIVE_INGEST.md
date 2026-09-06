@@ -13,8 +13,10 @@ BBAGENT1|<decoded-byte-length>|<sha256>|<base64url(canonical-json)>
 ```
 
 The decoder rejects the whole frame if the prefix, encoded/decoded size bounds,
-base64, JSON shape, byte length, SHA-256, record schema, or compatibility
-identities do not validate. There is no partial canonical-object recovery.
+base64, JSON shape, byte length, SHA-256, canonical JSON encoding, duplicate-key
+policy, record schema, or compatibility identities do not validate. There is no
+partial canonical-object recovery. A correctly hashed noncanonical JSON object is
+still rejected rather than silently normalized.
 
 The initial safety limits are 2 MiB decoded and 3 MiB encoded. V1 does not
 fragment records.
@@ -40,8 +42,9 @@ raw_capture_id = sha256(
 ```
 
 An exact repeated READY is idempotent. The same identity with a different raw
-fingerprint or payload digest is a protocol conflict and clears current advice.
-After an INVALIDATED edge, the same generation may become READY again only when
+fingerprint or payload digest is a hard protocol conflict, clears current advice,
+and poisons that generation; a fresh stream or strictly newer generation is then
+required. After an INVALIDATED edge, the same generation may become READY again only when
 it exactly reproduces the previously known READY identity/payload, matching the
 #51 cancel/reopen rule. Otherwise a strictly newer generation is required.
 
@@ -56,8 +59,9 @@ configured to allow them.
 Every record carries the expected closed-M1 compatibility surface: M1 spec,
 information policy, tactical-state and action-affordance contracts, evaluation
 and uncertainty contracts, trace contract/schema, evaluator model, evaluation
-config, mechanics manifest, and outcome model. A stale companion/kernel pairing
-fails before a decision payload is exposed.
+config, the exact evaluation-profile fingerprint, UnitValuePolicy version and
+fingerprint, mechanics-manifest version and fingerprint, and outcome model. A
+stale companion/kernel pairing fails before a decision payload is exposed.
 
 Game/ruleset/content fingerprint, optional exact mod stack, companion version,
 and runtime game version are checked independently.
@@ -72,15 +76,18 @@ records. A partial trailing div is left pending. Persisted state contains:
 - a SHA-256 anchor over bytes immediately preceding that offset;
 - host capture-stream ID;
 - last battle/source generation;
-- last READY raw-capture/payload identity and record type.
+- last READY raw-capture/payload identity and record type;
+- the strictly validated current READY record when readiness is still valid.
 
 State is written to a temporary file, `fsync`ed, and atomically replaced.
 
 On first attachment, historical records are scanned but only events from the
 latest valid `STREAM_START` are surfaced. On ordinary parser restart, the same
-validated cursor and host stream ID resume without replaying the log. The actual
-READY payload is deliberately not persisted; an exact READY re-emission restores
-it idempotently.
+validated cursor, host stream ID, and current validated READY payload/readiness
+resume without replaying the log or requiring a producer heartbeat. Persisted
+READY data is re-parsed through the strict wire schema, rechecked against current
+compatibility, and its generation/raw-capture/payload digests must match the
+persisted identities before it is exposed.
 
 If the log disappears, is replaced, shrinks behind the cursor, or no longer
 matches the persisted anchor, current readiness is cleared and the parser moves

@@ -124,6 +124,36 @@ def test_live_frame_strict_schema_and_size_limits() -> None:
         decode_live_frame(f"BBAGENT1|{len(raw)}|{digest}|{encoded}")
 
 
+def test_live_frame_rejects_noncanonical_and_duplicate_json() -> None:
+    wire = _ready().to_wire_dict()
+    canonical = json.dumps(wire, sort_keys=True, separators=(",", ":")).encode()
+    noncanonical = json.dumps(wire, sort_keys=False, indent=1).encode()
+    assert noncanonical != canonical
+
+    def frame(raw: bytes) -> str:
+        encoded = __import__("base64").urlsafe_b64encode(raw).decode().rstrip("=")
+        return f"BBAGENT1|{len(raw)}|{hashlib.sha256(raw).hexdigest()}|{encoded}"
+
+    with pytest.raises(ValueError, match="not canonical JSON"):
+        decode_live_frame(frame(noncanonical))
+
+    duplicate = canonical[:-1] + b',"mods":[]}'
+    with pytest.raises(ValueError, match="duplicate live JSON field: mods"):
+        decode_live_frame(frame(duplicate))
+
+
+def test_kernel_identity_pins_profile_policy_and_manifest_fingerprints() -> None:
+    identity = current_live_kernel_identity()
+    for value in (
+        identity.evaluation_profile_fingerprint,
+        identity.unit_value_policy_fingerprint,
+        identity.mechanics_manifest_fingerprint,
+    ):
+        assert len(value) == 64
+        int(value, 16)
+    assert identity.unit_value_policy_version == "m1-common-preservation.v1"
+
+
 def test_machine_orders_invalidates_deduplicates_and_conflicts() -> None:
     ids = iter(("stream-a", "stream-b"))
     machine = LiveIngestMachine(_compat(), stream_id_factory=lambda: next(ids))
@@ -146,6 +176,7 @@ def test_machine_orders_invalidates_deduplicates_and_conflicts() -> None:
     conflict = machine.accept(changed)
     assert conflict.status is LiveIngestStatus.REJECTED_CONFLICT
     assert machine.current_decision is None
+    assert machine.accept(_ready(1)).status is LiveIngestStatus.REJECTED_STALE
 
     # A fresh stream clears the conflict and all prior ordering state.
     assert machine.accept(_stream()).status is LiveIngestStatus.STREAM_STARTED
@@ -192,7 +223,7 @@ def test_machine_rejects_compatibility_and_debug_by_default() -> None:
     assert debug_machine.accept(debug).status is LiveIngestStatus.READY
 
 
-def test_machine_persistence_preserves_stream_order_without_payload() -> None:
+def test_machine_persistence_restores_current_ready_payload() -> None:
     machine = LiveIngestMachine(_compat(), stream_id_factory=lambda: "stream")
     machine.accept(_stream())
     accepted = machine.accept(_ready(4))
@@ -202,13 +233,11 @@ def test_machine_persistence_preserves_stream_order_without_payload() -> None:
         _compat(), machine.to_persisted_dict(), stream_id_factory=lambda: "unused"
     )
     assert restored.capture_stream_id == "stream"
-    assert restored.current_decision is None
+    assert restored.current_decision == accepted.decision
     assert restored.accept(_ready(3)).status is LiveIngestStatus.REJECTED_STALE
-    # Re-emitting the exact current READY after restart restores the payload.
     duplicate = restored.accept(_ready(4))
     assert duplicate.status is LiveIngestStatus.DUPLICATE
-    assert duplicate.decision is not None
-    assert restored.current_decision == duplicate.decision
+    assert duplicate.decision == accepted.decision
 
 
 def test_invalidation_same_generation_only_restores_exact_prior_ready() -> None:
@@ -298,7 +327,7 @@ def test_tailer_first_attach_uses_latest_stream_and_complete_divs(
     assert tailer.poll() == ()
 
 
-def test_tailer_restart_resumes_cursor_and_accepts_reemitted_current_ready(
+def test_tailer_restart_resumes_cursor_with_current_ready_payload(
     tmp_path: Path,
 ) -> None:
     log = tmp_path / "log.html"
@@ -309,21 +338,20 @@ def test_tailer_restart_resumes_cursor_and_accepts_reemitted_current_ready(
     assert first.poll()[-1].status is LiveIngestStatus.READY
     assert first.current_decision is not None
 
-    # Restart has ordering identity but deliberately no persisted canonical payload.
+    original = first.current_decision
     restarted = LiveLogTailer(
         log, state, _compat(), stream_id_factory=lambda: "should-not-be-used"
     )
-    assert restarted.current_decision is None
+    assert restarted.current_decision == original
     assert restarted.poll() == ()
 
     with log.open("a", encoding="utf-8") as handle:
         handle.write(_html(_ready(1)))
     events = restarted.poll()
     assert events[-1].status is LiveIngestStatus.DUPLICATE
-    assert restarted.current_decision is not None
-    assert restarted.current_decision == events[-1].decision
+    assert restarted.current_decision == original
 
-    # A newer READY restores an externally usable current payload.
+    # A newer READY replaces the externally usable current payload.
     with log.open("a", encoding="utf-8") as handle:
         handle.write(_html(_ready(2)))
     assert restarted.poll()[-1].status is LiveIngestStatus.READY
