@@ -33,7 +33,7 @@ def test_preload_orders_projection_and_export_before_tactical_hook() -> None:
         "live_export",
         "hooks/tactical_state",
     )
-    offsets = [source.index(f'scripts/bb_agent/{module}') for module in modules]
+    offsets = [source.index(f"scripts/bb_agent/{module}") for module in modules]
     assert offsets == sorted(offsets)
 
 
@@ -50,7 +50,10 @@ def test_wire_identity_matches_closed_m1_kernel() -> None:
 def test_player_legal_projection_keeps_hidden_truth_out_of_normal_payload() -> None:
     source = _text(PROJECTION)
     hardening = _text(PROJECTION_HARDENING)
-    assert 'resources = owned ? this._ownedResources(_actor) : this._unknownResources()' in source
+    assert (
+        "resources = owned ? this._ownedResources(_actor) : this._unknownResources()"
+        in source
+    )
     assert 'tactical_stats = owned ? this._ownedStats(_actor) : []' in source
     assert 'perks = owned ?' in source
     assert 'traits = owned ?' in source
@@ -66,10 +69,9 @@ def test_player_legal_projection_keeps_hidden_truth_out_of_normal_payload() -> N
 
 def test_canonical_identity_matches_existing_action_and_state_identity_boundaries() -> None:
     source = _text(IDENTITY)
-    for field in (
+    direct_fields = (
         "actor_id",
         "kind",
-        "parameters",
         "skill_id",
         "item_id",
         "target_kind",
@@ -78,13 +80,15 @@ def test_canonical_identity_matches_existing_action_and_state_identity_boundarie
         "target_direction",
         "mode_variant",
         "destination_tile_id",
-        "resolved_path",
         "source_location",
         "target_slot",
         "displaced_item_id",
         "displaced_item_destination",
-    ):
+    )
+    for field in direct_fields:
         assert f"{field} = _action.{field}" in source
+    assert "parameters = this._cloneJson(_action.parameters)" in source
+    assert "resolved_path = this._cloneJson(_action.resolved_path)" in source
     for removed in (
         "state_id",
         "raw_capture_id",
@@ -94,7 +98,7 @@ def test_canonical_identity_matches_existing_action_and_state_identity_boundarie
         "debug_ground_truth",
         "provenance",
     ):
-        assert f"delete " in source and removed in source
+        assert "delete " in source and removed in source
     assert '"action:" + wire.canonicalHash(this._actionIntent(_action))' in source
 
 
