@@ -2,21 +2,10 @@ local affordances = ::BBAGENT_Affordances;
 local legal = ::BBAGENT_PlayerLegal;
 
 // Pinned Battle Brothers scripts 162f498ac7c49b4c317bbf54718a595ecef6a65a
-// expose tactical paths through the stored navigator path plus getCostForPath()
-// prefix summaries (Tiles/End/IsComplete), not through a script getPath accessor.
-// Live 1.5.2.3 evidence shows nonzero Tiles counts stored path nodes including
-// the origin, so canonical movement-step count is Tiles - 1.
-affordances._nativeMovementStepCount <- function(_tiles)
-{
-    if (typeof _tiles != "integer" || _tiles < 0)
-        throw "native movement preview returned an invalid path tile count";
-    if (_tiles == 0) return 0;
-    if (_tiles < 2)
-        throw "native movement path node count cannot represent a movement step";
-    return _tiles - 1;
-};
-
-// Reconstruct only complete, currently affordable command paths and never travel.
+// expose tactical paths through getCostForPath() summaries (Tiles/End/IsComplete),
+// not through a script getPath accessor. Live 1.5.2.3 evidence shows Tiles is
+// not a reliable canonical step count, so treat it only as the game's zero/nonzero
+// movement sentinel and reconstruct order from successive End changes.
 affordances._nativeCostPrefixPath <- function(
     _navigator,
     _active,
@@ -26,11 +15,8 @@ affordances._nativeCostPrefixPath <- function(
     _projection
 )
 {
-    if (!("Tiles" in _costs))
-        throw "native movement preview returned no path node count";
-    local targetSteps = this._nativeMovementStepCount(_costs.Tiles);
-    if (targetSteps <= 0)
-        throw "native movement preview returned no movement steps";
+    if (!("Tiles" in _costs) || typeof _costs.Tiles != "integer" || _costs.Tiles <= 0)
+        throw "native movement preview returned no affordable movement prefix";
     if (!("IsComplete" in _costs) || typeof _costs.IsComplete != "bool" || !_costs.IsComplete)
         throw "native movement path reconstruction requires a complete path";
     if (!("End" in _costs) || _costs.End == null)
@@ -48,11 +34,12 @@ affordances._nativeCostPrefixPath <- function(
 
     local fatigueAvailable = _active.getFatigueMax() - _active.getFatigue();
     local path = [];
-    local observedSteps = 0;
+    local lastTile = _active.getTile();
+    local lastTileId = legal.tileID(lastTile);
 
-    // Movement AP cost is positive per step. Increasing the AP budget over the
-    // already-stored native path exposes each successive path prefix endpoint.
-    // Native Tiles is a node count including origin, so normalize before comparing.
+    // Movement AP cost is positive per step. Sweeping AP budget one point at a
+    // time over the already-stored native path exposes prefix End changes. Each
+    // distinct End must be the next adjacent native path step.
     for (local apBudget = 1; apBudget <= apRequired; apBudget = ++apBudget)
     {
         local prefix = _navigator.getCostForPath(
@@ -61,27 +48,27 @@ affordances._nativeCostPrefixPath <- function(
             apBudget,
             fatigueAvailable
         );
-        if (!("Tiles" in prefix))
-            throw "native movement prefix returned no path node count";
-        local prefixSteps = this._nativeMovementStepCount(prefix.Tiles);
-        if (prefixSteps < observedSteps || prefixSteps > targetSteps)
-            throw "native movement prefix step count is not monotonic";
-        if (prefixSteps == observedSteps) continue;
-        if (prefixSteps != observedSteps + 1)
-            throw "native movement prefix skipped an ordered path step";
+        if (!("Tiles" in prefix) || typeof prefix.Tiles != "integer" || prefix.Tiles < 0)
+            throw "native movement prefix returned an invalid movement sentinel";
+        if (prefix.Tiles == 0) continue;
         if (!("End" in prefix) || prefix.End == null)
             throw "native movement prefix advanced without an endpoint";
 
         local tileId = legal.tileID(prefix.End);
+        if (tileId == lastTileId) continue;
+        if (lastTile.getDistanceTo(prefix.End) != 1)
+            throw "native movement prefix endpoint skipped an adjacent path step";
         if (!(tileId in _projection.runtime.tile_records))
             throw "native movement path leaves the player-legal canonical map";
+
         path.push(prefix.End);
-        observedSteps = prefixSteps;
+        lastTile = prefix.End;
+        lastTileId = tileId;
     }
 
-    if (observedSteps != targetSteps || path.len() != targetSteps)
-        throw "native movement path prefixes did not reconstruct every path step";
-    if (legal.tileID(path[path.len() - 1]) != legal.tileID(_destination))
+    if (path.len() == 0)
+        throw "native movement prefixes produced no ordered path steps";
+    if (lastTileId != legal.tileID(_destination))
         throw "reconstructed native movement path does not terminate at destination";
     return path;
 };
@@ -117,12 +104,11 @@ affordances._moveActions = function(_raw, _projection)
                     active.getActionPoints(),
                     active.getFatigueMax() - active.getFatigue()
                 );
-                if (!("Tiles" in costs))
-                    throw "native movement preview returned no path node count";
-                local steps = this._nativeMovementStepCount(costs.Tiles);
+                if (!("Tiles" in costs) || typeof costs.Tiles != "integer" || costs.Tiles < 0)
+                    throw "native movement preview returned an invalid movement sentinel";
                 if (!("IsComplete" in costs) || typeof costs.IsComplete != "bool")
                     throw "native movement preview did not expose path completeness";
-                if (steps != 0 && costs.IsComplete)
+                if (costs.Tiles != 0 && costs.IsComplete)
                 {
                     pathTiles = this._nativeCostPrefixPath(
                         navigator,
