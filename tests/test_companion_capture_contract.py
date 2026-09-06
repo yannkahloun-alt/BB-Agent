@@ -85,6 +85,10 @@ def test_runtime_provenance_is_probed_and_mismatches_fail_closed() -> None:
     assert '::include("scripts/bb_agent/runtime_provenance")' in preload
     assert "::BBAGENT_Capture._refreshRuntimeProvenance();" in hook
     assert "::BBAGENT_Capture.isRuntimeCompatible()" in hook
+    assert "catch (error)" in provenance
+    assert 'return this._setProvenanceFailure("runtime_provenance_error");' in provenance
+    assert 'GameVersion = "unknown"' in provenance
+    assert "IsCompatible = false" in provenance
 
     for allowed in (
         "vanilla = true",
