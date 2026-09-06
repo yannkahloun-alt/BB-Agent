@@ -41,6 +41,11 @@ from bb_agent.fixtures import (
     save_fixture,
     validate_fixture_pair,
 )
+from bb_agent.live_canonical import (
+    live_battle_id,
+    live_source_generation,
+    materialize_live_tactical_state,
+)
 from bb_agent.live_ingest import (
     LIVE_CAPTURE_VERSION,
     LIVE_ENVELOPE_VERSION,
@@ -112,6 +117,9 @@ __all__ = [
     "current_live_kernel_identity",
     "decode_live_frame",
     "encode_live_frame",
+    "live_battle_id",
+    "live_source_generation",
+    "materialize_live_tactical_state",
     "TRACE_VERSION",
     "ActionFactExpectation",
     "AssertionStatus",
