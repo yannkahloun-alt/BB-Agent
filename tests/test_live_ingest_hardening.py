@@ -127,11 +127,6 @@ def test_same_inode_truncate_and_regrow_detects_live_cursor_mismatch(
     assert log.stat().st_size >= old_size
 
     events = tailer.poll()
-    assert events == (
-        pytest.helpers.anything
-        if False
-        else events
-    )
     assert events[0].status is LiveIngestStatus.STREAM_DISCONTINUITY
     assert "live cursor anchor" in events[0].message
     assert tailer.current_decision is None
