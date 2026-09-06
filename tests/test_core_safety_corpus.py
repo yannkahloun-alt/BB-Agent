@@ -87,6 +87,7 @@ def test_ticket_24_corpus_is_promoted_gated_and_harness_green() -> None:
         )
         assert provenance["catalog_revision"] == UPSTREAM_RULES_REVISION
         assert provenance["evidence"]
+        assert fixture.state.annotations is None
 
     report = run_validation_corpus(_authority(), fixtures)
     assert report.passed, report.blocking_failures
