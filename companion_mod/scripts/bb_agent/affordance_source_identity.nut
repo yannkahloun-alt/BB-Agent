@@ -80,6 +80,7 @@ capture._mapTokens = function()
 capture._fingerprintInputs = function(_state, _active)
 {
     local ret = originalFingerprintInputs.acall([this, _state, _active]);
+    ret.push(this._arrayToken("active_allied_factions", _active.getAlliedFactions()));
     foreach (token in this._activeItemSlotTopologyTokens(_active)) ret.push(token);
     ret.sort();
     return ret;
