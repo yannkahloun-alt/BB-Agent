@@ -27,7 +27,9 @@ from bb_agent.tactical_state import TacticalState
 FIXTURE = Path(__file__).parent / "fixtures/ticket_24/t24-core-reload-supported.json"
 
 
-def _live_state(*, battle_sequence: int = 7, source_generation: int = 3) -> TacticalState:
+def _live_state(
+    *, battle_sequence: int = 7, source_generation: int = 3
+) -> TacticalState:
     fixture = json.loads(FIXTURE.read_text(encoding="utf-8"))
     state = TacticalState.from_dict(fixture["state"])
     generation = live_source_generation(battle_sequence, source_generation)
