@@ -1,11 +1,87 @@
 local affordances = ::BBAGENT_Affordances;
 local legal = ::BBAGENT_PlayerLegal;
 
-// Pinned Battle Brothers scripts 162f498ac7c49b4c317bbf54718a595ecef6a65a
-// expose tactical paths through getCostForPath() summaries (Tiles/End/IsComplete),
-// not through a script getPath accessor. Live 1.5.2.3 evidence shows Tiles is
-// not a reliable canonical step count, so treat it only as the game's zero/nonzero
-// movement sentinel and reconstruct order from successive End changes.
+// Diagnostic smoke build: capture the actual Battle Brothers navigator prefix
+// semantics before attempting any further path reconstruction fix.
+affordances.NavigatorPrefixTraceCaptured <- false;
+
+affordances._traceNavigatorPrefixes <- function(
+    _navigator,
+    _active,
+    _settings,
+    _costs,
+    _destination
+)
+{
+    if (this.NavigatorPrefixTraceCaptured) return;
+    this.NavigatorPrefixTraceCaptured = true;
+
+    local destinationId = legal.tileID(_destination);
+    local originId = legal.tileID(_active.getTile());
+    local fullTiles = "missing";
+    local fullEnd = "null";
+    local fullComplete = "missing";
+    local fullAp = "missing";
+    local fullFat = "missing";
+
+    if ("Tiles" in _costs) fullTiles = _costs.Tiles.tostring();
+    if ("End" in _costs && _costs.End != null) fullEnd = legal.tileID(_costs.End);
+    if ("IsComplete" in _costs) fullComplete = _costs.IsComplete.tostring();
+    if ("ActionPointsRequired" in _costs) fullAp = _costs.ActionPointsRequired.tostring();
+    else if ("ActionPoints" in _costs) fullAp = _costs.ActionPoints.tostring();
+    if ("FatigueRequired" in _costs) fullFat = _costs.FatigueRequired.tostring();
+    else if ("Fatigue" in _costs) fullFat = _costs.Fatigue.tostring();
+
+    ::logInfo(
+        "[BB-Agent PathTrace] origin=" + originId
+        + " destination=" + destinationId
+        + " full_tiles=" + fullTiles
+        + " full_end=" + fullEnd
+        + " full_complete=" + fullComplete
+        + " full_ap=" + fullAp
+        + " full_fat=" + fullFat
+    );
+
+    local apRequired = this._movementCost(
+        _costs,
+        "ActionPointsRequired",
+        "ActionPoints"
+    );
+    local fatigueAvailable = _active.getFatigueMax() - _active.getFatigue();
+
+    for (local apBudget = 0; apBudget <= apRequired; apBudget = ++apBudget)
+    {
+        local prefix = _navigator.getCostForPath(
+            _active,
+            _settings,
+            apBudget,
+            fatigueAvailable
+        );
+        local tiles = "missing";
+        local endId = "null";
+        local complete = "missing";
+        local ap = "missing";
+        local fat = "missing";
+
+        if ("Tiles" in prefix) tiles = prefix.Tiles.tostring();
+        if ("End" in prefix && prefix.End != null) endId = legal.tileID(prefix.End);
+        if ("IsComplete" in prefix) complete = prefix.IsComplete.tostring();
+        if ("ActionPointsRequired" in prefix) ap = prefix.ActionPointsRequired.tostring();
+        else if ("ActionPoints" in prefix) ap = prefix.ActionPoints.tostring();
+        if ("FatigueRequired" in prefix) fat = prefix.FatigueRequired.tostring();
+        else if ("Fatigue" in prefix) fat = prefix.Fatigue.tostring();
+
+        ::logInfo(
+            "[BB-Agent PathTrace] budget=" + apBudget
+            + " tiles=" + tiles
+            + " end=" + endId
+            + " complete=" + complete
+            + " ap=" + ap
+            + " fat=" + fat
+        );
+    }
+};
+
 affordances._nativeCostPrefixPath <- function(
     _navigator,
     _active,
@@ -15,66 +91,18 @@ affordances._nativeCostPrefixPath <- function(
     _projection
 )
 {
-    if (!("Tiles" in _costs) || typeof _costs.Tiles != "integer" || _costs.Tiles <= 0)
-        throw "native movement preview returned no affordable movement prefix";
-    if (!("IsComplete" in _costs) || typeof _costs.IsComplete != "bool" || !_costs.IsComplete)
-        throw "native movement path reconstruction requires a complete path";
-    if (!("End" in _costs) || _costs.End == null)
-        throw "native movement preview returned no complete path endpoint";
-    if (legal.tileID(_costs.End) != legal.tileID(_destination))
-        throw "native complete movement endpoint differs from requested destination";
-
-    local apRequired = this._movementCost(
+    this._traceNavigatorPrefixes(
+        _navigator,
+        _active,
+        _settings,
         _costs,
-        "ActionPointsRequired",
-        "ActionPoints"
+        _destination
     );
-    if (apRequired <= 0)
-        throw "native movement path has steps but no positive action-point cost";
-
-    local fatigueAvailable = _active.getFatigueMax() - _active.getFatigue();
-    local path = [];
-    local lastTile = _active.getTile();
-    local lastTileId = legal.tileID(lastTile);
-
-    // Movement AP cost is positive per step. Sweeping AP budget one point at a
-    // time over the already-stored native path exposes prefix End changes. Each
-    // distinct End must be the next adjacent native path step.
-    for (local apBudget = 1; apBudget <= apRequired; apBudget = ++apBudget)
-    {
-        local prefix = _navigator.getCostForPath(
-            _active,
-            _settings,
-            apBudget,
-            fatigueAvailable
-        );
-        if (!("Tiles" in prefix) || typeof prefix.Tiles != "integer" || prefix.Tiles < 0)
-            throw "native movement prefix returned an invalid movement sentinel";
-        if (prefix.Tiles == 0) continue;
-        if (!("End" in prefix) || prefix.End == null)
-            throw "native movement prefix advanced without an endpoint";
-
-        local tileId = legal.tileID(prefix.End);
-        if (tileId == lastTileId) continue;
-        if (lastTile.getDistanceTo(prefix.End) != 1)
-            throw "native movement prefix endpoint skipped an adjacent path step";
-        if (!(tileId in _projection.runtime.tile_records))
-            throw "native movement path leaves the player-legal canonical map";
-
-        path.push(prefix.End);
-        lastTile = prefix.End;
-        lastTileId = tileId;
-    }
-
-    if (path.len() == 0)
-        throw "native movement prefixes produced no ordered path steps";
-    if (lastTileId != legal.tileID(_destination))
-        throw "reconstructed native movement path does not terminate at destination";
-    return path;
+    throw "navigator prefix trace captured; diagnostic build remains fail-closed";
 };
 
-// Replace movement enumeration only. Skill, wait/end-turn, equipment, identity,
-// and the hardening acquire wrapper remain unchanged.
+// Preserve movement discovery/costing exactly long enough to reach one native
+// complete path and record its prefix behavior. No command is executed.
 affordances._moveActions = function(_raw, _projection)
 {
     local ret = [];
@@ -89,7 +117,6 @@ affordances._moveActions = function(_raw, _projection)
         navigator.clearVisualisation();
         local settings = this._movementSettings(active, navigator);
         local found = false;
-        local complete = false;
         local costs = null;
         local pathTiles = null;
         try
@@ -104,11 +131,8 @@ affordances._moveActions = function(_raw, _projection)
                     active.getActionPoints(),
                     active.getFatigueMax() - active.getFatigue()
                 );
-                if (!("Tiles" in costs) || typeof costs.Tiles != "integer" || costs.Tiles < 0)
-                    throw "native movement preview returned an invalid movement sentinel";
-                if (!("IsComplete" in costs) || typeof costs.IsComplete != "bool")
-                    throw "native movement preview did not expose path completeness";
-                if (costs.Tiles != 0 && costs.IsComplete)
+                if ("Tiles" in costs && costs.Tiles != 0
+                    && "IsComplete" in costs && costs.IsComplete)
                 {
                     pathTiles = this._nativeCostPrefixPath(
                         navigator,
@@ -118,7 +142,6 @@ affordances._moveActions = function(_raw, _projection)
                         destination,
                         _projection
                     );
-                    complete = true;
                 }
             }
         }
@@ -130,11 +153,10 @@ affordances._moveActions = function(_raw, _projection)
         }
         navigator.clearPath();
         navigator.clearVisualisation();
-        if (!found || costs == null || costs.Tiles == 0 || !complete) continue;
+        if (!found || costs == null || pathTiles == null) continue;
 
         local apCost = this._movementCost(costs, "ActionPointsRequired", "ActionPoints");
         local fatigueCost = this._movementCost(costs, "FatigueRequired", "Fatigue");
-
         local action = this._baseAction(actorId, "MOVE_TO");
         action.destination_tile_id = legal.tileID(destination);
         foreach (tile in pathTiles) action.resolved_path.push(legal.tileID(tile));
