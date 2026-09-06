@@ -4,21 +4,26 @@ Ticket #24 contributes the mechanics-correctness and catastrophic-safety half of
 
 ## Corpus shape
 
-The durable corpus lives in `tests/fixtures/ticket_24/` as canonical `FixtureEnvelope` JSON. It contains **25 promoted gated fixtures**:
+The durable corpus lives in `tests/fixtures/ticket_24/` as canonical `FixtureEnvelope` JSON. It contains **32 promoted gated fixtures**:
 
-- **14 CORE** mechanics/coverage fixtures;
-- **11 SAFETY_CRITICAL** tactical-safety fixtures;
+- **22 CORE** mechanics/offense/coverage fixtures;
+- **10 SAFETY_CRITICAL** catastrophic-risk fixtures;
 - **0 CALIBRATION** fixtures.
 
-Every fixture is replayed and evaluated through the generic #23 harness. The permanent corpus test also checks the #10 taxonomy/severity summary rather than relying on fixture count alone.
+Every fixture is replayed and evaluated through the generic #23 harness. The permanent corpus test pins the exact safety fixture set as well as the #10 taxonomy/severity summary, so ordinary offense examples cannot satisfy the safety quota merely by changing a severity label.
 
 ## Mechanics and taxonomy coverage
 
 The CORE fixtures cover:
 
-- ordinary chop current AP/FAT cost consumption;
-- ordinary attack HP/armor outcome effects;
+- ordinary Chop current AP/FAT cost consumption;
+- ordinary attack HP/armor/kill effects;
+- four kill-secure choices against Wait/End Turn as `obvious_offense_kill_secure` CORE cases rather than catastrophic-risk cases;
+- a 3-AP affordability boundary where the brother still possesses Chop and the Hand Axe but the complete current affordance set excludes the 4-AP attack;
+- a canonical range boundary where a visible hostile is more than one hex away and the complete current affordance set contains no melee attack;
+- explicit ordinary-attack target actor, target kind, and affected-tile integrity;
 - canonical `MOVE_TO` destination/path and resolved AP/FAT cost use;
+- a known swamp destination whose current 4-AP/8-FAT movement cost is supplied by the resolved MOVE_TO affordance rather than re-derived by BB-Agent;
 - elevation gain as an explicit positional consequence;
 - clear and blocked known ranged line-of-sight exposure;
 - Wait and End Turn deterministic turn-state effects;
@@ -27,12 +32,11 @@ The CORE fixtures cover:
 - impossible supplied AOO geometry coverage failure;
 - multistep AOO movement without sufficient per-step resolved costs.
 
-The SAFETY_CRITICAL fixtures cover:
+The SAFETY_CRITICAL fixtures are restricted to explicit catastrophic-risk cases:
 
-- four kill-secure positions against Wait/End Turn alternatives;
-- five disengagement/AOO traps, including lethal, high-probability, double-reaction and uphill cases;
-- vacating a direct screen protecting a 10-HP ally;
-- choosing immediate flank protection over a materially damaging ordinary attack.
+- six disengagement/AOO traps, including lethal, high-probability, lower-probability-but-lethal, double-reaction and uphill cases;
+- three direct-screen abandonment cases protecting allies at 10 HP, 5 HP, and 1 HP;
+- one high-damage temptation where a 4-AP Chop consumes all remaining AP while the competing 2-AP MOVE_TO immediately protects a 10-HP ally and gains two elevation levels.
 
 Together they contribute the ticket's required taxonomy families, including `core_legality_affordability`, `movement_path_zoc`, `obvious_offense_kill_secure`, `survival_catastrophic_risk`, `protection_formation`, `elevation_positioning`, `los_ranged_aoe`, `fatigue_resource_economy`, `tempo_wait_end_turn`, and `trace_failure_coverage`.
 
@@ -45,30 +49,35 @@ These are handcrafted canonical fixtures, not claims of fresh live-game capture.
 - upstream Battle Brothers Scripts revision `162f498ac7c49b4c317bbf54718a595ecef6a65a` recorded by the catalog;
 - a short per-fixture evidence note describing which resolved-current or modeled fact the assertion exercises.
 
-The catalog itself records the reviewed upstream paths and source blobs for Chop, Recover, Reload Bolt and Hand Axe. Runtime state also carries the ruleset/content fingerprint used by trace/replay.
+The catalog records the reviewed upstream paths and source blobs for Chop, Recover, Reload Bolt and Hand Axe. Runtime state also carries the ruleset/content fingerprint used by trace/replay.
 
-Per #13, this corpus does **not** reconstruct hypothetical Battle Brothers legality. A fixture's complete canonical `ActionAffordanceSet` is authoritative for the current executable commands. Resolved current costs, paths and previews are consumed as supplied; they are not re-derived and applied a second time.
+Per #13, this corpus does **not** reconstruct hypothetical Battle Brothers legality. A fixture's complete canonical `ActionAffordanceSet` is authoritative for the current executable commands. The affordability and range fixtures therefore assert the contents of a complete supplied current affordance set; they do not add a second legality engine. Resolved current costs, paths and previews are consumed as supplied and are not re-derived or applied a second time.
 
-No game-oracle annotation is smuggled into player-legal decision input. Later captured fixtures may add envelope-only oracle annotations for affordance completeness, but those remain diagnostic validation data.
+No game-oracle annotation is smuggled into player-legal decision input. State-level helper annotations are stripped from this corpus. Later captured fixtures may add envelope-only oracle annotations for affordance completeness, but those remain diagnostic validation data.
+
+## Affordability, range, targeting, and terrain boundaries
+
+`t24-core-affordability-attack-excluded` keeps Chop possession and the Hand Axe in canonical state while the active brother has only 3 AP. The complete current affordance set contains only executable Wait, making the source-owned affordability boundary reviewable without independently reconstructing legality.
+
+`t24-core-range-attack-excluded` places the visible hostile more than one canonical hex away and likewise asserts the complete supplied set contains no ordinary melee attack. `t24-core-target-affordance-integrity` complements it with the valid adjacent case, pinning the exact target actor, `ACTOR` target kind, and affected current tile supplied by the affordance.
+
+`t24-core-terrain-resolved-move-cost` moves into known `swamp` terrain using a supplied executable path with resolved 4-AP/8-FAT costs. The terrain is canonical state context; the cost is source-resolved current-command data. M1 does not infer a parallel terrain movement-cost formula.
 
 ## AOO and catastrophic tail risk
 
 The AOO fixtures provide contingent reactions as explicit current-command facts. They do not infer hidden reactions by probing hypothetical movement.
 
-Every SAFETY_CRITICAL AOO case asserts both:
-
-- a positive movement-interruption probability; and
-- a larger tail-risk penalty on the risky move than on the safe alternative.
+Every SAFETY_CRITICAL AOO case asserts both a positive movement/death-risk signal and a positive tail-risk penalty on the risky move. The lower-probability lethal case specifically protects against an evaluator that ignores catastrophic tails merely because the reaction hit chance is only 33%.
 
 The risky `MOVE_TO` is explicitly forbidden as top recommendation, while the safe alternative is required to rank above it. This prevents a mean-damage-only implementation from satisfying the safety corpus.
 
 ## High-damage versus catastrophic flank
 
-The current frozen M1 manifest does not contain a movement-coupled attack/charge family. This corpus therefore does not fabricate an action that both attacks and relocates the actor.
+The current frozen M1 manifest does not contain a movement-coupled attack/charge family, so this corpus does not fabricate an action that both attacks and relocates the actor.
 
-`t24-safety-high-damage-vs-protect-flank` encodes the representable **current-decision safety tradeoff** instead: from an exposed flank, the actor can either take an ordinary Chop with more than 20 expected HP damage or immediately `MOVE_TO` the screen protecting a 10-HP ally. The protective move also gains two elevation levels. The fixture requires the screen move to rank above the attack and forbids the damaging attack as top recommendation.
+`t24-safety-high-damage-vs-protect-flank` instead makes the supported current-decision tradeoff genuinely exclusive. The active brother has exactly 4 AP. The ordinary Chop costs all 4 AP and produces more than 20 expected HP damage, leaving 0 AP after the action; the competing protective `MOVE_TO` costs 2 AP, creates the direct screen for a 10-HP ally, gains two elevation levels, and leaves 2 AP. The fixture requires the protective move to rank above the attack and forbids the damaging attack as top recommendation.
 
-This distinction is deliberate: the attack does not secretly move or create a synthetic future state. A literal attack-that-moves-and-opens-a-flank fixture should only be added after such a mechanic family is explicitly supported by the manifest. Until then, the M1-safe assertion is the opportunity cost between damage-now and protection-now in the authoritative current affordance set.
+This does not claim that Chop itself moves the actor. It models the safety consequence that selecting the high-damage 4-AP action commits the remainder of the current turn away from the immediately available protective move. That stays within the frozen current-decision horizon and avoids inventing unsupported future legality.
 
 ## Explicit coverage failure
 
