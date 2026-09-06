@@ -47,7 +47,9 @@ def _live_state(*, battle_sequence: int = 7, source_generation: int = 3) -> Tact
             actions=actions,
         ),
     )
-    values = {field.name: getattr(provisional, field.name) for field in fields(TacticalState)}
+    values = {
+        field.name: getattr(provisional, field.name) for field in fields(TacticalState)
+    }
     return TacticalState.create(**values)
 
 
@@ -80,9 +82,7 @@ def _accepted(record: LiveRecord) -> AcceptedLiveDecision:
         expected_companion_version=record.companion_version,
         expected_runtime_game_version=record.runtime_game_version,
     )
-    machine = LiveIngestMachine(
-        compatibility, stream_id_factory=lambda: "stream-test"
-    )
+    machine = LiveIngestMachine(compatibility, stream_id_factory=lambda: "stream-test")
     start = LiveRecord(
         record_type=LiveRecordType.STREAM_START,
         companion_version=record.companion_version,
