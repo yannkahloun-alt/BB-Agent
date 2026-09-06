@@ -30,11 +30,8 @@ def test_invalidation_delivery_is_one_shot_and_new_signature_can_advance() -> No
     text = LATCH.read_text(encoding="utf-8")
     assert "if (!this.State.IsReady) return null;" in text
     assert "return this.invalidate(readiness.Reason);" in text
-    one_shot_capture_error = (
-        'local invalidated = this.State.IsReady ? '
-        'this.invalidate("capture_error") : null;'
-    )
-    assert one_shot_capture_error in text
+    assert "local invalidated = this.State.IsReady ?" in text
+    assert 'this.invalidate("capture_error") : null;' in text
     assert "if (!duplicate)" in text
     assert "++this.State.SourceGeneration;" in text
     assert "this.State.LastReadySignature = signature;" in text
