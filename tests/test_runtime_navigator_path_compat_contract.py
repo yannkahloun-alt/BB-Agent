@@ -8,8 +8,12 @@ PINNED_SOURCE = "162f498ac7c49b4c317bbf54718a595ecef6a65a"
 
 def test_navigator_compat_loads_after_affordance_hardening_before_export() -> None:
     preload = PRELOAD.read_text(encoding="utf-8")
-    hardening = preload.index('::include("scripts/bb_agent/affordance_export_hardening")')
-    compat = preload.index('::include("scripts/bb_agent/runtime_navigator_path_compat")')
+    hardening = preload.index(
+        '::include("scripts/bb_agent/affordance_export_hardening")'
+    )
+    compat = preload.index(
+        '::include("scripts/bb_agent/runtime_navigator_path_compat")'
+    )
     export = preload.index('::include("scripts/bb_agent/live_export")')
     assert hardening < compat < export
 
@@ -68,7 +72,9 @@ def test_active_move_override_preserves_native_costs_path_and_reactions() -> Non
     text = COMPAT.read_text(encoding="utf-8")
     assert "affordances._moveActions = function(_raw, _projection)" in text
     assert "settings.ZoneOfControlCost = 0;" in text
-    assert 'this._movementCost(costs, "ActionPointsRequired", "ActionPoints")' in text
+    assert (
+        'this._movementCost(costs, "ActionPointsRequired", "ActionPoints")' in text
+    )
     assert 'this._movementCost(costs, "FatigueRequired", "Fatigue")' in text
     assert "action.destination_tile_id = legal.tileID(destination);" in text
     assert "action.resolved_path.push(legal.tileID(tile))" in text
