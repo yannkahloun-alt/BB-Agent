@@ -197,21 +197,28 @@
             ret.push(prefix + ":hidden=" + this._boolToken(skill.isHidden()));
             foreach (stateToken in this._primitiveStateTokens(prefix + ":m", skill.m))
                 ret.push(stateToken);
+        }
+        ret.sort();
+        return ret;
+    },
 
-            if (skill.isActive())
-            {
-                ret.push(prefix + ":usable=" + this._boolToken(skill.isUsable()));
-                ret.push(prefix + ":affordable=" + this._boolToken(skill.isAffordable()));
-                ret.push(prefix + ":ap=" + skill.getActionPointCost());
-                ret.push(prefix + ":fatigue=" + skill.getFatigueCost());
-                ret.push(prefix + ":targeted=" + this._boolToken(skill.isTargeted()));
-                ret.push(prefix + ":target_actor=" + this._boolToken(skill.isTargetingActor()));
-                ret.push(prefix + ":aoe=" + this._boolToken(skill.isAOE()));
-                ret.push(prefix + ":ranged=" + this._boolToken(skill.isRanged()));
-                ret.push(prefix + ":min_range=" + skill.getMinRange());
-                ret.push(prefix + ":max_range=" + skill.getMaxRange());
-                ret.push(prefix + ":max_level=" + skill.getMaxLevelDifference());
-            }
+    function _activeAffordanceTokens(_active)
+    {
+        local ret = [];
+        foreach (skill in _active.getSkills().queryActives())
+        {
+            local prefix = "affordance_skill=" + skill.getID();
+            ret.push(prefix + ":usable=" + this._boolToken(skill.isUsable()));
+            ret.push(prefix + ":affordable=" + this._boolToken(skill.isAffordable()));
+            ret.push(prefix + ":ap=" + skill.getActionPointCost());
+            ret.push(prefix + ":fatigue=" + skill.getFatigueCost());
+            ret.push(prefix + ":targeted=" + this._boolToken(skill.isTargeted()));
+            ret.push(prefix + ":target_actor=" + this._boolToken(skill.isTargetingActor()));
+            ret.push(prefix + ":aoe=" + this._boolToken(skill.isAOE()));
+            ret.push(prefix + ":ranged=" + this._boolToken(skill.isRanged()));
+            ret.push(prefix + ":min_range=" + skill.getMinRange());
+            ret.push(prefix + ":max_range=" + skill.getMaxRange());
+            ret.push(prefix + ":max_level=" + skill.getMaxLevelDifference());
         }
         ret.sort();
         return ret;
@@ -347,6 +354,7 @@
 
         foreach (modID in this.State.Provenance.Mods) ret.push("mod=" + modID);
         foreach (actorToken in this._entityTokens()) ret.push("entity=" + actorToken);
+        foreach (affordanceToken in this._activeAffordanceTokens(_active)) ret.push(affordanceToken);
         foreach (turnToken in this._turnSequenceTokens()) ret.push(turnToken);
         foreach (mapToken in this._mapTokens()) ret.push(mapToken);
         ret.sort();
