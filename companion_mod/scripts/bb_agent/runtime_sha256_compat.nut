@@ -6,7 +6,7 @@ local wire = ::BBAGENT_Wire;
 wire._ushr <- function(_value, _bits)
 {
     if (_bits == 0) return _value;
-    return (_value >> _bits) & ((1 << (32 - _bits)) - 1);
+    return (_value >> _bits) & (2147483647 >> (_bits - 1));
 };
 
 wire._rotr = function(_value, _bits)
