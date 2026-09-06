@@ -51,7 +51,9 @@ def materialize_live_tactical_state(decision: AcceptedLiveDecision) -> TacticalS
     state = TacticalState.from_dict(payload)
 
     if state.raw_capture_id != decision.raw_capture_id:
-        raise ValueError("canonical raw_capture_id disagrees with accepted stream identity")
+        raise ValueError(
+            "canonical raw_capture_id disagrees with accepted stream identity"
+        )
     if state.information_profile.value != record.information_profile:
         raise ValueError("canonical information profile disagrees with live envelope")
     if state.information_profile is not InformationProfile.PLAYER_LEGAL:
