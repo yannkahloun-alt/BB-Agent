@@ -18,7 +18,7 @@ def test_capture_error_logging_is_bounded_and_deduplicated() -> None:
     assert "DiagnosticMaxErrorChars <- 240" in text
     assert 'split(errorText, "\\r\\n\\t").join(" ")' in text
     assert "errorText.slice(0, this.DiagnosticMaxErrorChars)" in text
-    assert "local diagnostic = stage + \"|\" + loggedError;" in text
+    assert 'local diagnostic = stage + "|" + loggedError;' in text
     assert "if (diagnostic != this.LastLoggedDiagnostic)" in text
     assert "this.LastLoggedDiagnostic = null;" in text
     assert '"[BB-Agent Capture] capture_error stage=" + stage' in text
