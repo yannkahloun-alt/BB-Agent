@@ -28,37 +28,39 @@ def test_native_prefix_oracle() -> None:
         '"End" in _costs',
         '"Tiles" in _costs',
         "for (local apBudget = 1; apBudget <= apRequired;",
-        "prefixSteps != observedSteps + 1",
+        "if (prefix.Tiles == 0) continue;",
+        "if (tileId == lastTileId) continue;",
+        "lastTile.getDistanceTo(prefix.End) != 1",
         "path.push(prefix.End);",
     )
     for token in required:
         assert token in text
 
 
-def test_native_tiles_are_normalized_from_nodes_to_steps() -> None:
+def test_tiles_are_only_zero_nonzero_sentinel() -> None:
     text = _text(COMPAT)
-    required = (
-        "affordances._nativeMovementStepCount <- function(_tiles)",
-        "if (_tiles == 0) return 0;",
-        "if (_tiles < 2)",
-        "return _tiles - 1;",
-        "local targetSteps = this._nativeMovementStepCount(_costs.Tiles);",
-        "local prefixSteps = this._nativeMovementStepCount(prefix.Tiles);",
-        "local observedSteps = 0;",
-        "observedSteps = prefixSteps;",
+    forbidden = (
+        "_nativeMovementStepCount",
+        "return _tiles - 1",
+        "prefixSteps",
+        "targetSteps",
+        "observedSteps",
     )
-    for token in required:
-        assert token in text
+    for token in forbidden:
+        assert token not in text
+    assert "costs.Tiles != 0 && costs.IsComplete" in text
+    assert "costs.Tiles == 0" in text
 
 
 def test_complete_paths_only() -> None:
     text = _text(COMPAT)
     required = (
         '"IsComplete" in costs',
-        "steps != 0 && costs.IsComplete",
+        "costs.Tiles != 0 && costs.IsComplete",
         "!found || costs == null || costs.Tiles == 0 || !complete",
         "legal.tileID(_costs.End) != legal.tileID(_destination)",
-        "observedSteps != targetSteps || path.len() != targetSteps",
+        "path.len() == 0",
+        "lastTileId != legal.tileID(_destination)",
         "native movement path leaves the player-legal canonical map",
     )
     for token in required:
