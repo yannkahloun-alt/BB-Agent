@@ -38,11 +38,12 @@ player_legal_projection.nut
 player_legal_hardening.nut
 canonical_identity.nut
 affordance_export.nut
+affordance_export_hardening.nut
 live_export.nut
 hooks/tactical_state.nut
 ```
 
-The first four modules are the #55 substrate. The following five implement #57,
+The first four modules are the #55 substrate. The following six implement #57,
 and the tactical hook emits lifecycle records only after every dependency is
 loaded.
 
@@ -118,8 +119,11 @@ against the real player preview.
 
 Because the exact native path container is a runtime engine seam rather than a
 Squirrel class in the pinned scripts dump, the extractor accepts only documented
-read-only path shapes and otherwise fails the snapshot. #58 must prove the
-selected path/costs match the real player preview.
+read-only path shapes and otherwise fails the snapshot. The
+`affordance_export_hardening.nut` wrapper additionally requires every native path
+step to already exist in the player-legal projected map; a path that would rely
+on hidden raw map semantics is rejected as an acquisition fault. #58 must prove
+the selected path/costs match the real player preview.
 
 Visible disengagement/ZOC reactions are preserved as contingent AOO reactions.
 Player-legal mode does not manufacture hidden hit probabilities. When exact odds
