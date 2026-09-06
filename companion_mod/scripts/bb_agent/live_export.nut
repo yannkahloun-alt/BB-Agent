@@ -5,7 +5,36 @@ local identity = ::BBAGENT_CanonicalIdentity;
 ::BBAGENT_LiveExport <- {
     MaxDecodedRecordBytes = 2097152,
     MaxEncodedFrameBytes = 3145728,
+    DiagnosticMaxErrorChars = 240,
     StreamStarted = false,
+    LastExportStage = "idle",
+    LastLoggedExportDiagnostic = null,
+
+    function _sanitizeExportError(_error)
+    {
+        local errorText = _error == null ? "null" : _error.tostring();
+        errorText = split(errorText, "\r\n\t").join(" ");
+        if (errorText.len() > this.DiagnosticMaxErrorChars)
+            errorText = errorText.slice(0, this.DiagnosticMaxErrorChars);
+        return errorText;
+    },
+
+    function _reportExportFailure(_context, _error)
+    {
+        local errorText = this._sanitizeExportError(_error);
+        local diagnostic = _context + "|" + this.LastExportStage + "|" + errorText;
+        capture.State.LastError = "live export failed context=" + _context
+            + " stage=" + this.LastExportStage
+            + " error=" + errorText;
+
+        if (diagnostic == this.LastLoggedExportDiagnostic) return;
+        this.LastLoggedExportDiagnostic = diagnostic;
+        ::logError(
+            "[BB-Agent Capture] live_export_error context=" + _context
+            + " stage=" + this.LastExportStage
+            + " error=" + errorText
+        );
+    },
 
     function _common(_recordType)
     {
@@ -27,13 +56,20 @@ local identity = ::BBAGENT_CanonicalIdentity;
 
     function _emit(_record)
     {
+        this.LastExportStage = "canonical_json";
         local raw = wire.canonicalJson(_record);
         if (raw.len() > this.MaxDecodedRecordBytes)
             throw "live record exceeds decoded payload bound";
+
+        this.LastExportStage = "frame_encoding";
         local frame = wire.encodeFrame(_record);
         if (frame.len() > this.MaxEncodedFrameBytes)
             throw "live record exceeds encoded frame bound";
+
+        this.LastExportStage = "log_emission";
         ::logInfo(frame);
+        this.LastExportStage = "idle";
+        this.LastLoggedExportDiagnostic = null;
     },
 
     // Called for every tactical battle, but STREAM_START belongs to the continuous
@@ -44,14 +80,15 @@ local identity = ::BBAGENT_CanonicalIdentity;
         if (this.StreamStarted) return true;
         try
         {
-            this._emit(this._common("STREAM_START"));
+            this.LastExportStage = "common_envelope";
+            local record = this._common("STREAM_START");
+            this._emit(record);
             this.StreamStarted = true;
             return true;
         }
         catch (error)
         {
-            capture.State.LastError = "live STREAM_START export failed";
-            ::logError("[BB-Agent Capture] live STREAM_START export failed");
+            this._reportExportFailure("STREAM_START", error);
             return false;
         }
     },
@@ -63,7 +100,9 @@ local identity = ::BBAGENT_CanonicalIdentity;
 
     function _emitInvalidated(_event)
     {
+        this.LastExportStage = "stream_required";
         this._requireStream();
+        this.LastExportStage = "common_envelope";
         local record = this._common("DECISION_INVALIDATED");
         record.battle_sequence <- _event.BattleSequence;
         record.source_generation <- _event.SourceGeneration;
@@ -73,8 +112,11 @@ local identity = ::BBAGENT_CanonicalIdentity;
 
     function _readyState(_raw)
     {
+        this.LastExportStage = "player_legal_projection";
         local projection = ::BBAGENT_PlayerLegal.build(_raw);
+        this.LastExportStage = "affordance_acquisition";
         local actions = ::BBAGENT_Affordances.acquire(_raw, projection);
+        this.LastExportStage = "state_finalization";
         local state = identity.finalizeState(
             projection.state,
             actions,
@@ -82,6 +124,7 @@ local identity = ::BBAGENT_CanonicalIdentity;
             _raw.SourceGeneration
         );
 
+        this.LastExportStage = "capture_revalidation";
         local current = capture.getCurrentRawAcquisition();
         if (current == null
             || current.BattleSequence != _raw.BattleSequence
@@ -89,6 +132,7 @@ local identity = ::BBAGENT_CanonicalIdentity;
         {
             throw "capture generation changed during canonical acquisition";
         }
+        this.LastExportStage = "fingerprint_hash";
         local before = wire.canonicalHash(_raw.RawSourceFingerprintInputs);
         local after = wire.canonicalHash(current.RawSourceFingerprintInputs);
         if (before != after) throw "raw source changed during canonical acquisition";
@@ -97,7 +141,9 @@ local identity = ::BBAGENT_CanonicalIdentity;
 
     function _emitReady(_event)
     {
+        this.LastExportStage = "stream_required";
         this._requireStream();
+        this.LastExportStage = "raw_match";
         local raw = capture.getCurrentRawAcquisition();
         if (raw == null
             || raw.BattleSequence != _event.BattleSequence
@@ -106,6 +152,7 @@ local identity = ::BBAGENT_CanonicalIdentity;
             throw "READY lifecycle event has no matching raw acquisition";
         }
         local ready = this._readyState(raw);
+        this.LastExportStage = "common_envelope";
         local record = this._common("DECISION_READY");
         record.battle_sequence <- raw.BattleSequence;
         record.source_generation <- raw.SourceGeneration;
@@ -126,8 +173,7 @@ local identity = ::BBAGENT_CanonicalIdentity;
             }
             catch (error)
             {
-                capture.State.LastError = "live invalidation export failed";
-                ::logError("[BB-Agent Capture] live INVALIDATED export failed");
+                this._reportExportFailure("DECISION_INVALIDATED", error);
             }
             return;
         }
@@ -139,8 +185,7 @@ local identity = ::BBAGENT_CanonicalIdentity;
         }
         catch (error)
         {
-            capture.State.LastError = "live canonical acquisition failed";
-            ::logError("[BB-Agent Capture] live canonical acquisition failed; advice invalidated");
+            this._reportExportFailure("DECISION_READY", error);
             local invalidated = capture.invalidate("capture_fault");
             if (invalidated != null && invalidated.RecordType == "DECISION_INVALIDATED")
             {
@@ -150,8 +195,7 @@ local identity = ::BBAGENT_CanonicalIdentity;
                 }
                 catch (_emitError)
                 {
-                    capture.State.LastError = "live capture fault invalidation export failed";
-                    ::logError("[BB-Agent Capture] live capture-fault invalidation export failed");
+                    this._reportExportFailure("CAPTURE_FAULT_INVALIDATED", _emitError);
                 }
             }
         }
