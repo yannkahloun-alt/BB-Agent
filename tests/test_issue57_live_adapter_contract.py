@@ -13,6 +13,9 @@ PROJECTION_HARDENING = (
 )
 IDENTITY = ROOT / "companion_mod/scripts/bb_agent/canonical_identity.nut"
 AFFORDANCES = ROOT / "companion_mod/scripts/bb_agent/affordance_export.nut"
+AFFORDANCE_HARDENING = (
+    ROOT / "companion_mod/scripts/bb_agent/affordance_export_hardening.nut"
+)
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 HOOK = ROOT / "companion_mod/scripts/bb_agent/hooks/tactical_state.nut"
 
@@ -30,6 +33,7 @@ def test_preload_orders_projection_and_export_before_tactical_hook() -> None:
         "player_legal_hardening",
         "canonical_identity",
         "affordance_export",
+        "affordance_export_hardening",
         "live_export",
         "hooks/tactical_state",
     )
@@ -113,6 +117,7 @@ def test_affordance_acquisition_uses_game_authority_and_never_executes_commands(
     None
 ):
     source = _text(AFFORDANCES)
+    hardening = _text(AFFORDANCE_HARDENING)
     for required in (
         "queryActives()",
         "skill.isUsable()",
@@ -134,6 +139,8 @@ def test_affordance_acquisition_uses_game_authority_and_never_executes_commands(
         'unsupported_mechanic_id = "live.player_legal.aoo_probability_unavailable"',
     ):
         assert required in source
+    assert "native movement path leaves the player-legal canonical map" in hardening
+    assert "this.CurrentProjection.runtime.tile_records" in hardening
     for cost in (
         "ap_cost",
         "fatigue_cost",
@@ -156,6 +163,7 @@ def test_affordance_acquisition_uses_game_authority_and_never_executes_commands(
         "Math.rand(",
     ):
         assert forbidden not in source
+        assert forbidden not in hardening
 
 
 def test_live_export_is_transactional_strict_and_player_legal_only() -> None:
