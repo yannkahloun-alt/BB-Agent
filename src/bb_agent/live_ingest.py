@@ -155,10 +155,9 @@ class LiveCompatibility:
         ):
             raise ValueError("ruleset_content_fingerprint must be lowercase SHA-256")
         if self.expected_mods is not None:
-            if (
-                isinstance(self.expected_mods, str | bytes | bytearray)
-                or not isinstance(self.expected_mods, Sequence)
-            ):
+            if isinstance(
+                self.expected_mods, str | bytes | bytearray
+            ) or not isinstance(self.expected_mods, Sequence):
                 raise ValueError("expected_mods must be an array of strings")
             object.__setattr__(self, "expected_mods", tuple(self.expected_mods))
             if any(not isinstance(mod, str) or not mod for mod in self.expected_mods):
@@ -355,7 +354,6 @@ class LiveIngestMachine:
 
         if record.record_type is LiveRecordType.DECISION_INVALIDATED:
             if key > prior:
-                # There is no READY identity for this newer generation yet.
                 self._state.current_raw_capture_id = None
                 self._state.current_payload_digest = None
             self._state.battle_sequence, self._state.source_generation = key
@@ -695,8 +693,6 @@ class LiveLogTailer:
                 else "log file truncated before persisted cursor"
             )
             self._invalidate_discontinuity(reason)
-            # Recovery after a known prior cursor is deliberately conservative:
-            # start at current EOF and wait for a future STREAM_START.
             self._cursor = self._cursor_at_eof(identity, stat.st_size)
             self._persist_state()
             return (
@@ -766,9 +762,6 @@ class LiveLogTailer:
                         canonical_available_ns=time.monotonic_ns(),
                     )
                     if event.status is LiveIngestStatus.STREAM_STARTED:
-                        # On first-ever attach, historical streams before the latest
-                        # STREAM_START are not useful output. Clearing here means one
-                        # poll returns only the latest stream's semantic events.
                         events.clear()
                     events.append(event)
             consumed = end
