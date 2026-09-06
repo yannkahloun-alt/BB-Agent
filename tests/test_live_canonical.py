@@ -10,6 +10,7 @@ from bb_agent.live_canonical import (
     live_battle_id,
     live_source_generation,
     materialize_live_tactical_state,
+    producer_live_battle_id,
 )
 from bb_agent.live_ingest import (
     AcceptedLiveDecision,
@@ -38,7 +39,9 @@ def _live_state(*, battle_sequence: int = 7, source_generation: int = 3) -> Tact
         state,
         state_id="",
         raw_capture_id=None,
-        battle=replace(state.battle, battle_id=live_battle_id(battle_sequence)),
+        battle=replace(
+            state.battle, battle_id=producer_live_battle_id(battle_sequence)
+        ),
         decision=replace(state.decision, decision_index=source_generation),
         action_affordances=replace(
             state.action_affordances,
@@ -74,7 +77,9 @@ def _record(
     )
 
 
-def _accepted(record: LiveRecord) -> AcceptedLiveDecision:
+def _accepted(
+    record: LiveRecord, *, capture_stream_id: str = "stream-test"
+) -> AcceptedLiveDecision:
     compatibility = LiveCompatibility(
         ruleset_game_version=record.ruleset_game_version,
         ruleset_content_fingerprint=record.ruleset_content_fingerprint,
@@ -82,7 +87,9 @@ def _accepted(record: LiveRecord) -> AcceptedLiveDecision:
         expected_companion_version=record.companion_version,
         expected_runtime_game_version=record.runtime_game_version,
     )
-    machine = LiveIngestMachine(compatibility, stream_id_factory=lambda: "stream-test")
+    machine = LiveIngestMachine(
+        compatibility, stream_id_factory=lambda: capture_stream_id
+    )
     start = LiveRecord(
         record_type=LiveRecordType.STREAM_START,
         companion_version=record.companion_version,
@@ -101,21 +108,36 @@ def _accepted(record: LiveRecord) -> AcceptedLiveDecision:
     return event.decision
 
 
-def test_materialize_decoded_ready_thaws_payload_and_binds_host_capture_id() -> None:
+def test_materialize_decoded_ready_thaws_payload_and_binds_host_identities() -> None:
     source = _live_state()
     accepted = _accepted(_record(source))
 
     materialized = materialize_live_tactical_state(accepted)
 
     assert materialized.raw_capture_id == accepted.raw_capture_id
-    assert materialized.state_id == source.state_id
-    assert materialized.battle.battle_id == live_battle_id(7)
+    assert materialized.state_id != source.state_id
+    assert materialized.battle.battle_id == live_battle_id("stream-test", 7)
     assert materialized.decision.decision_index == 3
     assert materialized.action_affordances.source_generation == "live:7:3"
     assert all(
         action.source_generation == "live:7:3"
         for action in materialized.action_affordances.actions
     )
+
+
+def test_capture_stream_identity_scopes_final_battle_and_state_ids() -> None:
+    source = _live_state()
+    record = _record(source)
+
+    first = materialize_live_tactical_state(
+        _accepted(record, capture_stream_id="stream-a")
+    )
+    second = materialize_live_tactical_state(
+        _accepted(record, capture_stream_id="stream-b")
+    )
+
+    assert first.battle.battle_id != second.battle.battle_id
+    assert first.state_id != second.state_id
 
 
 def test_materialize_rejects_producer_supplied_raw_capture_id() -> None:
