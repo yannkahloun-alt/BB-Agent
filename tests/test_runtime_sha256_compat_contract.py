@@ -51,7 +51,7 @@ def test_sha_compat_loads_before_tactical_hook() -> None:
 def test_sha_compat_uses_explicit_logical_right_shift() -> None:
     text = SHA_COMPAT.read_text(encoding="utf-8")
     assert "wire._ushr <- function(_value, _bits)" in text
-    assert "return (_value >> _bits) & ((1 << (32 - _bits)) - 1);" in text
+    assert "return (_value >> _bits) & (2147483647 >> (_bits - 1));" in text
     assert "this._ushr(this._u32(_value), _bits)" in text
     assert "this._ushr(this._u32(w[i - 15]), 3)" in text
     assert "this._ushr(this._u32(w[i - 2]), 10)" in text
