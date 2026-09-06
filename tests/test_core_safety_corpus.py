@@ -153,9 +153,7 @@ def test_ticket_24_safety_and_coverage_cases_fail_closed() -> None:
         )
 
     aoo_reports = [
-        reports[fixture_id]
-        for fixture_id in SAFETY_FIXTURE_IDS
-        if "aoo" in fixture_id
+        reports[fixture_id] for fixture_id in SAFETY_FIXTURE_IDS if "aoo" in fixture_id
     ]
     assert len(aoo_reports) == 6
     for report in aoo_reports:
@@ -197,7 +195,9 @@ def test_affordability_range_target_and_terrain_boundaries_are_explicit() -> Non
         if combatant.actor_id == "enemy"
     )
     actor_tile = next(
-        tile for tile in ranged.state.tiles if tile.tile_id == ranged_actor.position.value
+        tile
+        for tile in ranged.state.tiles
+        if tile.tile_id == ranged_actor.position.value
     )
     hostile_tile = next(
         tile for tile in ranged.state.tiles if tile.tile_id == hostile.position.value
