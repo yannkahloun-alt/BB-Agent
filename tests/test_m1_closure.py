@@ -45,7 +45,9 @@ def _contains_player_legal_debug_payload(value) -> bool:
             return True
         if "debug_ground_truth" in value and value["debug_ground_truth"] is not None:
             return True
-        return any(_contains_player_legal_debug_payload(item) for item in value.values())
+        return any(
+            _contains_player_legal_debug_payload(item) for item in value.values()
+        )
     if isinstance(value, list):
         return any(_contains_player_legal_debug_payload(item) for item in value)
     return False
@@ -54,7 +56,9 @@ def _contains_player_legal_debug_payload(value) -> bool:
 def test_m1_closure_corpus_gates_and_coverage_health() -> None:
     fixtures = _load_corpus()
     assert len(fixtures) == 54
-    assert all(fixture.metadata.review_status is ReviewStatus.PROMOTED for fixture in fixtures)
+    assert all(
+        fixture.metadata.review_status is ReviewStatus.PROMOTED for fixture in fixtures
+    )
 
     authority_result = load_builtin_mechanics()
     assert authority_result.status is ResultStatus.SUCCESS
@@ -69,9 +73,10 @@ def test_m1_closure_corpus_gates_and_coverage_health() -> None:
     assert report.coverage.blocking_failure_count == 0
     assert report.coverage.review_finding_count == 0
     assert REQUIRED_TAXONOMY <= {name for name, _ in report.coverage.taxonomy_counts}
-    assert sum(
-        "uncertainty_no_cheat" in fixture.metadata.taxonomy for fixture in fixtures
-    ) >= 8
+    assert (
+        sum("uncertainty_no_cheat" in fixture.metadata.taxonomy for fixture in fixtures)
+        >= 8
+    )
 
     incomplete = []
     for fixture_report in report.fixtures:

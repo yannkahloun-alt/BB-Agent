@@ -78,7 +78,10 @@ def run_benchmark(*, passes: int, warmup_passes: int) -> dict[str, object]:
         raise RuntimeError(f"expected 54 promoted M1 fixtures, got {len(fixtures)}")
 
     authority_result = load_builtin_mechanics()
-    if authority_result.status is not ResultStatus.SUCCESS or authority_result.value is None:
+    if (
+        authority_result.status is not ResultStatus.SUCCESS
+        or authority_result.value is None
+    ):
         raise RuntimeError(f"mechanics load failed: {authority_result.problems}")
     authority = authority_result.value
 
