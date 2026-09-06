@@ -1,6 +1,6 @@
 local def = ::BBAGENT_Mod <- {
     ID = "mod_bb_agent_capture",
-    Version = "0.2.4",
+    Version = "0.2.5",
     Name = "BB-Agent Capture"
 };
 
@@ -21,5 +21,6 @@ mod.queue(function()
     ::include("scripts/bb_agent/affordance_export_hardening");
     ::include("scripts/bb_agent/live_export");
     ::include("scripts/bb_agent/runtime_join_compat");
+    ::include("scripts/bb_agent/runtime_sha256_compat");
     ::include("scripts/bb_agent/hooks/tactical_state");
 });
