@@ -36,9 +36,7 @@ def test_observation_memory_coordinates_match_canonical_observation_point() -> N
     assert 'typeof _round != "integer" || _round < 0' in text
     assert 'typeof _decision != "integer" || _decision < 0' in text
     assert 'throw "observation-memory round must be a non-negative integer";' in text
-    assert (
-        'throw "observation-memory decision must be a non-negative integer";' in text
-    )
+    assert 'throw "observation-memory decision must be a non-negative integer";' in text
 
 
 def test_observation_memory_write_and_read_are_deep_copied() -> None:
