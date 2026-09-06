@@ -5,6 +5,9 @@ local capture = ::BBAGENT_Capture;
 // retaining the reviewed 1.5.2.2 ruleset/source provenance. Unknown/future
 // runtimes remain fail-closed.
 capture.CompanionVersion <- ::BBAGENT_Mod.Version;
+// Legacy/source-baseline marker retained for compatibility with existing health
+// assertions. Runtime admission uses SupportedRuntimeGameVersions below.
+capture.SupportedRuntimeGameVersion <- "1.5.2.2";
 capture.SupportedRuntimeGameVersions <- ["1.5.2.2", "1.5.2.3"];
 capture.AllowedRuntimeModIDs <- {
     vanilla = true,
