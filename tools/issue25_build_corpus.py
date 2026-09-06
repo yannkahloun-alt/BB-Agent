@@ -904,7 +904,16 @@ def main() -> None:
             assert loaded.value is not None
             loaded_all.append(loaded.value)
     report = run_validation_corpus(_authority(), loaded_all)
-    assert report.passed, report.blocking_failures
+    if not report.passed:
+        for fixture_report in report.fixtures:
+            for failure in fixture_report.blocking_failures:
+                print(
+                    "FAIL",
+                    fixture_report.fixture_id,
+                    failure.assertion_id,
+                    failure.message,
+                )
+        raise AssertionError("combined #24/#25 corpus has blocking failures")
     assert report.coverage.total_fixtures == 54
     assert report.coverage.gated_fixtures == 54
     assert report.coverage.safety_critical_fixtures == 10
