@@ -1,0 +1,30 @@
+name: Issue 25 aleatory fixture patch
+
+on:
+  push:
+    branches: [codex/issue-25-quality-uncertainty-corpus]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/issue-25-quality-uncertainty-corpus
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python tools/issue25_patch_aleatory.py
+      - name: Commit aleatory patch and self-clean
+        run: |
+          rm tools/issue25_patch_aleatory.py
+          rm .github/workflows/issue25-patch-aleatory.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add tools/issue25_build_corpus.py tools/issue25_patch_aleatory.py .github/workflows/issue25-patch-aleatory.yml
+          git commit -m "Fix #25 aleatory-only fixture construction"
+          git push origin HEAD:codex/issue-25-quality-uncertainty-corpus
