@@ -14,6 +14,7 @@ mod.queue(function()
     ::include("scripts/bb_agent/runtime_provenance");
     ::include("scripts/bb_agent/canonical_wire");
     ::include("scripts/bb_agent/player_legal_projection");
+    ::include("scripts/bb_agent/player_legal_hardening");
     ::include("scripts/bb_agent/canonical_identity");
     ::include("scripts/bb_agent/affordance_export");
     ::include("scripts/bb_agent/live_export");
