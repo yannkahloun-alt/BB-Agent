@@ -71,6 +71,12 @@ def _string(value: JsonValue, name: str) -> str:
     return value
 
 
+def _number(value: JsonValue, name: str) -> int | float:
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"{name} must be numeric")
+    return value
+
+
 def _problem_payload(problem: Problem) -> dict[str, JsonValue]:
     return {
         "code": problem.code.value,
@@ -741,13 +747,19 @@ def _profile_from_trace(engine: Mapping[str, JsonValue]) -> EvaluationProfile:
     scales_data = _object(profile.get("scales"), "evaluation_profile.scales")
     weights = EvaluationWeights(
         **{
-            field.name: float(weights_data[field.name])
+            field.name: _number(
+                weights_data[field.name],
+                f"evaluation_profile.weights.{field.name}",
+            )
             for field in fields(EvaluationWeights)
         }
     )
     scales = EvaluationScales(
         **{
-            field.name: float(scales_data[field.name])
+            field.name: _number(
+                scales_data[field.name],
+                f"evaluation_profile.scales.{field.name}",
+            )
             for field in fields(EvaluationScales)
         }
     )
@@ -756,10 +768,21 @@ def _profile_from_trace(engine: Mapping[str, JsonValue]) -> EvaluationProfile:
         version=_string(profile.get("version"), "evaluation_profile.version"),
         weights=weights,
         scales=scales,
-        tail_risk_weight=float(profile["tail_risk_weight"]),
-        uncertainty_weight=float(profile["uncertainty_weight"]),
-        near_tie_margin=float(profile["near_tie_margin"]),
-        max_self_death_probability=None if threshold is None else float(threshold),
+        tail_risk_weight=_number(
+            profile["tail_risk_weight"], "evaluation_profile.tail_risk_weight"
+        ),
+        uncertainty_weight=_number(
+            profile["uncertainty_weight"],
+            "evaluation_profile.uncertainty_weight",
+        ),
+        near_tie_margin=_number(
+            profile["near_tie_margin"], "evaluation_profile.near_tie_margin"
+        ),
+        max_self_death_probability=(
+            None
+            if threshold is None
+            else _number(threshold, "evaluation_profile.max_self_death_probability")
+        ),
     )
 
 
@@ -777,10 +800,17 @@ def _unit_value_policy_from_trace(engine: Mapping[str, JsonValue]) -> UnitValueP
         pair = tuple(item)
         if len(pair) != 2:
             raise ValueError("unit_value_policy actor value must be a pair")
-        actor_values.append((str(pair[0]), float(pair[1])))
+        actor_values.append(
+            (
+                str(pair[0]),
+                _number(pair[1], "unit_value_policy actor value"),
+            )
+        )
     return UnitValuePolicy(
         version=_string(policy.get("version"), "unit_value_policy.version"),
-        default_value=float(policy["default_value"]),
+        default_value=_number(
+            policy["default_value"], "unit_value_policy.default_value"
+        ),
         actor_values=tuple(actor_values),
     )
 
