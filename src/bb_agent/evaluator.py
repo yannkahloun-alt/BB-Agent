@@ -27,7 +27,7 @@ from bb_agent.serialization import canonical_sha256
 from bb_agent.tactical_state import TacticalState
 
 MODEL_VERSION = "risk-evaluator.v1"
-CONFIG_VERSION = "m1-evaluation-profile.v1"
+CONFIG_VERSION = "m1-evaluation-profile.v2"
 UNIT_VALUE_POLICY_VERSION = "m1-common-preservation.v1"
 _TOLERANCE = 1e-9
 
@@ -608,11 +608,6 @@ def _resource_component(
             _normalized(
                 features.future_capacity.ap_fat_feasible_template_count,
                 template_scale,
-            ),
-            _normalized(
-                features.future_capacity.ap_fat_locked_template_count,
-                template_scale,
-                -1.0,
             ),
             _normalized(
                 MetricRange.exact(features.resources.ammo_consumed),

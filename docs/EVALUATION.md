@@ -7,12 +7,14 @@ full enemy response, call an LLM, or import BB-Save-Toolkit.
 
 ## Versioned policy
 
-The implementation model is `risk-evaluator.v1` and the initial profile is
-`m1-evaluation-profile.v1`. Every profile has a deterministic SHA-256 fingerprint
-covering all scales, family weights, risk policy, uncertainty penalty, near-tie
-margin, and optional guardrail. These values are initial calibration parameters,
-not universal Battle Brothers truths. Ticket #26 may tune them only through a
-new versioned generic profile or justified generic transforms.
+The implementation model remains `risk-evaluator.v1`. Ticket #26 freezes the
+final M1 profile as `m1-evaluation-profile.v2`, with fingerprint
+`2e0ff58c4c57a80dc37eb86da5d49ef573057abd73eb158801f5c600c0c6ffcb`.
+Every profile has a deterministic SHA-256 fingerprint covering all scales,
+family weights, risk policy, uncertainty penalty, near-tie margin, and optional
+guardrail. These values are calibration parameters constrained by the gated
+corpus, not universal Battle Brothers truths. The detailed v1-to-v2 audit and
+rationale are recorded in [`CALIBRATION.md`](CALIBRATION.md).
 
 The default component families remain separate:
 
@@ -30,6 +32,13 @@ quantities remain in `TacticalFeatures`. Each mean-value family records its
 normalized range, profile weight, weighted range, and the exact value used for
 selection. Tail risk and epistemic uncertainty are not folded invisibly into a
 mean component.
+
+The calibrated v2 resource family scores remaining AP, fatigue headroom,
+AP/FAT-feasible current cost templates, ammo consumption, and charge
+consumption. `ap_fat_locked_template_count` remains an inspectable raw diagnostic
+but is not also scored: for the current template set it is the complement of the
+feasible-template count, so scoring both would double-count the same future-
+capacity loss.
 
 ## Unknowns and robustness
 
