@@ -31,6 +31,16 @@ def test_observation_memory_accepts_only_json_like_player_legal_values() -> None
     assert 'throw "observation-memory value must be player-legal data";' in text
 
 
+def test_observation_memory_coordinates_match_canonical_observation_point() -> None:
+    text = _read(MEMORY)
+    assert 'typeof _round != "integer" || _round < 0' in text
+    assert 'typeof _decision != "integer" || _decision < 0' in text
+    assert 'throw "observation-memory round must be a non-negative integer";' in text
+    assert (
+        'throw "observation-memory decision must be a non-negative integer";' in text
+    )
+
+
 def test_observation_memory_write_and_read_are_deep_copied() -> None:
     text = _read(MEMORY)
     assert "capture._copyPlayerLegalMemoryValue <- function" in text
