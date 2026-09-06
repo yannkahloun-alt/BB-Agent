@@ -39,21 +39,22 @@ def test_active_item_slot_topology_is_part_of_raw_source_identity() -> None:
         assert token in text, token
 
 
-def test_tile_effect_primitive_state_is_part_of_raw_source_identity() -> None:
+def test_tile_effect_primitive_state_is_part_of_single_map_identity_pass() -> None:
     text = _read(IDENTITY)
     required = (
-        "capture._tileEffectTokens <- function()",
+        "capture._mapTokens = function()",
         "::Tactical.getMapSize()",
         "::Tactical.isValidTileSquare(x, y)",
         "::Tactical.getTileSquare(x, y)",
+        '"map=" + x + ":" + y',
         "tile.Properties.Effect == null",
         '"tile_effect=" + x + ":" + y',
         "tile.Properties.Effect",
         "this._primitiveStateTokens(",
-        "this._tileEffectTokens()",
     )
     for token in required:
         assert token in text, token
+    assert "capture._tileEffectTokens" not in text
 
 
 def test_affordance_source_identity_extension_is_read_only() -> None:
