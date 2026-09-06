@@ -57,7 +57,9 @@ def _create_rebound_state(
             captured_for_state_id="",
         ),
     )
-    values = {field.name: getattr(rebound, field.name) for field in fields(TacticalState)}
+    values = {
+        field.name: getattr(rebound, field.name) for field in fields(TacticalState)
+    }
     return TacticalState.create(**values)
 
 
