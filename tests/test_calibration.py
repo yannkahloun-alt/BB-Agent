@@ -144,7 +144,9 @@ def test_full_gated_corpus_is_repeatably_deterministic_under_final_profile() -> 
     )
 
     near_ties = {
-        report.fixture_id: tuple(tuple(group) for group in report.trace.selection["near_ties"])
+        report.fixture_id: tuple(
+            tuple(group) for group in report.trace.selection["near_ties"]
+        )
         for report in first.fixtures
         if report.trace is not None
         and report.trace.selection is not None
