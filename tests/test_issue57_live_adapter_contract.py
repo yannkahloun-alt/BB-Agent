@@ -26,7 +26,7 @@ def _text(path: Path) -> str:
 
 def test_preload_orders_projection_and_export_before_tactical_hook() -> None:
     source = _text(PRELOAD)
-    assert 'Version = "0.2.2"' in source
+    assert 'Version = "0.2.3"' in source
     modules = (
         "canonical_wire",
         "player_legal_projection",
@@ -176,7 +176,8 @@ def test_live_export_is_transactional_strict_and_player_legal_only() -> None:
     assert "StreamStarted = false" in source
     assert "if (this.StreamStarted) return true;" in source
     assert "this._requireStream();" in source
-    assert source.count('this._emit(this._common("STREAM_START"));') == 1
+    assert 'local record = this._common("STREAM_START");' in source
+    assert "this._emit(record);" in source
     assert 'record.information_profile <- "player_legal"' in source
     assert "capture generation changed during canonical acquisition" in source
     assert "raw source changed during canonical acquisition" in source
