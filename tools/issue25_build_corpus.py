@@ -761,6 +761,15 @@ def no_cheat_aleatory_only() -> FixtureEnvelope:
     state = rebuild(
         state,
         raw_capture_id="t25-capture-aleatory",
+        tiles=tuple(
+            replace(
+                tile,
+                blocking=KnownValue.exact(False),
+                traversable=KnownValue.exact(True),
+                blocks_line_of_sight=KnownValue.exact(False),
+            )
+            for tile in state.tiles
+        ),
         action_affordances=replace(state.action_affordances, actions=(move, _wait())),
     )
     move = by_kind(state, ActionKind.MOVE_TO)
