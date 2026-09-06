@@ -69,12 +69,18 @@ acquisition provenance records the actual game version, serialization version,
 full sorted `id@version` mod identities, selected scripts/ruleset identity,
 unsupported mod IDs, compatibility verdict, and incompatibility reason. An
 incompatible process never calls the capture observer; if advice had somehow
-been READY it is invalidated, and `LastError` records a visible generic runtime
-incompatibility reason. Normal Battle Brothers play continues unaffected.
+been READY it is invalidated immediately, and `LastError` records a visible
+generic runtime incompatibility reason. Runtime-probe exceptions are contained
+inside the provenance gate, converted to `runtime_provenance_error`, and disable
+capture instead of escaping into vanilla tactical initialization. Normal Battle
+Brothers play continues unaffected.
 
 `configureProvenance()` remains as an optional stricter #57 validation hook. It
 may require an exact expected runtime mod-identity list, but it cannot override
-the built-in game-version/unsupported-mod gate.
+the built-in game-version/unsupported-mod gate. Its exact expectation is stored
+persistently and re-applied by every later runtime refresh, including battle
+initialization; an explicit mismatch invalidates any currently READY decision
+without waiting for the next tactical update.
 
 ## Command-ready predicate
 
@@ -163,10 +169,11 @@ reason/version, and generic capture errors. It does not log raw actors,
 `CurrentProperties`, entity lists, fingerprint material or observation-memory
 payloads.
 
-Capture and compatibility errors fail closed. If advice was READY, a capture
-failure invalidates it immediately. The game-side observer never requires an
-external process, so external absence/failure cannot block normal Battle
-Brothers play.
+Capture and compatibility errors fail closed. If advice was READY, a capture or
+provenance failure invalidates it immediately. The game-side observer never
+requires an external process, so external absence/failure cannot block normal
+Battle Brothers play; runtime-provenance probe failures are also contained
+rather than propagated into the vanilla tactical lifecycle.
 
 ## Explicit non-goals / prohibited paths
 
