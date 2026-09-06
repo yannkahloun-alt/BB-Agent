@@ -89,6 +89,7 @@ def test_runtime_provenance_is_probed_and_mismatches_fail_closed() -> None:
     assert 'return this._setProvenanceFailure("runtime_provenance_error");' in provenance
     assert 'GameVersion = "unknown"' in provenance
     assert "IsCompatible = false" in provenance
+    assert provenance.count('this.invalidate("runtime_incompatible");') >= 2
 
     for allowed in (
         "vanilla = true",
