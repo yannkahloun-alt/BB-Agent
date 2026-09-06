@@ -3,6 +3,7 @@ local capture = ::BBAGENT_Capture;
 local liveExport = ::BBAGENT_LiveExport;
 local legal = ::BBAGENT_PlayerLegal;
 local affordances = ::BBAGENT_Affordances;
+local joinCompat = ::BBAGENT_RuntimeJoinCompat;
 
 ::BBAGENT_DebugOracle <- {
     Version = ::BBAGENT_DebugOracleDef.Version,
@@ -15,7 +16,7 @@ local affordances = ::BBAGENT_Affordances;
     function _sanitize(_value)
     {
         local text = _value == null ? "null" : _value.tostring();
-        text = split(text, "\r\n\t").join(" ");
+        text = joinCompat.joinStrings(split(text, "\r\n\t"), " ");
         if (text.len() > this.DiagnosticMaxErrorChars)
             text = text.slice(0, this.DiagnosticMaxErrorChars);
         return text;
