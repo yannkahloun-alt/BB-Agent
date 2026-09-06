@@ -298,6 +298,16 @@ local legal = ::BBAGENT_PlayerLegal;
         return reactions;
     },
 
+    function _movementCost(_costs, _requiredField, _fallbackField)
+    {
+        local value = null;
+        if (_requiredField in _costs) value = _costs[_requiredField];
+        else if (_fallbackField in _costs) value = _costs[_fallbackField];
+        if (typeof value != "integer" || value < 0)
+            throw "native movement preview returned a missing/non-integer canonical cost";
+        return value;
+    },
+
     function _moveActions(_raw, _projection)
     {
         local ret = [];
@@ -338,14 +348,14 @@ local legal = ::BBAGENT_PlayerLegal;
             navigator.clearPath();
             navigator.clearVisualisation();
             if (!found || costs == null || costs.Tiles == 0) continue;
-            if (typeof costs.ActionPoints != "integer" || typeof costs.Fatigue != "integer")
-                throw "native movement preview returned non-integer canonical costs";
+            local apCost = this._movementCost(costs, "ActionPointsRequired", "ActionPoints");
+            local fatigueCost = this._movementCost(costs, "FatigueRequired", "Fatigue");
 
             local action = this._baseAction(actorId, "MOVE_TO");
             action.destination_tile_id = legal.tileID(destination);
             foreach (tile in pathTiles) action.resolved_path.push(legal.tileID(tile));
             action.contingent_reactions = this._aooReactions(_projection.state, active, pathTiles);
-            this._resolvedCosts(action, costs.ActionPoints, costs.Fatigue);
+            this._resolvedCosts(action, apCost, fatigueCost);
             ret.push(action);
         }
         return ret;
