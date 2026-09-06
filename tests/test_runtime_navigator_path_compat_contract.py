@@ -27,14 +27,27 @@ def test_native_prefix_oracle() -> None:
         '"IsComplete" in _costs',
         '"End" in _costs',
         '"Tiles" in _costs',
-        "for (local apBudget = 1; apBudget <= apRequired;",
+        "for (local apBudget = 0; apBudget <= apRequired;",
         "if (prefix.Tiles == 0) continue;",
         "if (tileId == lastTileId) continue;",
-        "lastTile.getDistanceTo(prefix.End) != 1",
+        "this._canonicalNeighbors(_projection, lastTileId, tileId)",
         "path.push(prefix.End);",
     )
     for token in required:
         assert token in text
+
+
+def test_canonical_neighbor_validation_uses_projection_topology() -> None:
+    text = _text(COMPAT)
+    required = (
+        "affordances._canonicalNeighbors <- function",
+        "_projection.runtime.tile_records",
+        "record.neighbor_ids",
+        "native movement prefix endpoint is not a canonical adjacent tile",
+    )
+    for token in required:
+        assert token in text
+    assert "getDistanceTo(prefix.End)" not in text
 
 
 def test_tiles_are_only_zero_nonzero_sentinel() -> None:
