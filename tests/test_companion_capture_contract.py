@@ -86,7 +86,9 @@ def test_runtime_provenance_is_probed_and_mismatches_fail_closed() -> None:
     assert "::BBAGENT_Capture._refreshRuntimeProvenance();" in hook
     assert "::BBAGENT_Capture.isRuntimeCompatible()" in hook
     assert "catch (error)" in provenance
-    assert 'return this._setProvenanceFailure("runtime_provenance_error");' in provenance
+    assert (
+        'return this._setProvenanceFailure("runtime_provenance_error");' in provenance
+    )
     assert 'GameVersion = "unknown"' in provenance
     assert "IsCompatible = false" in provenance
     assert provenance.count('this.invalidate("runtime_incompatible");') >= 2
