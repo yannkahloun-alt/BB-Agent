@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+import sys
 from dataclasses import replace
 from pathlib import Path
 
-from bb_agent.fixtures import FixtureEnvelope, load_fixture, save_fixture
-from bb_agent.results import ResultStatus
-from bb_agent.validation import run_validation_corpus
+ROOT = Path(__file__).parents[1]
+sys.path.insert(0, str(ROOT / "tests"))
+
+from bb_agent.fixtures import FixtureEnvelope, load_fixture, save_fixture  # noqa: E402
+from bb_agent.results import ResultStatus  # noqa: E402
+from bb_agent.validation import run_validation_corpus  # noqa: E402
+from test_mechanics import _authority  # noqa: E402
 
 CORPUS_DIR = Path("tests/fixtures/ticket_24")
 TEST_PATH = Path("tests/test_core_safety_corpus.py")
@@ -39,15 +44,12 @@ def main() -> None:
     assert changed > 0
     assert all(fixture.state.annotations is None for fixture in fixtures)
 
-    report = run_validation_corpus(__import__("test_mechanics")._authority(), fixtures)
+    report = run_validation_corpus(_authority(), fixtures)
     assert report.passed, report.blocking_failures
 
     text = TEST_PATH.read_text()
-    needle = "        assert provenance[\"evidence\"]\n"
-    replacement = (
-        needle
-        + "        assert fixture.state.annotations is None\n"
-    )
+    needle = '        assert provenance["evidence"]\n'
+    replacement = needle + "        assert fixture.state.annotations is None\n"
     if needle not in text:
         raise SystemExit("permanent provenance assertion anchor not found")
     if "assert fixture.state.annotations is None" not in text:
