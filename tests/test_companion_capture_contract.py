@@ -71,7 +71,10 @@ def test_runtime_provenance_is_probed_and_mismatches_fail_closed() -> None:
     provenance = _read(PROVENANCE)
     hook = _read(HOOK)
 
-    assert 'capture.SupportedRuntimeGameVersions <- ["1.5.2.2", "1.5.2.3"]' in provenance
+    assert (
+        'capture.SupportedRuntimeGameVersions <- ["1.5.2.2", "1.5.2.3"]'
+        in provenance
+    )
     assert "capture._isSupportedRuntimeGameVersion <- function" in provenance
     assert "::GameInfo.getVersionNumber()" in provenance
     assert "::Const.Serialization.Version" in provenance
