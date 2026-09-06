@@ -1,7 +1,12 @@
 from __future__ import annotations
 
 from bb_agent.live_debug import LiveDebugTwinTracker
-from bb_agent.live_ingest import LiveRecord, LiveRecordType, decode_live_frame, encode_live_frame
+from bb_agent.live_ingest import (
+    LiveRecord,
+    LiveRecordType,
+    decode_live_frame,
+    encode_live_frame,
+)
 
 GAME_VERSION = "scripts-162f498ac7c49b4c317bbf54718a595ecef6a65a"
 CONTENT = "4c4b714832d1989740a6f07dce058c11aa1e9123056966ede06ce42d1df182bd"
