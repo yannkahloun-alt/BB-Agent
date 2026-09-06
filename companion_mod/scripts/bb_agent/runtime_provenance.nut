@@ -113,6 +113,7 @@ capture._refreshRuntimeProvenance <- function()
             return false;
         }
 
+        this.State.LastError = null;
         return true;
     }
     catch (error)
