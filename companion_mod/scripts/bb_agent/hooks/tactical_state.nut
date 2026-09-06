@@ -6,11 +6,17 @@ mod.hook("scripts/states/tactical_state", function(q)
     {
         __original();
         ::BBAGENT_Capture.beginBattle();
+        ::BBAGENT_Capture._refreshRuntimeProvenance();
     }
 
     q.onUpdate = @(__original) function()
     {
         __original();
+        if (!::BBAGENT_Capture.isRuntimeCompatible())
+        {
+            ::BBAGENT_Capture.invalidate("runtime_incompatible");
+            return;
+        }
         ::BBAGENT_Capture.observe(this);
     }
 
