@@ -2,6 +2,7 @@ local capture = ::BBAGENT_Capture;
 
 // The pinned Battle Brothers source tree was decompiled from runtime v1.5.2.2.
 // Do not silently label a different running build as compatible with that tree.
+capture.CompanionVersion <- ::BBAGENT_Mod.Version;
 capture.SupportedRuntimeGameVersion <- "1.5.2.2";
 capture.AllowedRuntimeModIDs <- {
     vanilla = true,
@@ -57,6 +58,7 @@ capture._matchesExpectedProvenance <- function(_runtimeGameVersion, _runtimeMods
 capture._setProvenanceFailure <- function(_reason)
 {
     this.State.Provenance = {
+        CompanionVersion = this.CompanionVersion,
         GameVersion = "unknown",
         RuntimeSerializationVersion = null,
         SupportedRuntimeGameVersion = this.SupportedRuntimeGameVersion,
@@ -90,6 +92,7 @@ capture._refreshRuntimeProvenance <- function()
             reason = "explicit_provenance_mismatch";
 
         this.State.Provenance = {
+            CompanionVersion = this.CompanionVersion,
             GameVersion = runtimeGameVersion,
             RuntimeSerializationVersion = ::Const.Serialization.Version,
             SupportedRuntimeGameVersion = this.SupportedRuntimeGameVersion,
