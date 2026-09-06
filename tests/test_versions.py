@@ -14,7 +14,7 @@ def test_version_registry_references_frozen_contracts() -> None:
         versions["tactical_state"]
         == "issue-3.amended-by-13.contingent-reactions-19.identity-40"
     )
-    assert versions["evaluation_config"] == "m1-evaluation-profile.v1"
+    assert versions["evaluation_config"] == "m1-evaluation-profile.v2"
     assert set(versions) == {
         "m1_spec",
         "information_policy",
