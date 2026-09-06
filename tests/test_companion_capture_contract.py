@@ -3,6 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 SUBSTRATE = ROOT / "companion_mod/scripts/bb_agent/capture_substrate.nut"
+PROVENANCE = ROOT / "companion_mod/scripts/bb_agent/runtime_provenance.nut"
 HOOK = ROOT / "companion_mod/scripts/bb_agent/hooks/tactical_state.nut"
 
 
@@ -14,6 +15,7 @@ def test_companion_preload_uses_modern_hooks_and_script_paths() -> None:
     text = _read(PRELOAD)
     assert "::Hooks.register(def.ID, def.Version, def.Name)" in text
     assert '::include("scripts/bb_agent/capture_substrate")' in text
+    assert '::include("scripts/bb_agent/runtime_provenance")' in text
     assert '::include("scripts/bb_agent/hooks/tactical_state")' in text
 
 
@@ -47,6 +49,8 @@ def test_lifecycle_is_post_update_and_fails_closed() -> None:
     original = hook.index("__original();", update)
     observe = hook.index("::BBAGENT_Capture.observe(this);", update)
     assert original < observe
+    assert "::BBAGENT_Capture.isRuntimeCompatible()" in hook
+    assert '::BBAGENT_Capture.invalidate("runtime_incompatible")' in hook
     assert 'RecordType = "DECISION_READY"' in substrate
     assert 'RecordType = "DECISION_INVALIDATED"' in substrate
     assert "this.invalidate(readiness.Reason);" in substrate
@@ -62,8 +66,41 @@ def test_continuous_identical_ready_poll_does_not_emit_duplicate_event() -> None
     assert "Duplicate = duplicate" in text
 
 
+def test_runtime_provenance_is_probed_and_mismatches_fail_closed() -> None:
+    preload = _read(PRELOAD)
+    provenance = _read(PROVENANCE)
+    hook = _read(HOOK)
+
+    assert 'capture.SupportedRuntimeGameVersion <- "1.5.2.2"' in provenance
+    assert "::GameInfo.getVersionNumber()" in provenance
+    assert "::Const.Serialization.Version" in provenance
+    assert "::Hooks.getMods()" in provenance
+    assert "mod.getVersionString()" in provenance
+    assert 'reason = "game_version_mismatch"' in provenance
+    assert 'reason = "unsupported_mod_stack"' in provenance
+    assert 'CompatibilityReason = "explicit_provenance_mismatch"' in provenance
+    assert "UnsupportedMods = runtimeMods.Unsupported" in provenance
+    assert "IsCompatible = reason == null" in provenance
+    assert "capture._refreshRuntimeProvenance();" in provenance
+    assert '::include("scripts/bb_agent/runtime_provenance")' in preload
+    assert "::BBAGENT_Capture._refreshRuntimeProvenance();" in hook
+    assert "::BBAGENT_Capture.isRuntimeCompatible()" in hook
+
+    for allowed in (
+        "vanilla = true",
+        "dlc_lindwurm = true",
+        "dlc_unhold = true",
+        "dlc_wildmen = true",
+        "dlc_desert = true",
+        "dlc_paladins = true",
+        "mod_modern_hooks = true",
+        "mod_bb_agent_capture = true",
+    ):
+        assert allowed in provenance, allowed
+
+
 def test_capture_substrate_has_no_execution_or_gameplay_rng_path() -> None:
-    combined = _read(PRELOAD) + _read(SUBSTRATE) + _read(HOOK)
+    combined = _read(PRELOAD) + _read(SUBSTRATE) + _read(PROVENANCE) + _read(HOOK)
     forbidden = (
         "Math.rand(",
         "::Math.rand(",
@@ -82,6 +119,7 @@ def test_capture_substrate_has_no_execution_or_gameplay_rng_path() -> None:
 
 def test_rich_raw_state_is_in_process_and_not_logged_or_serialized() -> None:
     text = _read(SUBSTRATE)
+    provenance = _read(PROVENANCE)
     assert "CurrentRaw" in text
     assert "RawSourceFingerprintInputs" in text
     assert "ActiveActor = _active" in text
@@ -89,8 +127,12 @@ def test_rich_raw_state_is_in_process_and_not_logged_or_serialized() -> None:
     assert "ObservationMemory" in text
     assert "JSON.stringify" not in text
     assert "json.stringify" not in text
+    assert "JSON.stringify" not in provenance
+    assert "json.stringify" not in provenance
 
-    log_lines = [line for line in text.splitlines() if "::log" in line]
+    log_lines = [
+        line for line in (text + "\n" + provenance).splitlines() if "::log" in line
+    ]
     joined = "\n".join(log_lines)
     for forbidden in (
         "CurrentRaw",
@@ -212,5 +254,6 @@ def test_battle_lifecycle_resets_memory_and_generation() -> None:
     assert "this.State.ObservationMemory = {}" in begin
     hook = _read(HOOK)
     assert "::BBAGENT_Capture.beginBattle();" in hook
+    assert "::BBAGENT_Capture._refreshRuntimeProvenance();" in hook
     assert '::BBAGENT_Capture.endBattle("battle_ended");' in hook
     assert '::BBAGENT_Capture.endBattle("tactical_state_destroyed");' in hook
