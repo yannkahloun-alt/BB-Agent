@@ -1,0 +1,81 @@
+name: Issue 26 apply calibration
+
+on:
+  push:
+    branches:
+      - codex/issue-26-evaluator-calibration
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/issue-26-evaluator-calibration
+          fetch-depth: 0
+          submodules: recursive
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python tools/verify_workflow_dependency.py
+      - name: Apply generic calibration
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          evaluator = Path('src/bb_agent/evaluator.py')
+          text = evaluator.read_text()
+          old_version = 'CONFIG_VERSION = "m1-evaluation-profile.v1"'
+          new_version = 'CONFIG_VERSION = "m1-evaluation-profile.v2"'
+          assert old_version in text
+          text = text.replace(old_version, new_version, 1)
+
+          old = '''            _normalized(
+                          features.future_capacity.ap_fat_feasible_template_count,
+                          template_scale,
+                      ),
+                      _normalized(
+                          features.future_capacity.ap_fat_locked_template_count,
+                          template_scale,
+                          -1.0,
+                      ),
+          '''
+          new = '''            _normalized(
+                          features.future_capacity.ap_fat_feasible_template_count,
+                          template_scale,
+                      ),
+          '''
+          if old not in text:
+              # Match the source's exact indentation independent of copy formatting.
+              old = '''            _normalized(
+                          features.future_capacity.ap_fat_feasible_template_count,
+                          template_scale,
+                      ),
+                      _normalized(
+                          features.future_capacity.ap_fat_locked_template_count,
+                          template_scale,
+                          -1.0,
+                      ),
+          '''.replace('                  ', '                ')
+          assert old in text, 'resource complement scoring block not found'
+          text = text.replace(old, new.replace('                  ', '                '), 1)
+          evaluator.write_text(text)
+
+          versions = Path('src/bb_agent/versions.py')
+          text = versions.read_text()
+          old = 'evaluation_config="m1-evaluation-profile.v1"'
+          new = 'evaluation_config="m1-evaluation-profile.v2"'
+          assert old in text
+          versions.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit calibration and self-clean
+        run: |
+          rm .github/workflows/issue26-apply-calibration.yml
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/bb_agent/evaluator.py src/bb_agent/versions.py .github/workflows/issue26-apply-calibration.yml
+          git commit -m "Calibrate M1 resource future-capacity scoring"
+          git push origin HEAD:codex/issue-26-evaluator-calibration
