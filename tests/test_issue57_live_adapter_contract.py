@@ -54,20 +54,24 @@ def test_player_legal_projection_keeps_hidden_truth_out_of_normal_payload() -> N
         "resources = owned ? this._ownedResources(_actor) : this._unknownResources()"
         in source
     )
-    assert 'tactical_stats = owned ? this._ownedStats(_actor) : []' in source
-    assert 'perks = owned ?' in source
-    assert 'traits = owned ?' in source
+    assert "tactical_stats = owned ? this._ownedStats(_actor) : []" in source
+    assert "perks = owned ?" in source
+    assert "traits = owned ?" in source
     assert '"actor-memory:" + actorId' in source
     assert '"tile-memory:" + id' in source
-    assert 'position = wire.unknownValue()' in source
-    assert 'last_seen = {' in source
-    assert 'if (!_actor.isAlive() || !_actor.isPlacedOnMap()) return false;' in hardening
-    assert 'sequence = wire.exactObserved(entries.len())' in hardening
+    assert "position = wire.unknownValue()" in source
+    assert "last_seen = {" in source
+    assert (
+        "if (!_actor.isAlive() || !_actor.isPlacedOnMap()) return false;" in hardening
+    )
+    assert "sequence = wire.exactObserved(entries.len())" in hardening
     assert "DEBUG_GROUND_TRUTH" not in source
     assert "DEBUG_ORACLE" not in source
 
 
-def test_canonical_identity_matches_existing_action_and_state_identity_boundaries() -> None:
+def test_canonical_identity_matches_existing_action_and_state_identity_boundaries() -> (
+    None
+):
     source = _text(IDENTITY)
     direct_fields = (
         "actor_id",
@@ -102,7 +106,9 @@ def test_canonical_identity_matches_existing_action_and_state_identity_boundarie
     assert '"action:" + wire.canonicalHash(this._actionIntent(_action))' in source
 
 
-def test_affordance_acquisition_uses_game_authority_and_never_executes_commands() -> None:
+def test_affordance_acquisition_uses_game_authority_and_never_executes_commands() -> (
+    None
+):
     source = _text(AFFORDANCES)
     for required in (
         "queryActives()",
