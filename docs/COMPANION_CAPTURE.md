@@ -14,9 +14,10 @@ and #52. Runtime evidence is pinned to Battle Brothers Scripts revision
 The key rule from #51 is that advice exists only during an explicit
 **command-ready generation**. Capture is therefore a post-update observer, not a
 turn-start hook. Losing readiness immediately produces an in-process
-`DECISION_INVALIDATED` edge. Returning to the same unchanged semantic source is
-an idempotent duplicate; returning to a changed source advances
-`source_generation`.
+`DECISION_INVALIDATED` edge. Returning after invalidation to the same unchanged
+semantic source is an idempotent duplicate READY on the same generation;
+uninterrupted command-ready update ticks emit no duplicate lifecycle event.
+Returning to a changed source advances `source_generation`.
 
 ## Mod layout
 
@@ -83,11 +84,16 @@ newly command-ready deterministic source signature differs from the prior READY
 signature.
 
 Fingerprint inputs are stable string tokens over capture/ruleset provenance,
-battle/turn/actor validation context, sorted mod identities, and sorted raw
-actor source facts. The internal joined signature is used only for duplicate
-comparison. It is intentionally **not** called the external
-`raw_source_fingerprint`: #57 converts the stable inputs to the frozen SHA-256
-fingerprint while constructing the exportable canonical payload.
+battle/turn/actor validation context, sorted mod identities, sorted raw actor
+source facts, current turn-sequence order, and deterministic tactical-map tile
+facts. Map tokens cover valid tile coordinates, elevation, terrain type/subtype,
+empty/occupied state, player visibility and discovery state. This prevents a
+map/turn change that #57 may consume from silently reusing a prior generation.
+
+The internal joined signature is used only for duplicate comparison. It is
+intentionally **not** called the external `raw_source_fingerprint`: #57 converts
+the stable inputs to the frozen SHA-256 fingerprint while constructing the
+exportable canonical payload.
 
 The internal signature and raw fingerprint material are never written to the
 normal log because they may encode hidden runtime facts.
