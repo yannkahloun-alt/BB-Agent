@@ -28,8 +28,24 @@ def test_native_prefix_oracle() -> None:
         '"End" in _costs',
         '"Tiles" in _costs',
         "for (local apBudget = 1; apBudget <= apRequired;",
-        "prefix.Tiles != observedTiles + 1",
+        "prefixSteps != observedSteps + 1",
         "path.push(prefix.End);",
+    )
+    for token in required:
+        assert token in text
+
+
+def test_native_tiles_are_normalized_from_nodes_to_steps() -> None:
+    text = _text(COMPAT)
+    required = (
+        "affordances._nativeMovementStepCount <- function(_tiles)",
+        "if (_tiles == 0) return 0;",
+        "if (_tiles < 2)",
+        "return _tiles - 1;",
+        "local targetSteps = this._nativeMovementStepCount(_costs.Tiles);",
+        "local prefixSteps = this._nativeMovementStepCount(prefix.Tiles);",
+        "local observedSteps = 0;",
+        "observedSteps = prefixSteps;",
     )
     for token in required:
         assert token in text
@@ -39,10 +55,10 @@ def test_complete_paths_only() -> None:
     text = _text(COMPAT)
     required = (
         '"IsComplete" in costs',
-        "costs.Tiles != 0 && costs.IsComplete",
+        "steps != 0 && costs.IsComplete",
         "!found || costs == null || costs.Tiles == 0 || !complete",
         "legal.tileID(_costs.End) != legal.tileID(_destination)",
-        "observedTiles != _costs.Tiles || path.len() != _costs.Tiles",
+        "observedSteps != targetSteps || path.len() != targetSteps",
         "native movement path leaves the player-legal canonical map",
     )
     for token in required:
