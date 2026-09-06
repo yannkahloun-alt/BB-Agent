@@ -1,9 +1,11 @@
 local capture = ::BBAGENT_Capture;
 
 // The pinned Battle Brothers source tree was decompiled from runtime v1.5.2.2.
-// Do not silently label a different running build as compatible with that tree.
+// Runtime 1.5.2.3 is admitted only to the #58 real-game oracle gate while
+// retaining the reviewed 1.5.2.2 ruleset/source provenance. Unknown/future
+// runtimes remain fail-closed.
 capture.CompanionVersion <- ::BBAGENT_Mod.Version;
-capture.SupportedRuntimeGameVersion <- "1.5.2.2";
+capture.SupportedRuntimeGameVersions <- ["1.5.2.2", "1.5.2.3"];
 capture.AllowedRuntimeModIDs <- {
     vanilla = true,
     dlc_lindwurm = true,
@@ -24,6 +26,15 @@ capture._arraysEqual <- function(_left, _right)
         if (_left[i] != _right[i]) return false;
     }
     return true;
+};
+
+capture._isSupportedRuntimeGameVersion <- function(_runtimeGameVersion)
+{
+    foreach (supported in this.SupportedRuntimeGameVersions)
+    {
+        if (supported == _runtimeGameVersion) return true;
+    }
+    return false;
 };
 
 capture._runtimeModIdentities <- function()
@@ -61,7 +72,7 @@ capture._setProvenanceFailure <- function(_reason)
         CompanionVersion = this.CompanionVersion,
         GameVersion = "unknown",
         RuntimeSerializationVersion = null,
-        SupportedRuntimeGameVersion = this.SupportedRuntimeGameVersion,
+        SupportedRuntimeGameVersions = this._copyArray(this.SupportedRuntimeGameVersions),
         SupportedGameVersion = this.SupportedGameVersion,
         RulesetGameVersion = this.SupportedGameVersion,
         RulesetContentFingerprint = this.RulesetContentFingerprint,
@@ -84,7 +95,7 @@ capture._refreshRuntimeProvenance <- function()
         local runtimeMods = this._runtimeModIdentities();
         local reason = null;
 
-        if (runtimeGameVersion != this.SupportedRuntimeGameVersion)
+        if (!this._isSupportedRuntimeGameVersion(runtimeGameVersion))
             reason = "game_version_mismatch";
         else if (runtimeMods.Unsupported.len() != 0)
             reason = "unsupported_mod_stack";
@@ -95,7 +106,7 @@ capture._refreshRuntimeProvenance <- function()
             CompanionVersion = this.CompanionVersion,
             GameVersion = runtimeGameVersion,
             RuntimeSerializationVersion = ::Const.Serialization.Version,
-            SupportedRuntimeGameVersion = this.SupportedRuntimeGameVersion,
+            SupportedRuntimeGameVersions = this._copyArray(this.SupportedRuntimeGameVersions),
             SupportedGameVersion = this.SupportedGameVersion,
             RulesetGameVersion = this.SupportedGameVersion,
             RulesetContentFingerprint = this.RulesetContentFingerprint,
