@@ -31,16 +31,17 @@ companion_mod/
       mod_bb_agent_capture.nut
     bb_agent/
       capture_substrate.nut
+      observation_memory.nut
       runtime_provenance.nut
       hooks/
         tactical_state.nut
 ```
 
 The preload file registers `mod_bb_agent_capture` with Modern Hooks and loads the
-capture substrate, runtime-provenance gate, and tactical-state hook. The hook
-wraps vanilla `tactical_state.onInit`, `onUpdate`, `onBattleEnded`, and
-`onDestroy`; every vanilla method is still invoked. No vanilla script file is
-replaced.
+capture substrate, legal observation-memory boundary, runtime-provenance gate,
+and tactical-state hook. The hook wraps vanilla `tactical_state.onInit`,
+`onUpdate`, `onBattleEnded`, and `onDestroy`; every vanilla method is still
+invoked. No vanilla script file is replaced.
 
 ## Runtime provenance and compatibility
 
@@ -155,6 +156,14 @@ Raw truth and legal memory are separate stores. `CurrentRaw` contains rich
 runtime acquisition references. `ObservationMemory` can be updated only through
 the explicitly named `rememberPlayerLegalFact()` API, which #57 must call only
 after a fact has already passed player-legal projection.
+
+`observation_memory.nut` hardens this API boundary. Stored values must be
+JSON-like player-legal data: null/bool/integer/float/string values, arrays of
+those values, or string-keyed tables recursively composed from those values.
+Runtime instances, functions, weak references and other opaque engine objects
+are rejected. Accepted values are deep-copied on write, and
+`getObservationMemory()` returns a detached deep copy, so callers cannot mutate
+the internal legal-memory store through an input or returned reference.
 
 Memory is battle-local and is cleared on battle initialization/end. Hidden
 runtime objects must never refresh remembered values. #57 remains responsible
