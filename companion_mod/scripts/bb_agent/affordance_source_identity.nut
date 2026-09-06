@@ -39,12 +39,12 @@ capture._activeItemSlotTopologyTokens <- function(_active)
     return ret;
 };
 
-// Visible tile effects are canonical #52 source facts and can alter tactical
-// semantics while level/type/subtype/occupancy remain unchanged. Effect tables
-// contain stable primitive identity/lifetime fields plus callbacks; reuse the
-// substrate's primitive filter so functions/opaque engine objects never enter
-// the deterministic signature.
-capture._tileEffectTokens <- function()
+// Tile effects are canonical #52 source facts and can alter tactical semantics
+// while level/type/subtype/occupancy remain unchanged. Replace the substrate's
+// map tokenizer rather than scanning the map a second time. Effect tables carry
+// stable primitive identity/lifetime fields plus callbacks; the primitive filter
+// deliberately ignores functions and opaque engine objects.
+capture._mapTokens = function()
 {
     local ret = [];
     local size = ::Tactical.getMapSize();
@@ -54,6 +54,15 @@ capture._tileEffectTokens <- function()
         {
             if (!::Tactical.isValidTileSquare(x, y)) continue;
             local tile = ::Tactical.getTileSquare(x, y);
+            ret.push(
+                "map=" + x + ":" + y
+                + ":level=" + tile.Level
+                + ":type=" + tile.Type
+                + ":subtype=" + tile.Subtype
+                + ":empty=" + this._boolToken(tile.IsEmpty)
+                + ":visible=" + this._boolToken(tile.IsVisibleForPlayer)
+                + ":discovered=" + this._boolToken(tile.IsDiscovered)
+            );
             if (tile.Properties.Effect == null) continue;
             foreach (
                 effectToken in this._primitiveStateTokens(
@@ -72,7 +81,6 @@ capture._fingerprintInputs = function(_state, _active)
 {
     local ret = originalFingerprintInputs.acall([this, _state, _active]);
     foreach (token in this._activeItemSlotTopologyTokens(_active)) ret.push(token);
-    foreach (token in this._tileEffectTokens()) ret.push(token);
     ret.sort();
     return ret;
 };
