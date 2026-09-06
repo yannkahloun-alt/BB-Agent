@@ -117,8 +117,8 @@ def test_explicit_provenance_expectation_survives_runtime_refresh() -> None:
         in provenance
     )
     assert (
-        "this.ExpectedProvenance.RulesetContentFingerprint == this.RulesetContentFingerprint"
-        in provenance
+        "this.ExpectedProvenance.RulesetContentFingerprint"
+        " == this.RulesetContentFingerprint" in provenance
     )
     assert (
         "this._arraysEqual(this.ExpectedProvenance.Mods, _runtimeMods.Identities)"
