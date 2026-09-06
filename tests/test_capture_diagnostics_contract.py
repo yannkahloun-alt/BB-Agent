@@ -13,7 +13,9 @@ def test_diagnostics_module_loads_immediately_after_capture_substrate() -> None:
     assert substrate < diagnostics < provenance
 
 
-def test_capture_error_diagnostics_are_bounded_single_line_and_deduplicated() -> None:
+def test_capture_error_diagnostics_are_bounded_single_line_and_deduplicated() -> (
+    None
+):
     text = DIAGNOSTICS.read_text(encoding="utf-8")
     assert "DiagnosticMaxErrorChars <- 240" in text
     assert 'split(errorText, "\\r\\n\\t").join(" ")' in text
@@ -24,7 +26,9 @@ def test_capture_error_diagnostics_are_bounded_single_line_and_deduplicated() ->
     assert '"[BB-Agent Capture] capture_error stage=" + stage' in text
 
 
-def test_capture_diagnostics_preserve_fail_closed_lifecycle_and_coarse_stages() -> None:
+def test_capture_diagnostics_preserve_fail_closed_lifecycle_and_coarse_stages() -> (
+    None
+):
     text = DIAGNOSTICS.read_text(encoding="utf-8")
     for stage in (
         '"readiness"',
@@ -40,7 +44,9 @@ def test_capture_diagnostics_preserve_fail_closed_lifecycle_and_coarse_stages() 
     assert 'RecordType = "DECISION_READY"' in text
 
 
-def test_diagnostics_never_log_raw_or_debug_state_and_never_execute_commands() -> None:
+def test_diagnostics_never_log_raw_or_debug_state_and_never_execute_commands() -> (
+    None
+):
     text = DIAGNOSTICS.read_text(encoding="utf-8")
     log_lines = [line for line in text.splitlines() if "::log" in line]
     logged = "\n".join(log_lines)
