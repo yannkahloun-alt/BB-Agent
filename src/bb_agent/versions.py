@@ -1,4 +1,5 @@
 """Authoritative identifiers for frozen contracts and ranking-affecting models."""
+# trust-roundtrip: issue-56
 
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
