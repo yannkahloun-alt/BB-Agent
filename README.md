@@ -2,13 +2,13 @@
 
 Battle Brothers tactical/strategic agent project.
 
-## Current phase: M1 implementation
+## Current phase: M1 closed
 
-The first BB-Agent milestone has completed its specification and adversarial-review phase. **M1 is frozen and implementation is delegated to Codex through the repository's dependency-ordered implementation issues.**
+**M1 is complete as an offline tactical decision kernel.** Issues **#14–#26** implement and validate the frozen contracts, and issue **#27** records the final closure gate. The closure evidence is summarized in [`docs/M1_CLOSURE.md`](docs/M1_CLOSURE.md).
 
-M1 is deliberately an **offline tactical decision kernel**, not a live bot. Given a canonical current tactical state plus a complete current `ActionAffordanceSet`, it will evaluate supported commands deterministically and risk-sensitively, then emit an inspectable, replayable recommendation.
+Given a canonical current tactical state plus a complete current `ActionAffordanceSet`, M1 evaluates supported commands deterministically and risk-sensitively and emits an inspectable, replayable recommendation. It is still **not a live bot**.
 
-The specification freeze is recorded in issue **#12**. The adversarial review is **#11**, and the action-affordance / player-visible preview / mechanics-coverage correction is **#13**.
+The specification freeze is recorded in issue **#12**. The adversarial review is **#11**, and the action-affordance / player-visible preview / mechanics-coverage correction is **#13**. The next phase is a new post-M1 specification/research effort for live state/affordance capture and shadow/advisor operation.
 
 ## Working principles
 
@@ -19,7 +19,7 @@ The specification freeze is recorded in issue **#12**. The adversarial review is
 - **Manifest-driven mechanics coverage.** Unsupported materially competing commands produce `INCOMPLETE_COVERAGE`; they are never silently dropped or approximated with fake generic semantics.
 - **Reproducible decisions.** Recommendations must expose real score/risk/uncertainty components and replay deterministically from captured inputs.
 - **Separate from BB-Save-Toolkit.** BB-Save-Toolkit may later provide explicit strategic enrichment, but it is not a synchronous dependency of the tactical decision loop.
-- **Codex implements M1.** Issues **#14–#26** form the implementation/validation backlog; **#27** is the M1 closure gate.
+- **M1 is closed before live integration.** Issues **#14–#27** complete the offline milestone. Live capture/shadow/advisor work starts only through a new post-M1 specification/research phase.
 
 ## Agent workflow and validation policy
 
@@ -42,7 +42,7 @@ The local catalog, mechanics coverage declarations and resolution-stage boundary
 are documented in [`docs/MECHANICS.md`](docs/MECHANICS.md). The shipped manifest
 declares pending outcome/transition families explicitly unsupported.
 
-## M1 implementation sequence
+## Completed M1 implementation sequence
 
 1. Project/test/version skeleton — #14
 2. Canonical tactical state + ActionAffordance contracts — #15
@@ -61,4 +61,6 @@ declares pending outcome/transition families explicitly unsupported.
 
 ## Beyond M1
 
-Live Battle Brothers state/action-affordance capture, shadow/advisor operation, supervised execution, autonomous tactical combat, and campaign strategy remain post-M1 work. They require a new specification/research phase after #27 closes rather than being added opportunistically to the M1 implementation.
+Live Battle Brothers state/action-affordance capture, shadow/advisor operation, supervised execution, autonomous tactical combat, and campaign strategy remain post-M1 work. M1 closure does **not** authorize any of those modes.
+
+The immediate next step is a new specification/research phase for live `ActionAffordanceSet`/state capture and shadow/advisor operation, carrying forward the #10 promotion requirements and the frozen no-cheat boundary. Supervised execution remains separately gated on reviewed shadow evidence.

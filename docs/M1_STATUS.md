@@ -1,14 +1,14 @@
-# M1 implementation status
+# M1 status
 
 This document is the durable handoff for BB-Agent's M1 offline tactical decision-kernel work. It records durable implementation state and contract amendments. GitHub issues remain authoritative for detailed acceptance criteria and live work status.
 
 ## Current phase
 
-BB-Agent is in the M1 offline tactical decision-kernel implementation phase.
+**M1 is closed.** The offline tactical decision kernel implemented by issues #14–#26 passed the final #27 closure gate. The closure evidence, final contract/model/config identities, gated corpus results, coverage health, no-cheat checks, UnitValuePolicy boundary, and reference-machine latency benchmark are recorded in [`M1_CLOSURE.md`](M1_CLOSURE.md).
 
-M1 consumes a canonical tactical state plus a complete current `ActionAffordanceSet`, evaluates only explicitly supported mechanics, later ranks them with risk-sensitive logic, and emits deterministic/replayable traces. Live game capture, execution automation, generalized future-state legality/search, campaign automation, and ML remain outside M1.
+M1 consumes a canonical tactical state plus a complete current `ActionAffordanceSet`, evaluates only explicitly supported mechanics, ranks them with versioned risk-sensitive logic, and emits deterministic/replayable traces. Live game capture, execution automation, generalized future-state legality/search, campaign automation, and ML remain outside M1. The next phase is new post-M1 specification/research for live state/affordance capture and shadow/advisor operation.
 
-## Implemented through #20
+## Durable implementation and hardening history through #20
 
 Completed implementation/hardening tickets:
 
@@ -131,9 +131,9 @@ The feature layer:
 11. M1 is an offline decision kernel; live capture/execution is post-M1.
 12. Tests validate contracts; they do not redefine frozen semantics.
 
-## Remaining M1 sequence
+## Completed M1 closure sequence
 
-After #20 lands on `main`:
+After #20, the remaining dependency-ordered implementation and validation tickets completed the frozen milestone:
 
 - #21 — risk-sensitive evaluator, deterministic selection and explanation facts.
 - #22 — decision trace, deterministic replay and performance diagnostics.
@@ -143,11 +143,13 @@ After #20 lands on `main`:
 - #26 — evaluator calibration against the gated corpus.
 - #27 — final M1 offline tactical decision-kernel validation/closure gate.
 
-Do not skip directly into live adapter/shadow execution work before #27 closes M1.
+The final closure verdict is **`M1 CLOSED`**. The promoted corpus contains 54 gated fixtures, including 10 safety-critical and 11 uncertainty/no-cheat cases, with zero blocking failures; the formal reference benchmark also passes the frozen #10 latency targets. See [`M1_CLOSURE.md`](M1_CLOSURE.md) for the authoritative closure report.
+
+Do not extend M1 opportunistically with live integration. The next work is a new post-M1 specification/research phase for Battle Brothers state plus `ActionAffordanceSet` capture and shadow/advisor operation. Supervised execution and later autonomy retain their separate evidence gates.
 
 ## Fresh-agent startup
 
-A fresh implementation/review agent should begin with:
+A fresh post-M1 specification/research or maintenance agent should begin with:
 
 1. root `AGENTS.md`;
 2. this `docs/M1_STATUS.md`;
