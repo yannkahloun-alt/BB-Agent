@@ -3,7 +3,7 @@ local wire = ::BBAGENT_Wire;
 local capture = ::BBAGENT_Capture;
 
 // Tactical actor collections expose actor script objects directly. The pinned
-// Battle Brothers runtime does not provide actor.isNull() on these paths, so
+// Battle Brothers runtime does not provide the removed lifetime method here, so
 // preserve the final hardened projection while guarding only actual nulls.
 legal.build = function(_raw)
 {
