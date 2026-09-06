@@ -89,10 +89,7 @@ def materialize_live_tactical_state(decision: AcceptedLiveDecision) -> TacticalS
         raise ValueError("normal live canonical materialization requires player_legal")
     if producer_state.ruleset.game_version != record.ruleset_game_version:
         raise ValueError("canonical ruleset game version disagrees with live envelope")
-    if (
-        producer_state.ruleset.content_fingerprint
-        != record.ruleset_content_fingerprint
-    ):
+    if producer_state.ruleset.content_fingerprint != record.ruleset_content_fingerprint:
         raise ValueError("canonical content fingerprint disagrees with live envelope")
     if producer_state.battle.battle_id != producer_live_battle_id(
         record.battle_sequence
@@ -114,7 +111,9 @@ def materialize_live_tactical_state(decision: AcceptedLiveDecision) -> TacticalS
 
     state = _create_rebound_state(producer_state, decision)
     if state.raw_capture_id != decision.raw_capture_id:
-        raise ValueError("canonical raw_capture_id disagrees with accepted stream identity")
+        raise ValueError(
+            "canonical raw_capture_id disagrees with accepted stream identity"
+        )
     if state.battle.battle_id != live_battle_id(
         decision.capture_stream_id, record.battle_sequence
     ):
