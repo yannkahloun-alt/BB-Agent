@@ -78,7 +78,7 @@ def test_runtime_provenance_is_probed_and_mismatches_fail_closed() -> None:
     assert "mod.getVersionString()" in provenance
     assert 'reason = "game_version_mismatch"' in provenance
     assert 'reason = "unsupported_mod_stack"' in provenance
-    assert 'CompatibilityReason = "explicit_provenance_mismatch"' in provenance
+    assert 'reason = "explicit_provenance_mismatch"' in provenance
     assert "UnsupportedMods = runtimeMods.Unsupported" in provenance
     assert "IsCompatible = reason == null" in provenance
     assert "capture._refreshRuntimeProvenance();" in provenance
@@ -97,6 +97,30 @@ def test_runtime_provenance_is_probed_and_mismatches_fail_closed() -> None:
         "mod_bb_agent_capture = true",
     ):
         assert allowed in provenance, allowed
+
+
+def test_explicit_provenance_expectation_survives_runtime_refresh() -> None:
+    provenance = _read(PROVENANCE)
+    assert "capture.ExpectedProvenance <- null;" in provenance
+    assert "function(_runtimeGameVersion, _runtimeMods)" in provenance
+    assert "if (this.ExpectedProvenance == null) return true;" in provenance
+    assert "this.ExpectedProvenance.GameVersion == _runtimeGameVersion" in provenance
+    assert (
+        "this.ExpectedProvenance.RulesetGameVersion == this.SupportedGameVersion"
+        in provenance
+    )
+    assert (
+        "this.ExpectedProvenance.RulesetContentFingerprint == this.RulesetContentFingerprint"
+        in provenance
+    )
+    assert "this._arraysEqual(this.ExpectedProvenance.Mods, _runtimeMods.Identities)" in provenance
+    assert "this.ExpectedProvenance = {" in provenance
+    assert "return this._refreshRuntimeProvenance();" in provenance
+
+    configured = provenance.index("capture.configureProvenance = function")
+    assign = provenance.index("this.ExpectedProvenance = {", configured)
+    refresh = provenance.index("return this._refreshRuntimeProvenance();", assign)
+    assert configured < assign < refresh
 
 
 def test_capture_substrate_has_no_execution_or_gameplay_rng_path() -> None:
