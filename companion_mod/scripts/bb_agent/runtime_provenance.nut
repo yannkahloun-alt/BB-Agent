@@ -54,43 +54,69 @@ capture._matchesExpectedProvenance <- function(_runtimeGameVersion, _runtimeMods
         && this._arraysEqual(this.ExpectedProvenance.Mods, _runtimeMods.Identities);
 };
 
-capture._refreshRuntimeProvenance <- function()
+capture._setProvenanceFailure <- function(_reason)
 {
-    local runtimeGameVersion = ::GameInfo.getVersionNumber();
-    local runtimeMods = this._runtimeModIdentities();
-    local reason = null;
-
-    if (runtimeGameVersion != this.SupportedRuntimeGameVersion)
-        reason = "game_version_mismatch";
-    else if (runtimeMods.Unsupported.len() != 0)
-        reason = "unsupported_mod_stack";
-    else if (!this._matchesExpectedProvenance(runtimeGameVersion, runtimeMods))
-        reason = "explicit_provenance_mismatch";
-
     this.State.Provenance = {
-        GameVersion = runtimeGameVersion,
-        RuntimeSerializationVersion = ::Const.Serialization.Version,
+        GameVersion = "unknown",
+        RuntimeSerializationVersion = null,
         SupportedRuntimeGameVersion = this.SupportedRuntimeGameVersion,
         SupportedGameVersion = this.SupportedGameVersion,
         RulesetGameVersion = this.SupportedGameVersion,
         RulesetContentFingerprint = this.RulesetContentFingerprint,
-        Mods = runtimeMods.Identities,
-        UnsupportedMods = runtimeMods.Unsupported,
-        IsCompatible = reason == null,
-        CompatibilityReason = reason
+        Mods = [],
+        UnsupportedMods = [],
+        IsCompatible = false,
+        CompatibilityReason = _reason
     };
+    this.State.LastError = "runtime provenance unavailable: " + _reason;
+    ::logError("[BB-Agent Capture] runtime provenance unavailable; capture disabled reason=" + _reason);
+    return false;
+};
 
-    if (reason != null)
+capture._refreshRuntimeProvenance <- function()
+{
+    try
     {
-        this.State.LastError = "runtime incompatibility: " + reason;
-        ::logError(
-            "[BB-Agent Capture] incompatible runtime; capture disabled reason=" + reason
-            + " game=" + runtimeGameVersion
-        );
-        return false;
-    }
+        local runtimeGameVersion = ::GameInfo.getVersionNumber();
+        local runtimeMods = this._runtimeModIdentities();
+        local reason = null;
 
-    return true;
+        if (runtimeGameVersion != this.SupportedRuntimeGameVersion)
+            reason = "game_version_mismatch";
+        else if (runtimeMods.Unsupported.len() != 0)
+            reason = "unsupported_mod_stack";
+        else if (!this._matchesExpectedProvenance(runtimeGameVersion, runtimeMods))
+            reason = "explicit_provenance_mismatch";
+
+        this.State.Provenance = {
+            GameVersion = runtimeGameVersion,
+            RuntimeSerializationVersion = ::Const.Serialization.Version,
+            SupportedRuntimeGameVersion = this.SupportedRuntimeGameVersion,
+            SupportedGameVersion = this.SupportedGameVersion,
+            RulesetGameVersion = this.SupportedGameVersion,
+            RulesetContentFingerprint = this.RulesetContentFingerprint,
+            Mods = runtimeMods.Identities,
+            UnsupportedMods = runtimeMods.Unsupported,
+            IsCompatible = reason == null,
+            CompatibilityReason = reason
+        };
+
+        if (reason != null)
+        {
+            this.State.LastError = "runtime incompatibility: " + reason;
+            ::logError(
+                "[BB-Agent Capture] incompatible runtime; capture disabled reason=" + reason
+                + " game=" + runtimeGameVersion
+            );
+            return false;
+        }
+
+        return true;
+    }
+    catch (error)
+    {
+        return this._setProvenanceFailure("runtime_provenance_error");
+    }
 };
 
 capture.isRuntimeCompatible <- function()
