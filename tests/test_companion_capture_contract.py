@@ -154,6 +154,55 @@ def test_fingerprint_covers_turn_order_and_map_semantics() -> None:
         assert token in text, token
 
 
+def test_affordance_generation_uses_active_player_oracles_only() -> None:
+    text = _read(SUBSTRATE)
+    raw_skill_tokens = text[
+        text.index("function _skillTokens") : text.index(
+            "function _activeAffordanceTokens"
+        )
+    ]
+    assert "skill.m" in raw_skill_tokens
+    for forbidden in (
+        "queryActives()",
+        "isUsable()",
+        "isAffordable()",
+        "getActionPointCost()",
+        "getFatigueCost()",
+    ):
+        assert forbidden not in raw_skill_tokens, forbidden
+
+    affordance_tokens = text[
+        text.index("function _activeAffordanceTokens") : text.index(
+            "function _itemTokens"
+        )
+    ]
+    for required in (
+        "_active.getSkills().queryActives()",
+        "skill.isUsable()",
+        "skill.isAffordable()",
+        "skill.getActionPointCost()",
+        "skill.getFatigueCost()",
+        "skill.isTargeted()",
+        "skill.isTargetingActor()",
+        "skill.getMinRange()",
+        "skill.getMaxRange()",
+        "skill.getMaxLevelDifference()",
+    ):
+        assert required in affordance_tokens, required
+
+    fingerprint = text[
+        text.index("function _fingerprintInputs") : text.index(
+            "function _sourceSignature"
+        )
+    ]
+    assert "this._activeAffordanceTokens(_active)" in fingerprint
+    assert '"may_wait_actor=" + this._boolToken(_active.isAbleToWait())' in fingerprint
+    assert (
+        '"may_wait_bar=" + this._boolToken(turnBar.canEntityWait(_active))'
+        in fingerprint
+    )
+
+
 def test_battle_lifecycle_resets_memory_and_generation() -> None:
     text = _read(SUBSTRATE)
     begin = text[text.index("function beginBattle") : text.index("function endBattle")]
