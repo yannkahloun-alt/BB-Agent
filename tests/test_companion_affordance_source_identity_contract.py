@@ -37,6 +37,11 @@ def test_active_item_slot_topology_is_part_of_raw_source_identity() -> None:
         assert token in text, token
 
 
+def test_active_allied_factions_are_part_of_raw_source_identity() -> None:
+    text = _read(IDENTITY)
+    assert '_arrayToken("active_allied_factions", _active.getAlliedFactions())' in text
+
+
 def test_tile_effect_primitive_state_is_part_of_single_map_identity_pass() -> None:
     text = _read(IDENTITY)
     required = (
