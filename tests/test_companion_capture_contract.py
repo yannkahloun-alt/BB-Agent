@@ -13,7 +13,7 @@ def _read(path: Path) -> str:
 
 def test_companion_preload_uses_modern_hooks_and_script_paths() -> None:
     text = _read(PRELOAD)
-    assert '::Hooks.register(def.ID, def.Version, def.Name)' in text
+    assert "::Hooks.register(def.ID, def.Version, def.Name)" in text
     assert '::include("scripts/bb_agent/capture_substrate")' in text
     assert '::include("scripts/bb_agent/hooks/tactical_state")' in text
 
@@ -54,6 +54,13 @@ def test_lifecycle_is_post_update_and_fails_closed() -> None:
     assert 'this.invalidate("capture_error");' in substrate
     assert "++this.State.SourceGeneration" in substrate
     assert "LastReadySignature == signature" in substrate
+
+
+def test_continuous_identical_ready_poll_does_not_emit_duplicate_event() -> None:
+    text = _read(SUBSTRATE)
+    assert "local wasReady = this.State.IsReady;" in text
+    assert "if (duplicate && wasReady) return null;" in text
+    assert "Duplicate = duplicate" in text
 
 
 def test_capture_substrate_has_no_execution_or_gameplay_rng_path() -> None:
@@ -112,9 +119,7 @@ def test_fingerprint_material_is_deterministic_and_versioned() -> None:
     text = _read(SUBSTRATE)
     assert '"capture_contract=" + this.CaptureContractVersion' in text
     assert '"game_version=" + this.State.Provenance.GameVersion' in text
-    assert (
-        '"ruleset_game_version=" + this.State.Provenance.RulesetGameVersion' in text
-    )
+    assert '"ruleset_game_version=" + this.State.Provenance.RulesetGameVersion' in text
     assert (
         '"ruleset_content=" + this.State.Provenance.RulesetContentFingerprint' in text
     )
@@ -125,6 +130,29 @@ def test_fingerprint_material_is_deterministic_and_versioned() -> None:
     assert "ret.sort();" in text
     assert 'return _inputs.join("\\x1f");' in text
     assert "#57 converts these stable" in text
+
+
+def test_fingerprint_covers_turn_order_and_map_semantics() -> None:
+    text = _read(SUBSTRATE)
+    required = (
+        "function _turnSequenceTokens()",
+        "getCurrentEntities()",
+        'ret.push("turn=" + index + ":" + actor.getID());',
+        "function _mapTokens()",
+        "::Tactical.getMapSize()",
+        "::Tactical.isValidTileSquare(x, y)",
+        "::Tactical.getTileSquare(x, y)",
+        '":level=" + tile.Level',
+        '":type=" + tile.Type',
+        '":subtype=" + tile.Subtype',
+        '":empty=" + this._boolToken(tile.IsEmpty)',
+        '":visible=" + this._boolToken(tile.IsVisibleForPlayer)',
+        '":discovered=" + this._boolToken(tile.IsDiscovered)',
+        "foreach (turnToken in this._turnSequenceTokens())",
+        "foreach (mapToken in this._mapTokens())",
+    )
+    for token in required:
+        assert token in text, token
 
 
 def test_battle_lifecycle_resets_memory_and_generation() -> None:
