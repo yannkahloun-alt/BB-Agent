@@ -27,7 +27,7 @@ def test_active_item_slot_topology_is_part_of_raw_source_identity() -> None:
         'slotPrefix + ":blocked"',
         'slotPrefix + ":item=" + item.getID()',
         'itemPrefix + ":condition=" + item.getCondition()',
-        "itemPrefix + \":m\"",
+        'itemPrefix + ":m"',
         "item.m",
         "originalFingerprintInputs.acall([this, _state, _active])",
         "this._activeItemSlotTopologyTokens(_active)",
@@ -72,7 +72,8 @@ def test_affordance_source_identity_extension_is_read_only() -> None:
         ".use(",
         ".wait(",
         ".endTurn(",
-        "Properties.Effect =",
+        "removeTileEffect(",
+        "addTileEffect(",
     )
     for token in forbidden:
         assert token not in text, token
