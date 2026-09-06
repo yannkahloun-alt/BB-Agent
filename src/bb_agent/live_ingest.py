@@ -144,7 +144,10 @@ class LiveCompatibility:
     allow_debug: bool = False
 
     def __post_init__(self) -> None:
-        if not isinstance(self.ruleset_game_version, str) or not self.ruleset_game_version:
+        if (
+            not isinstance(self.ruleset_game_version, str)
+            or not self.ruleset_game_version
+        ):
             raise ValueError("ruleset_game_version cannot be empty")
         if (
             not isinstance(self.ruleset_content_fingerprint, str)
@@ -152,8 +155,9 @@ class LiveCompatibility:
         ):
             raise ValueError("ruleset_content_fingerprint must be lowercase SHA-256")
         if self.expected_mods is not None:
-            if isinstance(self.expected_mods, str | bytes | bytearray) or not isinstance(
-                self.expected_mods, Sequence
+            if (
+                isinstance(self.expected_mods, str | bytes | bytearray)
+                or not isinstance(self.expected_mods, Sequence)
             ):
                 raise ValueError("expected_mods must be an array of strings")
             object.__setattr__(self, "expected_mods", tuple(self.expected_mods))
