@@ -290,4 +290,6 @@ def test_battle_lifecycle_resets_memory_and_generation() -> None:
     assert "::BBAGENT_Capture.beginBattle();" in hook
     assert "::BBAGENT_Capture._refreshRuntimeProvenance();" in hook
     assert '::BBAGENT_Capture.endBattle("battle_ended");' in hook
-    assert '::BBAGENT_Capture.endBattle("tactical_state_destroyed");' in hook
+    assert '::BBAGENT_Capture.endBattle("tactical_state_finished");' in hook
+    assert "q.onFinish = @(__original) function()" in hook
+    assert "q.onDestroy" not in hook
