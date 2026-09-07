@@ -15,17 +15,19 @@ def test_issue98_graph_layer_runs_before_full_sandbox_without_smoke_overrides() 
     base = "scripts/bb_agent/runtime_navigator_path_compat"
     graph = "scripts/bb_agent/runtime_movement_graph_compat"
     sandbox = "scripts/bb_agent/runtime_combat_sandbox"
+    recovery = "scripts/bb_agent/runtime_combat_sandbox_recovery"
+    probe = "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe"
     export = "scripts/bb_agent/live_export"
 
     assert graph in preload
     assert preload.index(base) < preload.index(graph) < preload.index(sandbox)
-    assert preload.index(sandbox) < preload.index(export)
+    assert preload.index(sandbox) < preload.index(recovery) < preload.index(probe)
+    assert preload.index(probe) < preload.index(export)
     for forbidden in (
         "runtime_navigator_tiebreak_compat",
         "runtime_debug_oracle_tiebreak_samples",
         "runtime_debug_oracle_route_score",
         "runtime_debug_oracle_movement_compare",
-        "runtime_debug_oracle_ally_jump_probe",
     ):
         assert forbidden not in preload
 
@@ -68,8 +70,6 @@ def test_transition_generator_supports_exactly_one_allied_jump() -> None:
     ):
         assert token in text
 
-    # A jump must land before another jump; the pass-over ally is never expanded
-    # recursively as a landed movement state.
     jump = text[text.index('if (occupantKind == "ALLY")') :]
     assert "_movementTransitionsFrom(_raw, _projection, neighborId" not in jump
 
@@ -124,9 +124,6 @@ def test_graph_expansion_keeps_source_proven_step_legality() -> None:
     ):
         assert token in base
 
-    # Every legal landing still goes through the source-derived terrain/elevation
-    # step-cost helper. Ally-jump resource charging itself remains deliberately
-    # unresolved in issue #98 and is not asserted here.
     assert "this._movementStepCosts(" in graph
 
 
