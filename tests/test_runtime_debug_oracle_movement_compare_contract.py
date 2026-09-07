@@ -2,7 +2,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
-COMPARE = ROOT / "companion_mod/scripts/bb_agent/runtime_debug_oracle_movement_compare.nut"
+COMPARE = (
+    ROOT
+    / "companion_mod/scripts/bb_agent/runtime_debug_oracle_movement_compare.nut"
+)
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 
 
@@ -10,13 +13,14 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_general_movement_comparator_is_deferred_from_topology_preload() -> None:
+def test_general_movement_comparator_is_deferred_from_sandbox_preload() -> None:
     preload = _text(PRELOAD)
     assert "scripts/bb_agent/runtime_debug_oracle_movement_compare" not in preload
+    assert "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe" not in preload
     graph = preload.index("scripts/bb_agent/runtime_movement_graph_compat")
-    probe = preload.index("scripts/bb_agent/runtime_debug_oracle_ally_jump_probe")
+    sandbox = preload.index("scripts/bb_agent/runtime_combat_sandbox")
     export = preload.index("scripts/bb_agent/live_export")
-    assert graph < probe < export
+    assert graph < sandbox < export
 
 
 def test_deferred_comparator_remains_bounded_if_reenabled_later() -> None:
@@ -66,9 +70,9 @@ def test_comparator_logs_all_samples_before_failing_batch() -> None:
     assert "local mismatches = 0;" in compare
     assert "++mismatches;" in compare
     assert "if (mismatches != 0)" in compare
-    assert compare.index("for (local i = 0; i < samples.len(); i = ++i)") < compare.index(
-        "if (mismatches != 0)"
-    )
+    assert compare.index(
+        "for (local i = 0; i < samples.len(); i = ++i)"
+    ) < compare.index("if (mismatches != 0)")
 
 
 def test_path_mismatch_logs_direction_and_remaining_distance() -> None:
