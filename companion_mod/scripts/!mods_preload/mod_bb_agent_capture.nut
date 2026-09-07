@@ -1,6 +1,6 @@
 local def = ::BBAGENT_Mod <- {
     ID = "mod_bb_agent_capture",
-    Version = "0.2.31",
+    Version = "0.2.32",
     Name = "BB-Agent Capture"
 };
 
@@ -16,6 +16,7 @@ mod.queue(function()
     ::include("scripts/bb_agent/canonical_wire");
     ::include("scripts/bb_agent/player_legal_projection");
     ::include("scripts/bb_agent/player_legal_hardening");
+    ::include("scripts/bb_agent/runtime_player_legal_blocking_compat");
     ::include("scripts/bb_agent/runtime_player_legal_actor_compat");
     ::include("scripts/bb_agent/canonical_identity");
     ::include("scripts/bb_agent/affordance_export");
@@ -24,6 +25,7 @@ mod.queue(function()
     ::include("scripts/bb_agent/runtime_debug_oracle_path_anchors");
     ::include("scripts/bb_agent/runtime_navigator_path_compat");
     ::include("scripts/bb_agent/runtime_movement_graph_compat");
+    ::include("scripts/bb_agent/runtime_movement_blocking_compat");
     ::include("scripts/bb_agent/runtime_combat_sandbox");
     ::include("scripts/bb_agent/runtime_combat_sandbox_discovery");
     ::include("scripts/bb_agent/runtime_combat_sandbox_fidelity");
