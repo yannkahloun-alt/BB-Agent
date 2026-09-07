@@ -83,6 +83,17 @@ def test_skill_item_and_tile_core_records_keep_nonstate_semantics() -> None:
     assert "this._itemRecord(_job.target)" not in text
 
 
+def test_turn_capture_uses_runtime_compatible_actor_null_guard() -> None:
+    text = _text(FIDELITY)
+    turn = text[
+        text.index("sandbox._turnCorePayload <- function(_raw)") : text.index(
+            "sandbox._tileCorePayload <- function(_tile)"
+        )
+    ]
+    assert "if (actor == null) continue;" in turn
+    assert "actor.isNull()" not in turn
+
+
 def test_fidelity_wraps_current_discovery_processor_and_begin() -> None:
     text = _text(FIDELITY)
     assert "local originalProcessJob = sandbox._processJob;" in text
