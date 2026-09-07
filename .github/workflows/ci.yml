@@ -72,6 +72,50 @@ jobs:
           if ((Get-Item $compiler).Length -ne 744960) {
               throw "Unexpected sq_taro.exe size"
           }
+
+          $grammarCases = @{
+              "unbraced.nut" = @'
+function f(_job)
+{
+    local payload = null;
+    if (_job.kind == "raw_meta") payload = null;
+    else if (_job.kind == "raw_fingerprint_input")
+        payload = { index = _job.extra, value = _job.target };
+    else if (_job.kind == "tactical_state") payload = null;
+}
+'@
+              "braced.nut" = @'
+function f(_job)
+{
+    local payload = null;
+    if (_job.kind == "raw_meta") payload = null;
+    else if (_job.kind == "raw_fingerprint_input")
+    {
+        payload = { index = _job.extra, value = _job.target };
+    }
+    else if (_job.kind == "tactical_state") payload = null;
+}
+'@
+              "renamed.nut" = @'
+function f(_job)
+{
+    local payload = null;
+    if (_job.kind == "raw_meta") payload = null;
+    else if (_job.kind == "raw_fingerprint_input")
+    {
+        payload = { ordinal = _job.extra, reflected_value = _job.target };
+    }
+    else if (_job.kind == "tactical_state") payload = null;
+}
+'@
+          }
+          foreach ($name in $grammarCases.Keys) {
+              $path = Join-Path $env:RUNNER_TEMP $name
+              Set-Content -Path $path -Value $grammarCases[$name] -NoNewline
+              & $compiler $path
+              Write-Host "GRAMMAR_CASE $name exit=$LASTEXITCODE"
+          }
+
           $files = @(
               Get-ChildItem -Path "companion_mod" -Recurse -File -Filter "*.nut" |
                   Sort-Object FullName |
