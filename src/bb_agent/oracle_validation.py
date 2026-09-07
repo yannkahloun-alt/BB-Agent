@@ -84,7 +84,9 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
         samples.append(payload)
 
     roles = [sample.get("role") for sample in samples]
-    errors = [sample.get("error") for sample in samples if sample.get("error") is not None]
+    errors = [
+        sample.get("error") for sample in samples if sample.get("error") is not None
+    ]
     legality_mismatches = sum(
         1 for sample in samples if sample.get("legality_agreement") is False
     )
