@@ -50,8 +50,11 @@ try {
     $zip.Dispose()
 }
 
-if ($preload -notmatch 'Version = "0\.2\.24"') { throw 'Wrong BB-Agent companion version' }
+if ($preload -notmatch 'Version = "0\.2\.25"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_combat_sandbox') { throw 'Full combat sandbox module missing' }
+if ($preload -notmatch 'runtime_combat_sandbox_incremental') {
+    throw 'Nonblocking combat sandbox override missing'
+}
 foreach ($forbidden in @(
     'runtime_movement_sandbox',
     'runtime_debug_oracle_movement_compare',
@@ -77,7 +80,8 @@ if ($installed.Count -ne 2) {
 
 Write-Host ''
 Write-Host 'FULL COMBAT SANDBOX INSTALLED'
-Write-Host '  companion: 0.2.24'
+Write-Host '  companion: 0.2.25'
+Write-Host '  capture mode: incremental real-time (1 record / 8 ms slice)'
 Write-Host '  omniscient DEBUG snapshot: enabled by separate overlay'
 Write-Host '  old path-comparison probes: absent'
 Write-Host '  source commit:' $head
