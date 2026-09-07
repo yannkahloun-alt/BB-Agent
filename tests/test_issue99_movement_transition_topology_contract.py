@@ -10,16 +10,20 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_issue98_graph_layer_replaces_smoke_tiebreak_overrides() -> None:
+def test_issue98_graph_layer_replaces_smoke_path_selection_overrides() -> None:
     preload = _text(PRELOAD)
     base = "scripts/bb_agent/runtime_navigator_path_compat"
     graph = "scripts/bb_agent/runtime_movement_graph_compat"
-    compare = "scripts/bb_agent/runtime_debug_oracle_movement_compare"
+    probe = "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe"
+    export = "scripts/bb_agent/live_export"
 
     assert graph in preload
-    assert preload.index(base) < preload.index(graph) < preload.index(compare)
+    assert preload.index(base) < preload.index(graph) < preload.index(probe)
+    assert preload.index(probe) < preload.index(export)
     assert "runtime_navigator_tiebreak_compat" not in preload
     assert "runtime_debug_oracle_tiebreak_samples" not in preload
+    assert "runtime_debug_oracle_route_score" not in preload
+    assert "runtime_debug_oracle_movement_compare" not in preload
 
 
 def test_visible_actor_occupancy_is_relation_aware_and_projection_only() -> None:
