@@ -241,16 +241,19 @@ sandbox.begin = function(_raw)
     if (this.State == null) return;
 
     local filtered = [];
+    local deferredPlayerLegal = null;
     foreach (job in this.State.jobs)
-        if (job.kind != "player_legal_build") filtered.push(job);
+    {
+        if (job.kind == "player_legal_build") deferredPlayerLegal = job;
+        else filtered.push(job);
+    }
+    if (deferredPlayerLegal != null) filtered.push(deferredPlayerLegal);
     this.State.jobs = filtered;
-    if ("player_legal_projection" in this.State)
-        delete this.State.player_legal_projection;
     if (!("scalar_pack_index" in this.State))
         this.State.scalar_pack_index <- 0;
 };
 
 ::logInfo(
-    "[BB-Agent Combat Sandbox] oracle_first_loaded player_legal_deferred=true"
+    "[BB-Agent Combat Sandbox] oracle_first_loaded player_legal_deferred=last"
     + " runtime_scaffolding_sharded=false scalar_pack_records=true"
 );
