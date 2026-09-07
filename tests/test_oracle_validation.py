@@ -66,6 +66,8 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
                     "native_complete": True,
                     "reachability_agreement": True,
                     "cost_agreement": True,
+                    "native_matches_execution_fatigue": True,
+                    "native_matches_path_fatigue": True,
                 }
             },
             "debug_movement_validation:1": {
@@ -75,9 +77,22 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
                     "native_complete": True,
                     "reachability_agreement": True,
                     "cost_agreement": False,
+                    "native_matches_execution_fatigue": False,
+                    "native_matches_path_fatigue": True,
                 }
             },
             "debug_movement_validation:2": {
+                "payload": {
+                    "role": "highest_cost_reachable",
+                    "model_reachable": True,
+                    "native_complete": True,
+                    "reachability_agreement": True,
+                    "cost_agreement": False,
+                    "native_matches_execution_fatigue": False,
+                    "native_matches_path_fatigue": False,
+                }
+            },
+            "debug_movement_validation:3": {
                 "payload": {
                     "role": "model_unreachable_visible",
                     "model_reachable": False,
@@ -90,15 +105,19 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
     }
 
     summary = summarize_movement_validation(snapshot)
-    assert summary["sample_count"] == 3
+    assert summary["sample_count"] == 4
     assert summary["roles"] == [
         "nearest_reachable",
         "zoc_exit",
+        "highest_cost_reachable",
         "model_unreachable_visible",
     ]
     assert summary["reachability_mismatch_count"] == 1
-    assert summary["comparable_cost_sample_count"] == 2
-    assert summary["cost_mismatch_count"] == 1
+    assert summary["comparable_cost_sample_count"] == 3
+    assert summary["cost_mismatch_count"] == 2
+    assert summary["execution_fatigue_match_count"] == 1
+    assert summary["path_fatigue_match_count"] == 2
+    assert summary["fatigue_semantics_neither_count"] == 1
     assert summary["error_count"] == 0
 
 
