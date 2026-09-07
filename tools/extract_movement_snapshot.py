@@ -67,17 +67,16 @@ def main() -> int:
     )
 
     payload = snapshot["payload"]
-    state = payload.get("player_legal_state", {})
     movement = payload.get("movement_context", {})
-    tiles = state.get("tiles", []) if isinstance(state, dict) else []
-    actors = state.get("combatants", []) if isinstance(state, dict) else []
+    tiles = payload.get("tiles", [])
+    actors = payload.get("visible_actors", [])
     print(f"Wrote movement sandbox snapshot: {args.out}")
     print(
         f"  battle={snapshot.get('battle_sequence')} "
         f"generation={snapshot.get('source_generation')}"
     )
     print(f"  active_tile={movement.get('active_tile_id')}")
-    print(f"  tiles={len(tiles)} combatants={len(actors)}")
+    print(f"  tiles={len(tiles)} visible_actors={len(actors)}")
     return 0
 
 
