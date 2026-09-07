@@ -50,14 +50,16 @@ try {
     $zip.Dispose()
 }
 
-if ($preload -notmatch 'Version = "0\.2\.32"') { throw 'Wrong BB-Agent companion version' }
+if ($preload -notmatch 'Version = "0\.2\.33"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_player_legal_blocking_compat') { throw 'Player-legal blocker projection missing' }
 if ($preload -notmatch 'runtime_player_legal_actor_enumeration_compat') { throw 'Player-legal actor enumeration compatibility missing' }
 if ($preload -notmatch 'runtime_movement_graph_compat') { throw 'Movement reachability graph missing' }
+if ($preload -notmatch 'runtime_movement_ally_jump_cost_compat') { throw 'Ally-jump movement cost compatibility missing' }
 if ($preload -notmatch 'runtime_movement_blocking_compat') { throw 'Movement blocker compatibility missing' }
 if ($preload -notmatch 'runtime_combat_sandbox') { throw 'Full combat sandbox module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_discovery') { throw 'Combat sandbox discovery module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_fidelity') { throw 'Combat sandbox fidelity module missing' }
+if ($preload -notmatch 'runtime_combat_sandbox_reference_fields') { throw 'Combat sandbox reference-field layer missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_oracle_first') { throw 'Oracle-first sandbox module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_bounds') { throw 'Combat sandbox bounds module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_continuity') { throw 'Combat sandbox continuity module missing' }
@@ -89,14 +91,16 @@ if ($installed.Count -ne 2) {
 
 Write-Host ''
 Write-Host 'FULL COMBAT SANDBOX INSTALLED'
-Write-Host '  companion: 0.2.32'
+Write-Host '  companion: 0.2.33'
 Write-Host '  capture mode: phased oracle-first staged discovery + capture'
 Write-Host '  player-legal projection: captured only after omniscient oracle jobs complete'
 Write-Host '  player-legal actors: turn-list fallback repairs missing/partial owned roster enumeration'
 Write-Host '  movement reachability: player-known Pareto AP/fatigue labels, no native pathfinder'
+Write-Host '  ally-jump movement cost: sum of both constituent movement steps'
 Write-Host '  visible blockers: exact only on currently visible tiles; remembered occupancy unknown'
 Write-Host '  hidden occupancy: never inspected by production blocker/movement graph layers'
 Write-Host '  ally-jump probe: one DEBUG_ORACLE native sample, roster-scanned when active has no candidate'
+Write-Host '  duplicate runtime collections: summarized as bounded actor/skill/item references'
 Write-Host '  runtime scaffolding: summarized, not emitted as per-field jobs'
 Write-Host '  fidelity: state data split into independently bounded field records'
 Write-Host '  continuity: survives unchanged failed READY signatures'
