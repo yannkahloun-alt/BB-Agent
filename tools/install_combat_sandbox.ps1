@@ -50,7 +50,7 @@ try {
     $zip.Dispose()
 }
 
-if ($preload -notmatch 'Version = "0\.2\.29"') { throw 'Wrong BB-Agent companion version' }
+if ($preload -notmatch 'Version = "0\.2\.30"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_combat_sandbox') { throw 'Full combat sandbox module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_discovery') { throw 'Combat sandbox discovery module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_fidelity') { throw 'Combat sandbox fidelity module missing' }
@@ -58,11 +58,11 @@ if ($preload -notmatch 'runtime_combat_sandbox_oracle_first') { throw 'Oracle-fi
 if ($preload -notmatch 'runtime_combat_sandbox_bounds') { throw 'Combat sandbox bounds module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_continuity') { throw 'Combat sandbox continuity module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_recovery') { throw 'Combat sandbox recovery module missing' }
+if ($preload -notmatch 'runtime_debug_oracle_ally_jump_probe') { throw 'Ally-jump oracle probe missing' }
 foreach ($forbidden in @(
     'runtime_combat_sandbox_incremental',
     'runtime_movement_sandbox',
     'runtime_debug_oracle_movement_compare',
-    'runtime_debug_oracle_ally_jump_probe',
     'runtime_debug_oracle_route_score',
     'runtime_navigator_tiebreak_compat'
 )) {
@@ -84,9 +84,10 @@ if ($installed.Count -ne 2) {
 
 Write-Host ''
 Write-Host 'FULL COMBAT SANDBOX INSTALLED'
-Write-Host '  companion: 0.2.29'
+Write-Host '  companion: 0.2.30'
 Write-Host '  capture mode: phased oracle-first staged discovery + capture'
 Write-Host '  player-legal projection: captured only after omniscient oracle jobs complete'
+Write-Host '  ally-jump probe: one DEBUG_ORACLE native sample per battle generation'
 Write-Host '  runtime scaffolding: summarized, not emitted as per-field jobs'
 Write-Host '  fidelity: state data split into independently bounded field records'
 Write-Host '  continuity: survives unchanged failed READY signatures'
