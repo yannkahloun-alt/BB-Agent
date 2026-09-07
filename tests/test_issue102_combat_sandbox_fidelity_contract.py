@@ -69,11 +69,11 @@ def test_parent_records_describe_shards_instead_of_embedding_heavy_reflection() 
 def test_skill_item_and_tile_core_records_keep_nonstate_semantics() -> None:
     text = _text(FIDELITY)
     for token in (
-        "function _skillCoreRecord(_skill)",
-        "function _itemCoreRecord(_item)",
+        "sandbox._skillCoreRecord <- function(_skill)",
+        "sandbox._itemCoreRecord <- function(_item)",
         "this._skillCoreRecord(_job.target)",
         "this._itemCoreRecord(_job.target)",
-        "function _tileCorePayload(_tile)",
+        "sandbox._tileCorePayload <- function(_tile)",
         "neighbor_ids = neighbors",
         "occupant = occupant",
         "properties_sharded = true",
