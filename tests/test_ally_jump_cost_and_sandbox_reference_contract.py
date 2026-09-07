@@ -35,7 +35,7 @@ def test_ally_jump_cost_is_sum_of_two_constituent_steps() -> None:
     assert "getCostForPath(" not in text
 
 
-def test_reference_field_layer_replaces_duplicate_skill_item_graphs() -> None:
+def test_reference_field_layer_replaces_duplicate_runtime_graphs() -> None:
     preload = PRELOAD.read_text(encoding="utf-8")
     fidelity = preload.index("scripts/bb_agent/runtime_combat_sandbox_fidelity")
     refs = preload.index("scripts/bb_agent/runtime_combat_sandbox_reference_fields")
@@ -48,6 +48,12 @@ def test_reference_field_layer_replaces_duplicate_skill_item_graphs() -> None:
         "__bb_reference_collection = \"actor_skill\"",
         "actor_items_container\" && keyText == \"Items\"",
         "__bb_reference_collection = \"actor_item\"",
+        "entity_manager_state\" && keyText == \"Instances\"",
+        "entity_manager_instances",
+        "turn_sequence_state",
+        "CurrentEntities",
+        "AllEntities",
+        "actor_runtime_ids",
         "originalEnqueueStateField.acall",
     ):
         assert required in text
