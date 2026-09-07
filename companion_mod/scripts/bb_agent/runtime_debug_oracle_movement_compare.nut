@@ -62,6 +62,61 @@ oracle._movementCompareContainsAction <- function(_actions, _candidate)
     return false;
 };
 
+oracle._movementCompareDivergence <- function(
+    _active,
+    _tiles,
+    _destination,
+    _localPath,
+    _nativePath,
+    _sampleIndex
+)
+{
+    local limit = ::Math.min(_localPath.len(), _nativePath.len());
+    local divergence = -1;
+    for (local i = 0; i < limit; i = ++i)
+    {
+        if (_localPath[i] != _nativePath[i])
+        {
+            divergence = i;
+            break;
+        }
+    }
+    if (divergence < 0) return;
+
+    local fromTile = divergence == 0
+        ? _active.getTile()
+        : _tiles[_localPath[divergence - 1]];
+    local localNext = _tiles[_localPath[divergence]];
+    local nativeNext = _tiles[_nativePath[divergence]];
+
+    local localDirection = "unavailable";
+    local nativeDirection = "unavailable";
+    local localRemaining = "unavailable";
+    local nativeRemaining = "unavailable";
+    try
+    {
+        localDirection = fromTile.getDirectionTo(localNext).tostring();
+        nativeDirection = fromTile.getDirectionTo(nativeNext).tostring();
+        localRemaining = localNext.getDistanceTo(_destination).tostring();
+        nativeRemaining = nativeNext.getDistanceTo(_destination).tostring();
+    }
+    catch (_error)
+    {
+    }
+
+    this._log(
+        "movement_compare_divergence sample=" + _sampleIndex
+        + " index=" + divergence
+        + " from=" + legal.tileID(fromTile)
+        + " local_next=" + _localPath[divergence]
+        + " local_dir=" + localDirection
+        + " local_remaining=" + localRemaining
+        + " native_next=" + _nativePath[divergence]
+        + " native_dir=" + nativeDirection
+        + " native_remaining=" + nativeRemaining
+    );
+};
+
 // Pick at most three high-information samples: shortest path, longest anchorable
 // path (<=4 steps), and one path with an AoO contingency when available.
 oracle._movementCompareSamples <- function(_actions)
@@ -160,13 +215,22 @@ oracle._compareOneMovement <- function(_raw, _projection, _action, _sampleIndex)
     local localPath = this._movementCompareActionPath(_action);
     local nativePath = this._movementComparePath(active, costs);
     local nativeTiles = costs != null && "Tiles" in costs ? costs.Tiles : null;
-    local nativeAP = this._movementCompareCost(costs, "ActionPointsRequired", "ActionPoints");
-    local nativeFatigue = this._movementCompareCost(costs, "FatigueRequired", "Fatigue");
+    local nativeAP = this._movementCompareCost(
+        costs,
+        "ActionPointsRequired",
+        "ActionPoints"
+    );
+    local nativeFatigue = this._movementCompareCost(
+        costs,
+        "FatigueRequired",
+        "Fatigue"
+    );
     local complete = costs != null && "IsComplete" in costs && costs.IsComplete;
     local anchorCoverage = nativeTiles != null
         && localPath.len() <= 4
         && nativePath.len() == nativeTiles;
-    local pathMatch = anchorCoverage && this._movementComparePathsEqual(localPath, nativePath);
+    local pathMatch = anchorCoverage
+        && this._movementComparePathsEqual(localPath, nativePath);
     local costMatch = nativeAP == _action.ap_cost.value
         && nativeFatigue == _action.fatigue_cost.value;
     local match = found && complete && nativeTiles != 0 && pathMatch && costMatch;
@@ -184,10 +248,23 @@ oracle._compareOneMovement <- function(_raw, _projection, _action, _sampleIndex)
         + " local_fat=" + _action.fatigue_cost.value
         + " native_fat=" + (nativeFatigue == null ? "null" : nativeFatigue.tostring())
         + " anchor_coverage=" + anchorCoverage.tostring()
+        + " path_match=" + pathMatch.tostring()
+        + " cost_match=" + costMatch.tostring()
         + " match=" + match.tostring()
     );
-    if (!match)
-        throw "DEBUG_ORACLE movement comparison mismatch";
+
+    if (!pathMatch && anchorCoverage)
+    {
+        this._movementCompareDivergence(
+            active,
+            tiles,
+            destination,
+            localPath,
+            nativePath,
+            _sampleIndex
+        );
+    }
+    return match;
 };
 
 oracle.compareMovementActions <- function(_raw, _projection, _actions)
@@ -198,8 +275,20 @@ oracle.compareMovementActions <- function(_raw, _projection, _actions)
         "movement_compare_begin samples=" + samples.len()
         + " max_samples=" + this.MaxMovementCompareSamples
     );
+
+    local mismatches = 0;
     for (local i = 0; i < samples.len(); i = ++i)
-        this._compareOneMovement(_raw, _projection, samples[i], i + 1);
+    {
+        if (!this._compareOneMovement(_raw, _projection, samples[i], i + 1))
+            ++mismatches;
+    }
+
+    this._log(
+        "movement_compare_end samples=" + samples.len()
+        + " mismatches=" + mismatches
+    );
+    if (mismatches != 0)
+        throw "DEBUG_ORACLE movement comparison mismatch";
 };
 
 local originalMoveActions = affordances._moveActions;

@@ -27,7 +27,7 @@ def test_native_pathfinder_is_confined_to_bounded_debug_oracle_comparator() -> N
     assert "navigator.findPath(" in compare
     assert "navigator.getCostForPath(" in compare
     assert "movement_compare_begin samples=" in compare
-    assert "match=" in compare
+    assert "movement_compare_end samples=" in compare
     assert 'throw "DEBUG_ORACLE movement comparison mismatch";' in compare
     assert "navigator.findPath(" not in compat
     assert "navigator.getCostForPath(" not in compat
@@ -58,6 +58,31 @@ def test_comparator_checks_path_and_native_resolved_costs() -> None:
         "nativeAP == _action.ap_cost.value",
         "nativeFatigue == _action.fatigue_cost.value",
         "anchor_coverage=",
+        "path_match=",
+        "cost_match=",
+    ):
+        assert token in compare
+
+
+def test_comparator_logs_all_samples_before_failing_batch() -> None:
+    compare = _text(COMPARE)
+    assert "local mismatches = 0;" in compare
+    assert "++mismatches;" in compare
+    assert "if (mismatches != 0)" in compare
+    assert compare.index("for (local i = 0; i < samples.len(); i = ++i)") < compare.index(
+        "if (mismatches != 0)"
+    )
+
+
+def test_path_mismatch_logs_direction_and_remaining_distance() -> None:
+    compare = _text(COMPARE)
+    for token in (
+        "oracle._movementCompareDivergence <- function(",
+        "fromTile.getDirectionTo(localNext)",
+        "fromTile.getDirectionTo(nativeNext)",
+        "localNext.getDistanceTo(_destination)",
+        "nativeNext.getDistanceTo(_destination)",
+        "movement_compare_divergence sample=",
     ):
         assert token in compare
 
