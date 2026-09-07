@@ -24,9 +24,15 @@ def _chunk_lines(
     raw = canonical_json_bytes(record)
     digest = hashlib.sha256(raw).hexdigest()
     encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
-    chunks = [encoded[i : i + chunk_chars] for i in range(0, len(encoded), chunk_chars)]
+    chunks = [
+        encoded[i : i + chunk_chars]
+        for i in range(0, len(encoded), chunk_chars)
+    ]
     return [
-        f"{PREFIX}|{battle}|{generation}|{section}|{key}|{i}|{len(chunks)}|{len(raw)}|{digest}|{chunk}"
+        (
+            f"{PREFIX}|{battle}|{generation}|{section}|{key}|{i}|"
+            f"{len(chunks)}|{len(raw)}|{digest}|{chunk}"
+        )
         for i, chunk in enumerate(chunks)
     ]
 
@@ -48,13 +54,19 @@ def _log(lines: list[str]) -> str:
     )
 
 
-def test_extract_reassembles_full_generation_by_section_and_key(tmp_path: Path) -> None:
+def test_extract_reassembles_full_generation_by_section_and_key(
+    tmp_path: Path,
+) -> None:
     manifest = {
         "section": "manifest",
         "key": "root",
         "schema_version": "bb-agent-combat-sandbox.v1",
         "payload": {
-            "expected_records": ["actor:actor:1", "manifest:root", "tile:tile:1:1"],
+            "expected_records": [
+                "actor:actor:1",
+                "manifest:root",
+                "tile:tile:1:1",
+            ],
         },
     }
     actor = _record("actor", "actor:1")
@@ -79,10 +91,15 @@ def test_extract_rejects_missing_expected_record(tmp_path: Path) -> None:
         "section": "manifest",
         "key": "root",
         "schema_version": "bb-agent-combat-sandbox.v1",
-        "payload": {"expected_records": ["manifest:root", "tile:tile:1:1"]},
+        "payload": {
+            "expected_records": ["manifest:root", "tile:tile:1:1"],
+        },
     }
     path = tmp_path / "log.html"
-    path.write_text(_log(_chunk_lines("manifest", "root", manifest)), encoding="utf-8")
+    path.write_text(
+        _log(_chunk_lines("manifest", "root", manifest)),
+        encoding="utf-8",
+    )
     with pytest.raises(ValueError, match="missing expected combat sandbox record"):
         extract_latest_combat_sandbox(path)
 
