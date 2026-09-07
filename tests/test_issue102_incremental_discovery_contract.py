@@ -2,9 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
-DISCOVERY = (
-    ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_discovery.nut"
-)
+DISCOVERY = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_discovery.nut"
 
 
 def _text(path: Path) -> str:
