@@ -112,15 +112,18 @@ def test_individual_read_failures_emit_error_records_and_continue() -> None:
     assert "transport_error" in continuity
 
 
-def test_preload_contains_only_full_combat_forensic_snapshot() -> None:
+def test_preload_keeps_full_forensic_snapshot_and_only_bounded_native_probe() -> None:
     preload = _text(PRELOAD)
     assert "runtime_combat_sandbox" in preload
     assert "runtime_combat_sandbox_continuity" in preload
+    recovery = preload.index("runtime_combat_sandbox_recovery")
+    probe = preload.index("runtime_debug_oracle_ally_jump_probe")
+    export = preload.index("scripts/bb_agent/live_export")
+    assert recovery < probe < export
     for forbidden in (
         "runtime_combat_sandbox_incremental",
         "runtime_movement_sandbox",
         "runtime_debug_oracle_movement_compare",
-        "runtime_debug_oracle_ally_jump_probe",
         "runtime_debug_oracle_route_score",
         "runtime_navigator_tiebreak_compat",
     ):
