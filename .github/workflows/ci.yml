@@ -74,40 +74,9 @@ jobs:
           }
 
           $grammarCases = @{
-              "unbraced.nut" = @'
-function f(_job)
-{
-    local payload = null;
-    if (_job.kind == "raw_meta") payload = null;
-    else if (_job.kind == "raw_fingerprint_input")
-        payload = { index = _job.extra, value = _job.target };
-    else if (_job.kind == "tactical_state") payload = null;
-}
-'@
-              "braced.nut" = @'
-function f(_job)
-{
-    local payload = null;
-    if (_job.kind == "raw_meta") payload = null;
-    else if (_job.kind == "raw_fingerprint_input")
-    {
-        payload = { index = _job.extra, value = _job.target };
-    }
-    else if (_job.kind == "tactical_state") payload = null;
-}
-'@
-              "renamed.nut" = @'
-function f(_job)
-{
-    local payload = null;
-    if (_job.kind == "raw_meta") payload = null;
-    else if (_job.kind == "raw_fingerprint_input")
-    {
-        payload = { ordinal = _job.extra, reflected_value = _job.target };
-    }
-    else if (_job.kind == "tactical_state") payload = null;
-}
-'@
+              "unbraced.nut" = 'function f(_job) { local payload = null; if (_job.kind == "raw_meta") payload = null; else if (_job.kind == "raw_fingerprint_input") payload = { index = _job.extra, value = _job.target }; else if (_job.kind == "tactical_state") payload = null; }'
+              "braced.nut" = 'function f(_job) { local payload = null; if (_job.kind == "raw_meta") payload = null; else if (_job.kind == "raw_fingerprint_input") { payload = { index = _job.extra, value = _job.target }; } else if (_job.kind == "tactical_state") payload = null; }'
+              "renamed.nut" = 'function f(_job) { local payload = null; if (_job.kind == "raw_meta") payload = null; else if (_job.kind == "raw_fingerprint_input") { payload = { ordinal = _job.extra, reflected_value = _job.target }; } else if (_job.kind == "tactical_state") payload = null; }'
           }
           foreach ($name in $grammarCases.Keys) {
               $path = Join-Path $env:RUNNER_TEMP $name
