@@ -63,6 +63,7 @@ if ($preload -notmatch 'runtime_combat_sandbox_bounds') { throw 'Combat sandbox 
 if ($preload -notmatch 'runtime_combat_sandbox_continuity') { throw 'Combat sandbox continuity module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_recovery') { throw 'Combat sandbox recovery module missing' }
 if ($preload -notmatch 'runtime_debug_oracle_ally_jump_probe') { throw 'Ally-jump oracle probe missing' }
+if ($preload -notmatch 'runtime_debug_oracle_ally_jump_roster_probe') { throw 'Roster ally-jump oracle probe missing' }
 foreach ($forbidden in @(
     'runtime_combat_sandbox_incremental',
     'runtime_movement_sandbox',
@@ -95,7 +96,7 @@ Write-Host '  player-legal actors: turn-list fallback repairs missing/partial ow
 Write-Host '  movement reachability: player-known Pareto AP/fatigue labels, no native pathfinder'
 Write-Host '  visible blockers: exact only on currently visible tiles; remembered occupancy unknown'
 Write-Host '  hidden occupancy: never inspected by production blocker/movement graph layers'
-Write-Host '  ally-jump probe: one DEBUG_ORACLE native sample per battle generation'
+Write-Host '  ally-jump probe: one DEBUG_ORACLE native sample, roster-scanned when active has no candidate'
 Write-Host '  runtime scaffolding: summarized, not emitted as per-field jobs'
 Write-Host '  fidelity: state data split into independently bounded field records'
 Write-Host '  continuity: survives unchanged failed READY signatures'
