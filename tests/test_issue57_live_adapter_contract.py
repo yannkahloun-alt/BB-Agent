@@ -16,6 +16,10 @@ AFFORDANCES = ROOT / "companion_mod/scripts/bb_agent/affordance_export.nut"
 AFFORDANCE_HARDENING = (
     ROOT / "companion_mod/scripts/bb_agent/affordance_export_hardening.nut"
 )
+MOVEMENT_GRAPH = ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
+ALLY_JUMP_PROBE = (
+    ROOT / "companion_mod/scripts/bb_agent/runtime_debug_oracle_ally_jump_probe.nut"
+)
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 HOOK = ROOT / "companion_mod/scripts/bb_agent/hooks/tactical_state.nut"
 
@@ -24,7 +28,7 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_preload_orders_projection_and_export_before_tactical_hook() -> None:
+def test_preload_orders_projection_graph_probe_and_export_before_tactical_hook() -> None:
     source = _text(PRELOAD)
     assert 'Version = "0.2.22"' in source
     modules = (
@@ -37,12 +41,15 @@ def test_preload_orders_projection_and_export_before_tactical_hook() -> None:
         "debug_oracle",
         "runtime_debug_oracle_path_anchors",
         "runtime_navigator_path_compat",
-        "runtime_debug_oracle_movement_compare",
+        "runtime_movement_graph_compat",
+        "runtime_debug_oracle_ally_jump_probe",
         "live_export",
         "hooks/tactical_state",
     )
     offsets = [source.index(f"scripts/bb_agent/{module}") for module in modules]
     assert offsets == sorted(offsets)
+    assert "runtime_debug_oracle_movement_compare" not in source
+    assert "runtime_navigator_tiebreak_compat" not in source
 
 
 def test_wire_identity_matches_closed_m1_kernel() -> None:
@@ -117,11 +124,12 @@ def test_canonical_identity_matches_existing_action_and_state_identity_boundarie
     assert '"action:" + wire.canonicalHash(this._actionIntent(_action))' in source
 
 
-def test_affordance_acquisition_uses_game_authority_and_never_executes_commands() -> (
-    None
-):
+def test_affordance_acquisition_keeps_native_probe_out_of_production_graph() -> None:
     source = _text(AFFORDANCES)
     hardening = _text(AFFORDANCE_HARDENING)
+    graph = _text(MOVEMENT_GRAPH)
+    probe = _text(ALLY_JUMP_PROBE)
+
     for required in (
         "queryActives()",
         "skill.isUsable()",
@@ -130,11 +138,6 @@ def test_affordance_acquisition_uses_game_authority_and_never_executes_commands(
         "skill.getActionPointCost()",
         "skill.getFatigueCost()",
         "source.getAmmoCost()",
-        "navigator.findPath(",
-        "navigator.getCostForPath(",
-        'this._movementCost(costs, "ActionPointsRequired", "ActionPoints")',
-        'this._movementCost(costs, "FatigueRequired", "Fatigue")',
-        "navigator.clearPath()",
         "canEntityWait(active)",
         "helper_queryEquipmentTargetItems",
         "helper_isActionAllowed",
@@ -143,6 +146,15 @@ def test_affordance_acquisition_uses_game_authority_and_never_executes_commands(
         'unsupported_mechanic_id = "live.player_legal.aoo_probability_unavailable"',
     ):
         assert required in source
+
+    # The historical/base affordance module can still contain native path helpers,
+    # but the loaded #98 production graph itself must not depend on them.
+    assert "navigator.findPath(" not in graph
+    assert "navigator.getCostForPath(" not in graph
+    assert "navigator.findPath(" in probe
+    assert "navigator.getCostForPath(" in probe
+    assert "if (!this.Enabled) return;" in probe
+
     assert "native movement path leaves the player-legal canonical map" in hardening
     assert "this.CurrentProjection.runtime.tile_records" in hardening
     for cost in (
