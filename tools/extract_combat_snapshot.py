@@ -17,6 +17,7 @@ from bb_agent.combat_sandbox import (  # noqa: E402
     extract_latest_combat_sandbox,
     summarize_combat_sandbox_quality,
 )
+from bb_agent.oracle_validation import summarize_ally_jump_probe  # noqa: E402
 
 _TEXT_RE = re.compile(r'<div class="text">(.*?)</div>', re.DOTALL)
 _TAG_RE = re.compile(r"<.*?>")
@@ -161,6 +162,16 @@ def main() -> int:
         f"runtime_scaffolding:{quality['runtime_scaffolding_count']} "
         f"nested_shards:{quality['nested_shard_summary_count']}"
     )
+    if "debug_probe:ally_jump" in records:
+        comparison = summarize_ally_jump_probe(snapshot)
+        print(
+            "  ally_jump_oracle="
+            f"candidate:{comparison['candidate']} "
+            f"found:{comparison['found']} "
+            f"complete:{comparison['complete']} "
+            f"cost_agreement:{comparison['cost_agreement']} "
+            f"direct_landing_rejected:{comparison['direct_landing_rejected']}"
+        )
     if quality["issue_paths"]:
         print("  quality_issue_paths:")
         for path in quality["issue_paths"][:20]:
