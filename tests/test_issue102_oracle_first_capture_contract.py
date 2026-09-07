@@ -53,6 +53,22 @@ def test_native_instance_iteration_limit_is_explicit_not_quality_error() -> None
     assert "iteration_unavailable_reason" in text
 
 
+def test_all_emitted_payloads_are_float_safe() -> None:
+    text = _text(ORACLE_FIRST)
+    assert "sandbox._sandboxJsonSafe <- function(_value)" in text
+    assert 'if (kind == "float") return this._floatValue(_value);' in text
+    assert "sandbox._emitRecord = function(_raw, _section, _key, _payload)" in text
+    assert "this._sandboxJsonSafe(_payload)" in text
+
+
+def test_oversized_state_fields_retry_with_smaller_reflection_budget() -> None:
+    text = _text(ORACLE_FIRST)
+    assert "sandbox._sandboxReflectWithNodeBudget <- function" in text
+    assert "foreach (nodeBudget in [2048, 512, 128])" in text
+    assert 'message != "combat sandbox record exceeds decoded payload bound"' in text
+    assert "reflection_node_budget = nodeBudget" in text
+
+
 def test_oracle_first_layer_loads_after_fidelity_before_bounds() -> None:
     text = _text(PRELOAD)
     fidelity = text.index("runtime_combat_sandbox_fidelity")
