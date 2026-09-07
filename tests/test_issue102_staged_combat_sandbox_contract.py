@@ -5,6 +5,9 @@ PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 HOOK = ROOT / "companion_mod/scripts/bb_agent/hooks/tactical_state.nut"
 SANDBOX = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox.nut"
+CONTINUITY = (
+    ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_continuity.nut"
+)
 
 
 def _text(path: Path) -> str:
@@ -35,20 +38,20 @@ def test_tactical_update_starts_and_pumps_snapshot_incrementally() -> None:
 
 
 def test_snapshot_pump_is_one_bounded_job_per_update() -> None:
-    text = _text(SANDBOX)
+    base = _text(SANDBOX)
+    continuity = _text(CONTINUITY)
     for token in (
         "RecordsPerPump = 1",
         "function begin(_raw)",
-        "function pump()",
         "function cancel(_reason)",
         "function _processJob(_job)",
         "this.State.cursor",
         "this.State.jobs",
     ):
-        assert token in text
+        assert token in base
 
-    pump = text[text.index("function pump()") :]
-    assert "while (processed < this.RecordsPerPump" in pump
+    assert "sandbox.pump = function()" in continuity
+    assert "while (processed < this.RecordsPerPump" in continuity
 
 
 def test_heavy_data_is_split_into_independent_records() -> None:
@@ -87,7 +90,7 @@ def test_manifest_is_sharded_after_all_jobs_complete() -> None:
 
 
 def test_failed_ready_latch_does_not_cancel_forensic_generation() -> None:
-    text = _text(SANDBOX)
+    text = _text(CONTINUITY)
     for token in (
         "capture._commandReadiness(this.State.raw.TacticalState)",
         "if (!readiness.Ready) return;",
@@ -95,22 +98,24 @@ def test_failed_ready_latch_does_not_cancel_forensic_generation() -> None:
         "capture.State.SourceGeneration != this.State.source_generation",
         "capture.State.LastReadySignature != this.State.source_signature",
         'this.cancel("generation_changed")',
-        "source_signature = capture.State.LastReadySignature",
+        "this.State.source_signature <- capture.State.LastReadySignature;",
     ):
         assert token in text
     assert "capture.getCurrentRawAcquisition()" not in text
 
 
 def test_individual_read_failures_emit_error_records_and_continue() -> None:
-    text = _text(SANDBOX)
-    assert "function _emitJobError(_job, _error)" in text
-    assert "__capture_error = _error.tostring()" in text
-    assert "transport_error" in text
+    base = _text(SANDBOX)
+    continuity = _text(CONTINUITY)
+    assert "function _emitJobError(_job, _error)" in base
+    assert "__capture_error = _error.tostring()" in base
+    assert "transport_error" in continuity
 
 
 def test_preload_contains_only_full_combat_forensic_snapshot() -> None:
     preload = _text(PRELOAD)
     assert "runtime_combat_sandbox" in preload
+    assert "runtime_combat_sandbox_continuity" in preload
     for forbidden in (
         "runtime_combat_sandbox_incremental",
         "runtime_movement_sandbox",
