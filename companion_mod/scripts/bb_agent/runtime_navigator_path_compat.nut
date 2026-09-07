@@ -17,6 +17,35 @@ affordances._canonicalNeighbors <- function(_projection, _fromId, _toId)
     return false;
 };
 
+affordances._oracleCostAnchorID <- function(_costs, _name)
+{
+    if (_costs == null || !(_name in _costs) || _costs[_name] == null)
+        return "null";
+    try
+    {
+        return legal.tileID(_costs[_name]);
+    }
+    catch (_error)
+    {
+        return "unreadable";
+    }
+};
+
+affordances._traceOracleCostAnchors <- function(_label, _costs)
+{
+    if (!oracle.Enabled || _costs == null) return;
+    local tiles = "missing";
+    if ("Tiles" in _costs) tiles = _costs.Tiles.tostring();
+    oracle._log(
+        "native_cost_anchors label=" + _label
+        + " tiles=" + tiles
+        + " first=" + this._oracleCostAnchorID(_costs, "First")
+        + " second_last=" + this._oracleCostAnchorID(_costs, "SecondLastBeforeEnd")
+        + " last=" + this._oracleCostAnchorID(_costs, "LastBeforeEnd")
+        + " end=" + this._oracleCostAnchorID(_costs, "End")
+    );
+};
+
 affordances._nativeCostPrefixPath <- function(
     _navigator,
     _active,
@@ -74,6 +103,8 @@ affordances._nativeCostPrefixPath <- function(
             throw "native movement prefix revisited an earlier path tile";
         if (!this._canonicalNeighbors(_projection, lastTileId, tileId))
         {
+            this._traceOracleCostAnchors("full", _costs);
+            this._traceOracleCostAnchors("prefix_" + apBudget, prefix);
             oracle.reportMovementTopologyMismatch(
                 _navigator,
                 _active,
