@@ -20,19 +20,76 @@ from bb_agent.combat_sandbox import (  # noqa: E402
 
 _TEXT_RE = re.compile(r'<div class="text">(.*?)</div>', re.DOTALL)
 _TAG_RE = re.compile(r"<.*?>")
+_TAIL_BYTES = 262_144
 
 
-def _sandbox_diagnostics(path: Path) -> list[str]:
+def _sandbox_diagnostics(path: Path, *, tail_only: bool = False) -> list[str]:
     try:
-        raw = path.read_text(encoding="utf-8", errors="replace")
+        if tail_only:
+            with path.open("rb") as handle:
+                handle.seek(0, 2)
+                size = handle.tell()
+                handle.seek(max(0, size - _TAIL_BYTES))
+                raw = handle.read().decode("utf-8", errors="replace")
+        else:
+            raw = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
+
     result: list[str] = []
     for match in _TEXT_RE.finditer(raw):
         text = html.unescape(_TAG_RE.sub("", match.group(1))).strip()
         if "[BB-Agent Combat Sandbox]" in text:
             result.append(text)
     return result[-20:]
+
+
+def _latest_sandbox_status(path: Path) -> tuple[str | None, bool, bool]:
+    diagnostics = _sandbox_diagnostics(path, tail_only=True)
+    if not diagnostics:
+        return None, False, False
+    latest = diagnostics[-1]
+    complete = "[BB-Agent Combat Sandbox] complete " in latest
+    terminal_failure = "[BB-Agent Combat Sandbox] cancelled " in latest
+    return latest, complete, terminal_failure
+
+
+def _print_incomplete(path: Path, problem: Exception | str) -> None:
+    print(f"Combat sandbox is not complete: {problem}", file=sys.stderr)
+    diagnostics = _sandbox_diagnostics(path, tail_only=True)
+    if diagnostics:
+        print("Latest sandbox diagnostics:", file=sys.stderr)
+        for line in diagnostics:
+            print(f"  {line}", file=sys.stderr)
+    else:
+        print("No combat sandbox diagnostics found in log.", file=sys.stderr)
+
+
+def _wait_for_completion(
+    log_path: Path,
+    *,
+    wait_seconds: float,
+    poll_seconds: float,
+) -> bool:
+    if wait_seconds <= 0:
+        return True
+
+    deadline = time.monotonic() + wait_seconds
+    last_status: str | None = None
+    while True:
+        status, complete, terminal_failure = _latest_sandbox_status(log_path)
+        if status is not None and status != last_status:
+            print(status, flush=True)
+            last_status = status
+        if complete:
+            return True
+        if terminal_failure:
+            _print_incomplete(log_path, status or "capture cancelled")
+            return False
+        if time.monotonic() >= deadline:
+            _print_incomplete(log_path, "timed out waiting for completion marker")
+            return False
+        time.sleep(poll_seconds)
 
 
 def main() -> int:
@@ -48,7 +105,7 @@ def main() -> int:
         "--wait-seconds",
         type=float,
         default=300.0,
-        help="Poll until a complete manifest-backed snapshot exists.",
+        help="Poll lightweight log-tail diagnostics until capture completes.",
     )
     parser.add_argument(
         "--poll-seconds",
@@ -61,26 +118,18 @@ def main() -> int:
     if args.wait_seconds < 0 or args.poll_seconds <= 0:
         parser.error("wait/poll durations must be positive")
 
-    deadline = time.monotonic() + args.wait_seconds
-    while True:
-        try:
-            snapshot = extract_latest_combat_sandbox(args.log)
-            break
-        except ValueError as exc:
-            if time.monotonic() >= deadline:
-                print(f"Combat sandbox is not complete: {exc}", file=sys.stderr)
-                diagnostics = _sandbox_diagnostics(args.log)
-                if diagnostics:
-                    print("Latest sandbox diagnostics:", file=sys.stderr)
-                    for line in diagnostics:
-                        print(f"  {line}", file=sys.stderr)
-                else:
-                    print(
-                        "No combat sandbox diagnostics found in log.",
-                        file=sys.stderr,
-                    )
-                return 2
-            time.sleep(args.poll_seconds)
+    if not _wait_for_completion(
+        args.log,
+        wait_seconds=args.wait_seconds,
+        poll_seconds=args.poll_seconds,
+    ):
+        return 2
+
+    try:
+        snapshot = extract_latest_combat_sandbox(args.log)
+    except ValueError as exc:
+        _print_incomplete(args.log, exc)
+        return 2
 
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(
