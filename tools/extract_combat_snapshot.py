@@ -181,6 +181,7 @@ def main() -> int:
             "  movement_oracle="
             f"samples:{validation['sample_count']} "
             f"errors:{validation['error_count']} "
+            f"legality_mismatches:{validation['legality_mismatch_count']} "
             f"reachability_mismatches:{validation['reachability_mismatch_count']} "
             f"comparable_costs:{validation['comparable_cost_sample_count']} "
             f"cost_mismatches:{validation['cost_mismatch_count']} "
