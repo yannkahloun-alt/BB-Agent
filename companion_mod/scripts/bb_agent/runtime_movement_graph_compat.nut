@@ -242,3 +242,42 @@ affordances._movementTree = function(_raw, _projection)
         unresolved_jump_edges = unresolvedJumps
     };
 };
+
+// Override only the final MOVE_TO enumeration gate so hidden raw occupancy does
+// not leak through `Tile.IsEmpty`. Visible actor occupancy comes from the
+// player-legal projection. Non-actor visible blockers remain an explicit #96
+// follow-up rather than being guessed from hidden raw tile state.
+affordances._moveActions = function(_raw, _projection)
+{
+    local ret = [];
+    local active = _raw.ActiveActor;
+    local actorId = _projection.runtime.active_actor_id;
+    local occupancy = this._movementVisibleOccupancy(_projection);
+    local tree = this._movementTree(_raw, _projection);
+
+    foreach (destinationId, node in tree.nodes)
+    {
+        if (destinationId == tree.origin_id) continue;
+        local destination = node.tile;
+        if (!destination.IsDiscovered) continue;
+        if (destinationId in occupancy) continue;
+        if (destination.Type == ::Const.Tactical.TerrainType.Impassable) continue;
+
+        local pathTiles = this._movementPathFromTree(tree, destinationId, _projection);
+        local affordability = this._movementPathAffordability(active, pathTiles);
+        if (!affordability.affordable) continue;
+
+        local action = this._baseAction(actorId, "MOVE_TO");
+        action.destination_tile_id = destinationId;
+        foreach (tile in pathTiles)
+            action.resolved_path.push(legal.tileID(tile));
+        action.contingent_reactions = this._aooReactions(
+            _projection.state,
+            active,
+            pathTiles
+        );
+        this._resolvedCosts(action, affordability.ap, affordability.fatigue);
+        ret.push(action);
+    }
+    return ret;
+};
