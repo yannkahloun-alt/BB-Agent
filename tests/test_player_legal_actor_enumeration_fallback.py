@@ -18,8 +18,7 @@ def test_actor_enumeration_fallback_loads_after_actor_compat() -> None:
     assert base < fallback < identity
 
 
-def test_fallback_repairs_zero_combatant_projection_without_method_membership_probe(
-) -> None:
+def test_fallback_repairs_zero_combatant_projection() -> None:
     text = FALLBACK.read_text(encoding="utf-8")
     assert "projection.state.combatants.len() != 0" in text
     assert "_raw.TurnSequenceBar.getCurrentEntities()" in text
