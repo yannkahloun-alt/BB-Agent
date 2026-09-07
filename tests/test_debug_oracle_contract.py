@@ -58,43 +58,25 @@ def test_oracle_is_diagnostic_only_and_not_a_wire_profile() -> None:
     assert "BBAGENT_DebugOracle" not in projection
 
 
-def test_movement_mismatch_oracle_is_bounded_and_fail_closed() -> None:
+def test_movement_oracle_remains_bounded_for_native_comparison() -> None:
     oracle = _text(ORACLE)
-    compat = _text(COMPAT)
-
     for token in (
         "MaxLogLines = 96",
         "MaxBudget = 32",
         "MaxPathEntries = 24",
         "MovementMismatchCaptured = false",
         "mode=DEBUG_ORACLE event=movement_topology_mismatch",
-        "origin=",
-        "destination=",
         "full_native ",
         "cost_field label=",
         "budget=",
-        "transition previous=",
         "native_neighbor direction=",
-        "native_two_step_bridge index=",
         "native_two_step_bridge_count=",
-        "canonical_previous id=",
-        "canonical_next id=",
-        "canonical_neighbor=",
-        "navigator_path_slot name=",
-        "navigator_path_array name=",
         "navigator_path_slots_found=",
     ):
         assert token in oracle
 
-    assert "oracle.reportMovementTopologyMismatch(" in compat
-    report = compat.index("oracle.reportMovementTopologyMismatch(")
-    failure = compat.index(
-        'throw "native movement cost anchors left a canonical path gap";'
-    )
-    assert report < failure
 
-
-def test_private_path_introspection_is_confined_to_oracle_module() -> None:
+def test_private_native_path_introspection_is_confined_to_oracle_module() -> None:
     oracle = _text(ORACLE)
     compat = _text(COMPAT)
 
@@ -112,8 +94,10 @@ def test_private_path_introspection_is_confined_to_oracle_module() -> None:
     ):
         assert token in oracle
 
-    for token in (".getPath(", ".Path", ".m.Path"):
-        assert token not in compat
+    assert "navigator.findPath(" not in compat
+    assert "navigator.getCostForPath(" not in compat
+    assert "native_find_path_calls=0" in compat
+    assert "movement_tree reachable=" in compat
 
 
 def test_oracle_reads_native_tiles_without_instance_membership_assumptions() -> None:

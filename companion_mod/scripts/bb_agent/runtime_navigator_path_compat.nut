@@ -2,12 +2,13 @@ local affordances = ::BBAGENT_Affordances;
 local legal = ::BBAGENT_PlayerLegal;
 local oracle = ::BBAGENT_DebugOracle;
 
-// Pinned Battle Brothers scripts 162f498ac7c49b4c317bbf54718a595ecef6a65a
-// expose tactical path anchors directly in getCostForPath(): First,
-// SecondLastBeforeEnd, LastBeforeEnd, and End. Real 1.5.2.3 traces show that
-// after removing origin/duplicates those anchors exactly cover affordable
-// player movement paths of up to four tiles. Reconstruct from that single native
-// cost result and validate every step against the canonical player-legal topology.
+// Pinned Battle Brothers scripts: 162f498ac7c49b4c317bbf54718a595ecef6a65a
+// Battle Brothers 1.5.2.3 live smoke proved that calling the native navigator once
+// for every legal destination freezes tactical play on open ground (roughly 60
+// endpoints for a 9 AP actor). Production movement enumeration therefore builds
+// one player-legal movement tree from visible canonical topology and owned-actor
+// movement rules. DEBUG_ORACLE remains the authority for native comparison only;
+// it never supplies values to this producer.
 affordances._canonicalNeighbors <- function(_projection, _fromId, _toId)
 {
     if (!(_fromId in _projection.runtime.tile_records)) return false;
@@ -18,187 +19,289 @@ affordances._canonicalNeighbors <- function(_projection, _fromId, _toId)
     return false;
 };
 
-affordances._oracleCostAnchorID <- function(_costs, _name)
+affordances._movementVisibleTileMap <- function(_projection)
 {
-    if (_costs == null || !(_name in _costs) || _costs[_name] == null)
-        return "null";
-    try
-    {
-        return legal.tileID(_costs[_name]);
-    }
-    catch (_error)
-    {
-        return "unreadable";
-    }
-};
-
-affordances._traceOracleCostAnchors <- function(_label, _costs)
-{
-    if (!oracle.Enabled || _costs == null) return;
-    local tiles = "missing";
-    if ("Tiles" in _costs) tiles = _costs.Tiles.tostring();
-    oracle._log(
-        "native_cost_anchors label=" + _label
-        + " tiles=" + tiles
-        + " first=" + this._oracleCostAnchorID(_costs, "First")
-        + " second_last=" + this._oracleCostAnchorID(_costs, "SecondLastBeforeEnd")
-        + " last=" + this._oracleCostAnchorID(_costs, "LastBeforeEnd")
-        + " end=" + this._oracleCostAnchorID(_costs, "End")
-    );
-};
-
-affordances._nativeCostAnchors <- function(_costs)
-{
-    local ret = [];
-    foreach (name in ["First", "SecondLastBeforeEnd", "LastBeforeEnd", "End"])
-    {
-        if (!(name in _costs) || _costs[name] == null) continue;
-        local tile = _costs[name];
-        local tileId = legal.tileID(tile);
-        local duplicate = false;
-        foreach (existing in ret)
-        {
-            if (legal.tileID(existing) == tileId)
-            {
-                duplicate = true;
-                break;
-            }
-        }
-        if (!duplicate) ret.push(tile);
-    }
+    local ret = {};
+    foreach (tile in this._visibleTargetTiles(_projection))
+        ret[legal.tileID(tile)] <- tile;
     return ret;
 };
 
-affordances._nativeCostAnchorPath <- function(
+affordances._movementVisibleBlockedTiles <- function(_projection, _activeActorId)
+{
+    local blocked = {};
+    foreach (actor in _projection.state.combatants)
+    {
+        if (actor.actor_id == _activeActorId) continue;
+        if (!actor.visible || actor.life_state != "ALIVE") continue;
+        if (actor.position.representation != "EXACT") continue;
+        blocked[actor.position.value] <- true;
+    }
+    return blocked;
+};
+
+affordances._movementStepCosts <- function(
     _active,
-    _costs,
-    _destination,
-    _projection
+    _fromTile,
+    _toTile,
+    _apCosts,
+    _fatigueCosts
 )
 {
-    if (!("Tiles" in _costs) || typeof _costs.Tiles != "integer" || _costs.Tiles <= 0)
-        throw "native movement preview returned no affordable movement path";
-    if (!("IsComplete" in _costs) || typeof _costs.IsComplete != "bool" || !_costs.IsComplete)
-        throw "native movement path reconstruction requires a complete path";
-    if (!("End" in _costs) || _costs.End == null)
-        throw "native movement preview returned no complete path endpoint";
-
-    local destinationId = legal.tileID(_destination);
-    if (legal.tileID(_costs.End) != destinationId)
-        throw "native complete movement endpoint differs from requested destination";
-
-    local originId = legal.tileID(_active.getTile());
-    local anchors = this._nativeCostAnchors(_costs);
-    local path = [];
-    local seen = {};
-    seen[originId] <- true;
-    local lastTileId = originId;
-
-    foreach (tile in anchors)
+    if (_toTile.Type == ::Const.Tactical.TerrainType.Impassable)
+        return null;
+    if (_toTile.Type < 0
+        || _toTile.Type >= _apCosts.len()
+        || _toTile.Type >= _fatigueCosts.len())
     {
-        local tileId = legal.tileID(tile);
-        if (tileId == originId || tileId in seen) continue;
-        if (!(tileId in _projection.runtime.tile_records))
-            throw "native movement path leaves the player-legal canonical map";
-        if (!this._canonicalNeighbors(_projection, lastTileId, tileId))
-        {
-            this._traceOracleCostAnchors("full", _costs);
-            throw "native movement cost anchors left a canonical path gap";
-        }
-
-        path.push(tile);
-        seen[tileId] <- true;
-        lastTileId = tileId;
+        throw "visible movement tile has unsupported terrain cost index";
     }
 
-    if (path.len() != _costs.Tiles)
+    local levelDifference = _toTile.Level - _fromTile.Level;
+    if (::Math.abs(levelDifference) > _active.getMaxTraversibleLevels())
+        return null;
+
+    local ap = _apCosts[_toTile.Type];
+    local fatigue = _fatigueCosts[_toTile.Type];
+    if (levelDifference != 0)
     {
-        this._traceOracleCostAnchors("count_mismatch", _costs);
-        throw "native movement anchor count differs from native tile count";
+        ap += _active.getLevelActionPointCost();
+        fatigue += _active.getLevelFatigueCost();
+        if (levelDifference > 0)
+            fatigue += ::Const.Movement.LevelClimbingFatigueCost;
     }
-    if (path.len() == 0)
-        throw "native movement anchors produced no ordered path steps";
-    if (lastTileId != destinationId)
-        throw "reconstructed native movement path does not terminate at destination";
-    return path;
+
+    fatigue *= _active.getCurrentProperties().FatigueEffectMult;
+
+    if (ap < 1 || fatigue < 0)
+        throw "owned actor movement rule produced an invalid step cost";
+    return { ap = ap, fatigue = fatigue };
 };
 
-affordances._minimumTraversableMovementAPCost <- function(_active)
+affordances._movementVisibleZocPenalty <- function(_projection, _active, _tile)
 {
-    local costs = _active.getActionPointCosts();
-    if (typeof costs != "array" || costs.len() <= 1)
-        throw "native movement AP cost table is unavailable";
-
-    local minCost = null;
-    for (local i = 1; i < costs.len(); i = ++i)
-    {
-        local cost = costs[i];
-        local kind = typeof cost;
-        if ((kind != "integer" && kind != "float") || cost <= 0)
-            throw "native traversable movement AP cost is invalid";
-        if (minCost == null || cost < minCost) minCost = cost;
-    }
-    if (minCost == null)
-        throw "native movement AP cost table has no traversable entries";
-    return minCost;
+    local reactors = this._visibleHostileReactors(_projection.state, _tile);
+    return reactors.len() == 0 ? 0 : 4;
 };
 
-affordances._movementCandidateTileIds <- function(_active, _projection)
+affordances._movementTreeIsBetter <- function(
+    _score,
+    _ap,
+    _fatigue,
+    _previous,
+    _existing
+)
 {
-    local ap = _active.getActionPoints();
-    if (typeof ap != "integer" || ap < 0)
+    if (_existing == null) return true;
+    if (_score < _existing.score) return true;
+    if (_score > _existing.score) return false;
+    if (_ap < _existing.ap) return true;
+    if (_ap > _existing.ap) return false;
+    if (_fatigue < _existing.fatigue) return true;
+    if (_fatigue > _existing.fatigue) return false;
+    if (_existing.previous == null) return false;
+    if (_previous == null) return true;
+    return _previous < _existing.previous;
+};
+
+affordances._movementTree <- function(_raw, _projection)
+{
+    local active = _raw.ActiveActor;
+    local actorId = _projection.runtime.active_actor_id;
+    local origin = active.getTile();
+    local originId = legal.tileID(origin);
+    local visibleTiles = this._movementVisibleTileMap(_projection);
+    if (!(originId in visibleTiles))
+        visibleTiles[originId] <- origin;
+
+    local blocked = this._movementVisibleBlockedTiles(_projection, actorId);
+    local apCosts = active.getActionPointCosts();
+    local fatigueCosts = active.getFatigueCosts();
+    if (typeof apCosts != "array" || typeof fatigueCosts != "array")
+        throw "owned actor movement cost tables are unavailable";
+
+    local apBudget = active.getActionPoints();
+    local fatigueStart = active.getFatigue();
+    local fatigueMax = active.getFatigueMax();
+    local fatigueBudget = fatigueMax - fatigueStart;
+    if (typeof apBudget != "integer" || apBudget < 0)
         throw "active actor has invalid action points";
-
-    local minCost = this._minimumTraversableMovementAPCost(_active);
-    local maxSteps = ::Math.floor(ap / minCost);
-    local originId = legal.tileID(_active.getTile());
-    if (!(originId in _projection.runtime.tile_records))
-        throw "active actor origin is absent from canonical tile records";
-
-    local candidates = {};
-    local candidateCount = 0;
-    if (maxSteps <= 0)
+    if (typeof fatigueStart != "integer"
+        || typeof fatigueMax != "integer"
+        || fatigueBudget < 0)
     {
-        if (oracle.Enabled)
-            oracle._log(
-                "movement_candidate_bound min_ap=" + minCost
-                + " max_steps=0 candidates=0"
-            );
-        return candidates;
+        throw "active actor has invalid fatigue budget";
     }
 
-    local visited = {};
-    visited[originId] <- true;
-    local frontier = [originId];
+    local nodes = {};
+    nodes[originId] <- {
+        tile = origin,
+        score = 0.0,
+        ap = 0,
+        fatigue = 0,
+        previous = null,
+        closed = false
+    };
 
-    for (local depth = 0; depth < maxSteps; depth = ++depth)
+    local properties = active.getCurrentProperties();
+    if (properties.IsRooted || properties.IsStunned)
     {
-        local next = [];
-        foreach (tileId in frontier)
+        nodes[originId].closed = true;
+        if (oracle.Enabled)
+            oracle._log("movement_tree reachable=0 native_find_path_calls=0 disabled=true");
+        return {
+            origin_id = originId,
+            tiles = visibleTiles,
+            nodes = nodes
+        };
+    }
+
+    local open = [originId];
+
+    while (open.len() != 0)
+    {
+        local bestIndex = 0;
+        for (local i = 1; i < open.len(); i = ++i)
         {
-            if (!(tileId in _projection.runtime.tile_records)) continue;
-            local record = _projection.runtime.tile_records[tileId];
-            foreach (neighborId in record.neighbor_ids)
+            local candidateId = open[i];
+            local bestId = open[bestIndex];
+            local candidate = nodes[candidateId];
+            local best = nodes[bestId];
+            if (candidate.score < best.score
+                || (candidate.score == best.score && candidate.ap < best.ap)
+                || (candidate.score == best.score && candidate.ap == best.ap
+                    && candidate.fatigue < best.fatigue)
+                || (candidate.score == best.score && candidate.ap == best.ap
+                    && candidate.fatigue == best.fatigue && candidateId < bestId))
             {
-                if (neighborId == null || neighborId in visited) continue;
-                if (!(neighborId in _projection.runtime.tile_records)) continue;
-                visited[neighborId] <- true;
-                candidates[neighborId] <- true;
-                ++candidateCount;
-                next.push(neighborId);
+                bestIndex = i;
             }
         }
-        frontier = next;
-        if (frontier.len() == 0) break;
+
+        local currentId = open[bestIndex];
+        open.remove(bestIndex);
+        local current = nodes[currentId];
+        if (current.closed) continue;
+        current.closed = true;
+
+        if (!(currentId in _projection.runtime.tile_records))
+            throw "movement tree reached a tile outside canonical records";
+        local record = _projection.runtime.tile_records[currentId];
+
+        foreach (neighborId in record.neighbor_ids)
+        {
+            if (neighborId == null || !(neighborId in visibleTiles)) continue;
+            if (neighborId in blocked) continue;
+            if (!this._canonicalNeighbors(_projection, currentId, neighborId))
+                throw "movement tree encountered inconsistent canonical adjacency";
+
+            local nextTile = visibleTiles[neighborId];
+            local step = this._movementStepCosts(
+                active,
+                current.tile,
+                nextTile,
+                apCosts,
+                fatigueCosts
+            );
+            if (step == null) continue;
+
+            local remainingAP = apBudget - current.ap;
+            local currentFatigue = fatigueStart + current.fatigue;
+            if (remainingAP < step.ap
+                || currentFatigue + step.fatigue > fatigueMax)
+            {
+                continue;
+            }
+
+            local nextRemainingAP = ::Math.round(remainingAP - step.ap);
+            local nextFatigueValue = ::Math.round(currentFatigue + step.fatigue);
+            local nextAP = apBudget - nextRemainingAP;
+            local nextFatigue = nextFatigueValue - fatigueStart;
+            if (nextAP < 0 || nextFatigue < 0
+                || nextAP > apBudget || nextFatigue > fatigueBudget)
+            {
+                throw "owned actor movement rounding produced invalid cumulative costs";
+            }
+
+            local score = current.score
+                + step.ap
+                + step.fatigue * ::Const.Movement.FatigueCostFactor
+                + this._movementVisibleZocPenalty(_projection, active, nextTile);
+
+            local existing = neighborId in nodes ? nodes[neighborId] : null;
+            if (!this._movementTreeIsBetter(
+                score,
+                nextAP,
+                nextFatigue,
+                currentId,
+                existing
+            ))
+            {
+                continue;
+            }
+
+            nodes[neighborId] <- {
+                tile = nextTile,
+                score = score,
+                ap = nextAP,
+                fatigue = nextFatigue,
+                previous = currentId,
+                closed = false
+            };
+            open.push(neighborId);
+        }
     }
 
     if (oracle.Enabled)
+    {
+        local reachable = nodes.len() - 1;
         oracle._log(
-            "movement_candidate_bound min_ap=" + minCost
-            + " max_steps=" + maxSteps
-            + " candidates=" + candidateCount
+            "movement_tree reachable=" + reachable
+            + " native_find_path_calls=0"
         );
-    return candidates;
+    }
+    return {
+        origin_id = originId,
+        tiles = visibleTiles,
+        nodes = nodes
+    };
+};
+
+affordances._movementPathFromTree <- function(_tree, _destinationId, _projection)
+{
+    if (!(_destinationId in _tree.nodes))
+        throw "movement tree has no requested destination";
+    local reversed = [];
+    local cursor = _destinationId;
+    local guard = 0;
+
+    while (cursor != _tree.origin_id)
+    {
+        if (!(cursor in _tree.nodes))
+            throw "movement tree predecessor is missing";
+        local node = _tree.nodes[cursor];
+        reversed.push(node.tile);
+        cursor = node.previous;
+        ++guard;
+        if (cursor == null || guard > _tree.nodes.len())
+            throw "movement tree predecessor chain is invalid";
+    }
+
+    local path = [];
+    for (local i = reversed.len() - 1; i >= 0; i = --i)
+        path.push(reversed[i]);
+
+    local lastId = _tree.origin_id;
+    foreach (tile in path)
+    {
+        local tileId = legal.tileID(tile);
+        if (!this._canonicalNeighbors(_projection, lastId, tileId))
+            throw "movement tree path is not canonically adjacent";
+        lastId = tileId;
+    }
+    if (lastId != _destinationId)
+        throw "movement tree path does not terminate at destination";
+    return path;
 };
 
 // Replace movement enumeration only. Skill, wait/end-turn, equipment, identity,
@@ -208,72 +311,32 @@ affordances._moveActions = function(_raw, _projection)
     local ret = [];
     local active = _raw.ActiveActor;
     local actorId = _projection.runtime.active_actor_id;
-    local navigator = _raw.Navigator;
+    local tree = this._movementTree(_raw, _projection);
     local targetTiles = this._visibleTargetTiles(_projection);
-    local candidateIds = this._movementCandidateTileIds(active, _projection);
+
     foreach (destination in targetTiles)
     {
-        if (destination.ID == active.getTile().ID) continue;
         local destinationId = legal.tileID(destination);
-        if (!(destinationId in candidateIds)) continue;
+        if (destinationId == tree.origin_id) continue;
+        if (!(destinationId in tree.nodes)) continue;
 
-        navigator.clearPath();
-        navigator.clearVisualisation();
-        local settings = this._movementSettings(active, navigator);
-        local found = false;
-        local complete = false;
-        local costs = null;
-        local pathTiles = null;
-        try
-        {
-            found = navigator.findPath(active.getTile(), destination, settings, 0);
-            if (found)
-            {
-                settings.ZoneOfControlCost = 0;
-                costs = navigator.getCostForPath(
-                    active,
-                    settings,
-                    active.getActionPoints(),
-                    active.getFatigueMax() - active.getFatigue()
-                );
-                if (!("Tiles" in costs) || typeof costs.Tiles != "integer" || costs.Tiles < 0)
-                    throw "native movement preview returned an invalid movement sentinel";
-                if (!("IsComplete" in costs) || typeof costs.IsComplete != "bool")
-                    throw "native movement preview did not expose path completeness";
-                if (costs.Tiles != 0 && costs.IsComplete)
-                {
-                    pathTiles = this._nativeCostAnchorPath(
-                        active,
-                        costs,
-                        destination,
-                        _projection
-                    );
-                    complete = true;
-                }
-            }
-        }
-        catch (error)
-        {
-            navigator.clearPath();
-            navigator.clearVisualisation();
-            throw error;
-        }
-        navigator.clearPath();
-        navigator.clearVisualisation();
-        if (!found || costs == null || costs.Tiles == 0 || !complete) continue;
-
-        local apCost = this._movementCost(costs, "ActionPointsRequired", "ActionPoints");
-        local fatigueCost = this._movementCost(costs, "FatigueRequired", "Fatigue");
+        local node = tree.nodes[destinationId];
+        local pathTiles = this._movementPathFromTree(
+            tree,
+            destinationId,
+            _projection
+        );
 
         local action = this._baseAction(actorId, "MOVE_TO");
         action.destination_tile_id = destinationId;
-        foreach (tile in pathTiles) action.resolved_path.push(legal.tileID(tile));
+        foreach (tile in pathTiles)
+            action.resolved_path.push(legal.tileID(tile));
         action.contingent_reactions = this._aooReactions(
             _projection.state,
             active,
             pathTiles
         );
-        this._resolvedCosts(action, apCost, fatigueCost);
+        this._resolvedCosts(action, node.ap, node.fatigue);
         ret.push(action);
     }
     return ret;

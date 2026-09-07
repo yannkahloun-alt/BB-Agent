@@ -24,79 +24,81 @@ def test_load_order() -> None:
     )
 
 
-def test_single_native_cost_result_drives_path_reconstruction() -> None:
+def test_player_legal_movement_tree_replaces_per_destination_native_pathfinding() -> None:
     text = _text(COMPAT)
-    required = (
+    for token in (
         PINNED,
-        "navigator.findPath(",
-        "navigator.getCostForPath(",
-        'foreach (name in ["First", "SecondLastBeforeEnd", "LastBeforeEnd", "End"])',
-        "affordances._nativeCostAnchors <- function(_costs)",
-        "affordances._nativeCostAnchorPath <- function(",
-        "local anchors = this._nativeCostAnchors(_costs);",
-        "foreach (tile in anchors)",
-        "this._canonicalNeighbors(_projection, lastTileId, tileId)",
-        "path.push(tile);",
-        "path.len() != _costs.Tiles",
-        "native movement anchor count differs from native tile count",
-    )
-    for token in required:
+        "affordances._movementVisibleTileMap <- function",
+        "affordances._movementVisibleBlockedTiles <- function",
+        "affordances._movementStepCosts <- function(",
+        "affordances._movementTree <- function(_raw, _projection)",
+        "affordances._movementPathFromTree <- function(",
+        "record.neighbor_ids",
+        "active.getActionPointCosts()",
+        "active.getFatigueCosts()",
+        "active.getLevelActionPointCost()",
+        "active.getLevelFatigueCost()",
+        "active.getMaxTraversibleLevels()",
+        "FatigueEffectMult",
+        "::Const.Movement.LevelClimbingFatigueCost",
+        "::Const.Movement.FatigueCostFactor",
+        "movement_tree reachable=",
+        "native_find_path_calls=0",
+    ):
         assert token in text
 
-    assert "for (local apBudget" not in text
+    assert "navigator.findPath(" not in text
+    assert "navigator.getCostForPath(" not in text
     assert "_navigator.getCostForPath(" not in text
 
 
-def test_movement_candidates_are_bounded_before_native_path_search() -> None:
+def test_movement_tree_is_player_legal_and_affordability_bounded() -> None:
     text = _text(COMPAT)
     for token in (
-        "affordances._minimumTraversableMovementAPCost <- function(_active)",
-        "_active.getActionPointCosts()",
-        "for (local i = 1; i < costs.len(); i = ++i)",
-        'kind != "integer" && kind != "float"',
-        "affordances._movementCandidateTileIds <- function(_active, _projection)",
-        "maxSteps = ::Math.floor(ap / minCost)",
-        "record.neighbor_ids",
-        "candidates[neighborId] <- true",
-        "movement_candidate_bound min_ap=",
-        "local candidateIds = this._movementCandidateTileIds(active, _projection);",
-        "if (!(destinationId in candidateIds)) continue;",
+        "this._visibleTargetTiles(_projection)",
+        "_projection.runtime.tile_records",
+        "_projection.state.combatants",
+        'actor.position.representation != "EXACT"',
+        'actor.visible',
+        "properties.IsRooted || properties.IsStunned",
+        "remainingAP < step.ap",
+        "currentFatigue + step.fatigue > fatigueMax",
+        "::Math.round(remainingAP - step.ap)",
+        "::Math.round(currentFatigue + step.fatigue)",
+        "this._canonicalNeighbors(_projection, currentId, neighborId)",
+        "this._movementVisibleZocPenalty(_projection, active, nextTile)",
     ):
         assert token in text
 
-    candidate_filter = text.index("if (!(destinationId in candidateIds)) continue;")
-    native_find = text.index("found = navigator.findPath(")
-    assert candidate_filter < native_find
+    for forbidden in (
+        "omniscient_debug",
+        "DEBUG_GROUND_TRUTH",
+        "BBAGENT_DEBUG_ORACLE",
+        "getAllInstances",
+        "isHiddenToPlayer",
+    ):
+        assert forbidden not in text
 
 
-def test_anchor_gaps_and_count_mismatches_fail_closed() -> None:
+def test_movement_tree_rejects_unsupported_or_impossible_steps() -> None:
     text = _text(COMPAT)
     for token in (
-        "native movement path leaves the player-legal canonical map",
-        "native movement cost anchors left a canonical path gap",
-        "native movement anchor count differs from native tile count",
-        "reconstructed native movement path does not terminate at destination",
+        "::Const.Tactical.TerrainType.Impassable",
+        "visible movement tile has unsupported terrain cost index",
+        "::Math.abs(levelDifference) > _active.getMaxTraversibleLevels()",
+        "owned actor movement rule produced an invalid step cost",
+        "movement tree reached a tile outside canonical records",
+        "movement tree encountered inconsistent canonical adjacency",
+        "movement tree predecessor chain is invalid",
+        "movement tree path is not canonically adjacent",
+        "movement tree path does not terminate at destination",
     ):
         assert token in text
 
 
-def test_complete_paths_only() -> None:
+def test_read_only_movement_enumerator_never_executes_commands() -> None:
     text = _text(COMPAT)
-    for token in (
-        '"IsComplete" in costs',
-        "costs.Tiles != 0 && costs.IsComplete",
-        "!found || costs == null || costs.Tiles == 0 || !complete",
-        "legal.tileID(_costs.End) != destinationId",
-    ):
-        assert token in text
-
-
-def test_read_only_path_api() -> None:
-    text = _text(COMPAT)
-    for token in (
-        ".getPath(",
-        ".Path",
-        ".m.Path",
+    for forbidden in (
         ".travel(",
         "buildVisualisation(",
         "Math.rand(",
@@ -108,22 +110,19 @@ def test_read_only_path_api() -> None:
         ".use(",
         ".wait(",
         ".endTurn(",
-        "DEBUG_GROUND_TRUTH",
-        "omniscient_debug",
     ):
-        assert token not in text
+        assert forbidden not in text
 
 
-def test_move_override_preserves_costs_path_and_reactions() -> None:
+def test_move_override_preserves_paths_costs_and_reactions() -> None:
     text = _text(COMPAT)
     for token in (
         "affordances._moveActions = function(_raw, _projection)",
-        "settings.ZoneOfControlCost = 0;",
-        'this._movementCost(costs, "ActionPointsRequired", "ActionPoints")',
-        'this._movementCost(costs, "FatigueRequired", "Fatigue")',
+        "local tree = this._movementTree(_raw, _projection);",
+        "local pathTiles = this._movementPathFromTree(",
         "action.destination_tile_id = destinationId;",
         "action.resolved_path.push(legal.tileID(tile))",
         "this._aooReactions(",
-        "this._resolvedCosts(action, apCost, fatigueCost);",
+        "this._resolvedCosts(action, node.ap, node.fatigue);",
     ):
         assert token in text
