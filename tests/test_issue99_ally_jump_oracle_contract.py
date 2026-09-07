@@ -2,7 +2,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
-PROBE = ROOT / "companion_mod/scripts/bb_agent/runtime_debug_oracle_ally_jump_probe.nut"
+PROBE = (
+    ROOT / "companion_mod/scripts/bb_agent/runtime_debug_oracle_ally_jump_probe.nut"
+)
 GRAPH = ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
 
 
@@ -72,6 +74,8 @@ def test_probe_result_is_expected_sandbox_record_not_production_payload() -> Non
     assert '"debug_probe"' in text
     assert '"ally_jump"' in text
     assert "oracle.LastAllyJumpProbeRecord" in text
-    assert "this._emitRecord(this.State.raw, _job.section, _job.key, _job.target);" in text
+    assert (
+        "this._emitRecord(this.State.raw, _job.section, _job.key, _job.target);" in text
+    )
     assert "this._enqueue(" in text
     assert "resource_cost_resolved = false" in _text(GRAPH)
