@@ -112,9 +112,7 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
         if sample.get("native_matches_execution_fatigue") is True
     )
     path_fatigue_matches = sum(
-        1
-        for sample in samples
-        if sample.get("native_matches_path_fatigue") is True
+        1 for sample in samples if sample.get("native_matches_path_fatigue") is True
     )
     fatigue_semantics_neither = sum(
         1
