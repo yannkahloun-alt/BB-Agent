@@ -2,8 +2,9 @@ local sandbox = ::BBAGENT_CombatSandbox;
 
 // Oracle-first development captures omniscient script-readable fight state before
 // rebuilding the PLAYER_LEGAL projection. Keep actual data fields, but do not pay
-// one tactical update per executable/runtime-only method marker discovered while
-// iterating class-like containers such as Tile.Properties.
+// one tactical update per executable/runtime-only method marker or scalar field.
+// Scalars are packed into their parent record; nested/complex values remain
+// independently sharded and retain their reflection/transport bounds.
 sandbox._sandboxStateFieldKind <- function(_value)
 {
     local kind = typeof _value;
@@ -20,6 +21,16 @@ sandbox._sandboxStateFieldKind <- function(_value)
     return null;
 };
 
+sandbox._sandboxScalarValue <- function(_value)
+{
+    local kind = typeof _value;
+    if (kind == "null" || kind == "bool" || kind == "integer" || kind == "string")
+        return { is_scalar = true, value = _value };
+    if (kind == "float")
+        return { is_scalar = true, value = this._floatValue(_value) };
+    return { is_scalar = false, value = null };
+};
+
 sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
 {
     local kind = typeof _container;
@@ -28,14 +39,17 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
     local truncated = false;
     local iterationError = null;
     local omittedRuntimeFields = [];
+    local inlineScalarFields = [];
 
     if (kind == "array")
     {
         local limit = ::Math.min(_container.len(), this.MaxReflectEntries);
         for (local i = 0; i < limit; i = ++i)
         {
+            local ordinal = seen;
             ++seen;
-            local omittedKind = this._sandboxStateFieldKind(_container[i]);
+            local value = _container[i];
+            local omittedKind = this._sandboxStateFieldKind(value);
             if (omittedKind != null)
             {
                 omittedRuntimeFields.push({
@@ -45,12 +59,23 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
                 });
                 continue;
             }
+            local scalar = this._sandboxScalarValue(value);
+            if (scalar.is_scalar)
+            {
+                inlineScalarFields.push({
+                    field_key_kind = "integer",
+                    field_key_text = i.tostring(),
+                    ordinal = ordinal,
+                    value = scalar.value
+                });
+                continue;
+            }
             this._enqueueStateField(
                 _ownerSection,
                 _ownerKey,
                 i,
-                i,
-                _container[i]
+                ordinal,
+                value
             );
             ++count;
         }
@@ -69,14 +94,25 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
                 }
                 local ordinal = seen;
                 ++seen;
+                local meta = this._stateFieldKeyMeta(key);
                 local omittedKind = this._sandboxStateFieldKind(value);
                 if (omittedKind != null)
                 {
-                    local meta = this._stateFieldKeyMeta(key);
                     omittedRuntimeFields.push({
                         field_key_kind = meta.field_key_kind,
                         field_key_text = meta.field_key_text,
                         runtime_type = omittedKind
+                    });
+                    continue;
+                }
+                local scalar = this._sandboxScalarValue(value);
+                if (scalar.is_scalar)
+                {
+                    inlineScalarFields.push({
+                        field_key_kind = meta.field_key_kind,
+                        field_key_text = meta.field_key_text,
+                        ordinal = ordinal,
+                        value = scalar.value
                     });
                     continue;
                 }
@@ -97,6 +133,7 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
     }
     else if (kind != "null")
     {
+        seen = 1;
         local omittedKind = this._sandboxStateFieldKind(_container);
         if (omittedKind != null)
         {
@@ -108,16 +145,28 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
         }
         else
         {
-            this._enqueueStateField(
-                _ownerSection,
-                _ownerKey,
-                "value",
-                0,
-                _container
-            );
-            count = 1;
+            local scalar = this._sandboxScalarValue(_container);
+            if (scalar.is_scalar)
+            {
+                inlineScalarFields.push({
+                    field_key_kind = "string",
+                    field_key_text = "value",
+                    ordinal = 0,
+                    value = scalar.value
+                });
+            }
+            else
+            {
+                this._enqueueStateField(
+                    _ownerSection,
+                    _ownerKey,
+                    "value",
+                    0,
+                    _container
+                );
+                count = 1;
+            }
         }
-        seen = 1;
     }
 
     local parent = {
@@ -127,6 +176,8 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
         owner_key = _ownerKey,
         runtime_type = kind,
         field_count = count,
+        inline_scalar_field_count = inlineScalarFields.len(),
+        inline_scalar_fields = inlineScalarFields,
         inspected_field_count = seen,
         omitted_runtime_field_count = omittedRuntimeFields.len(),
         omitted_runtime_fields = omittedRuntimeFields,
@@ -153,5 +204,5 @@ sandbox.begin = function(_raw)
 
 ::logInfo(
     "[BB-Agent Combat Sandbox] oracle_first_loaded player_legal_deferred=true"
-    + " runtime_scaffolding_sharded=false"
+    + " runtime_scaffolding_sharded=false scalar_fields_inline=true"
 );
