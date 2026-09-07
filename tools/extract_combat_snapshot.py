@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -19,9 +20,36 @@ def main() -> int:
     )
     parser.add_argument("--log", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
+    parser.add_argument(
+        "--wait-seconds",
+        type=float,
+        default=0.0,
+        help="Poll until a complete manifest-backed snapshot exists.",
+    )
+    parser.add_argument(
+        "--poll-seconds",
+        type=float,
+        default=0.25,
+        help="Polling interval used with --wait-seconds.",
+    )
     args = parser.parse_args()
 
-    snapshot = extract_latest_combat_sandbox(args.log)
+    if args.wait_seconds < 0 or args.poll_seconds <= 0:
+        parser.error("wait/poll durations must be positive")
+
+    deadline = time.monotonic() + args.wait_seconds
+    last_error: ValueError | None = None
+    while True:
+        try:
+            snapshot = extract_latest_combat_sandbox(args.log)
+            break
+        except ValueError as exc:
+            last_error = exc
+            if time.monotonic() >= deadline:
+                print(f"Combat sandbox is not complete: {exc}", file=sys.stderr)
+                return 2
+            time.sleep(args.poll_seconds)
+
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(
         json.dumps(snapshot, allow_nan=False, indent=2, sort_keys=True) + "\n",
