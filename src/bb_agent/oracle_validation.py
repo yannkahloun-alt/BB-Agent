@@ -87,6 +87,9 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
     errors = [
         sample.get("error") for sample in samples if sample.get("error") is not None
     ]
+    legality_mismatches = sum(
+        1 for sample in samples if sample.get("legality_agreement") is False
+    )
     reachability_mismatches = sum(
         1 for sample in samples if sample.get("reachability_agreement") is False
     )
@@ -127,6 +130,7 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
         "roles": roles,
         "error_count": len(errors),
         "errors": errors,
+        "legality_mismatch_count": legality_mismatches,
         "reachability_mismatch_count": reachability_mismatches,
         "comparable_cost_sample_count": comparable_cost_samples,
         "cost_mismatch_count": cost_mismatches,
