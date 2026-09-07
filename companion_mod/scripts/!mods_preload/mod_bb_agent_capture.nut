@@ -24,7 +24,7 @@ mod.queue(function()
     ::include("scripts/bb_agent/runtime_debug_oracle_path_anchors");
     ::include("scripts/bb_agent/runtime_navigator_path_compat");
     ::include("scripts/bb_agent/runtime_movement_graph_compat");
-    ::include("scripts/bb_agent/runtime_debug_oracle_ally_jump_probe");
+    ::include("scripts/bb_agent/runtime_movement_sandbox");
     ::include("scripts/bb_agent/live_export");
     ::include("scripts/bb_agent/runtime_join_compat");
     ::include("scripts/bb_agent/runtime_sha256_compat");
