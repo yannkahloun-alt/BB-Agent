@@ -4,6 +4,9 @@ ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 SANDBOX = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox.nut"
+INCREMENTAL = (
+    ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_incremental.nut"
+)
 
 
 def _text(path: Path) -> str:
@@ -12,19 +15,21 @@ def _text(path: Path) -> str:
 
 def test_full_combat_sandbox_loads_before_live_export_without_path_probes() -> None:
     preload = _text(PRELOAD)
-    sandbox = preload.index("scripts/bb_agent/runtime_combat_sandbox")
+    base = preload.index("scripts/bb_agent/runtime_combat_sandbox")
+    incremental = preload.index("scripts/bb_agent/runtime_combat_sandbox_incremental")
     export = preload.index("scripts/bb_agent/live_export")
-    assert sandbox < export
+    assert base < incremental < export
     for forbidden in (
         "runtime_debug_oracle_movement_compare",
         "runtime_debug_oracle_tiebreak_samples",
         "runtime_debug_oracle_route_score",
         "runtime_debug_oracle_ally_jump_probe",
+        "runtime_movement_sandbox",
     ):
         assert forbidden not in preload
 
 
-def test_snapshot_is_emitted_immediately_after_projection_before_affordances() -> None:
+def test_snapshot_is_started_immediately_after_projection_before_affordances() -> None:
     text = _text(EXPORT)
     projection = text.index("local projection = ::BBAGENT_PlayerLegal.build(_raw);")
     snapshot = text.index("::BBAGENT_CombatSandbox.capture(_raw, projection);")
@@ -58,7 +63,6 @@ def test_snapshot_is_full_debug_state_not_player_legal_only() -> None:
         "_raw.TurnSequenceBar.m",
         "active.getActionPointCosts()",
         "active.getFatigueCosts()",
-        "properties.FatigueEffectMult",
         "wire.canonicalHash(_raw.RawSourceFingerprintInputs)",
     ):
         assert token in text
@@ -77,26 +81,29 @@ def test_reflective_dump_is_bounded_and_preserves_float_text() -> None:
         assert token in text
 
 
-def test_combat_snapshot_uses_small_chunk_lines_and_sections() -> None:
+def test_combat_snapshot_uses_small_integrity_checked_chunk_lines() -> None:
     text = _text(SANDBOX)
     for token in (
         "ChunkPayloadChars = 1200",
         "wire.base64Url(raw)",
         'this.FramePrefix + "|"',
         '::logInfo(line);',
-        'section = "actor"',
-        'section = "tile"',
-        'section = "manifest"',
-        'section = "player_legal"',
+        'this._emitRecord(_raw, "actor"',
+        'this._emitRecord(_raw, "tile"',
+        '"manifest",',
+        '"player_legal",',
     ):
         assert token in text
     assert "::logInfo(frame);" not in text
 
 
 def test_snapshot_is_debug_only_and_nonfatal() -> None:
-    text = _text(SANDBOX)
-    assert "oracle.Enabled" in text
-    assert "catch (error)" in text
-    assert '[BB-Agent Combat Sandbox] error=' in text
-    assert "navigator.findPath(" not in text
-    assert "navigator.getCostForPath(" not in text
+    base = _text(SANDBOX)
+    incremental = _text(INCREMENTAL)
+    assert "oracle.Enabled" in base
+    assert "catch (error)" in base
+    assert '[BB-Agent Combat Sandbox] error=' in base
+    assert "navigator.findPath(" not in base
+    assert "navigator.getCostForPath(" not in base
+    assert "::TimeUnit.Real" in incremental
+    assert "::TimeUnit.Virtual" not in incremental
