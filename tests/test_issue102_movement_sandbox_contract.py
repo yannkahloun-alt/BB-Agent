@@ -36,8 +36,8 @@ def test_snapshot_scope_is_omniscient_full_tactical_state() -> None:
         "_tile.IsEmpty",
         "_tile.getEntity()",
         "_actor.isHiddenToPlayer()",
-        "_actor.getCurrentProperties()",
-        "_actor.getBaseProperties()",
+        "_job.target.getCurrentProperties()",
+        "_job.target.getBaseProperties()",
         "actor.getSkills().m.Skills",
         "actor.getItems().getAllItems()",
         "_job.target.getAIAgent()",
@@ -64,7 +64,7 @@ def test_reflective_dump_is_bounded_and_preserves_runtime_types() -> None:
         '__bb_type = "float"',
         "_value.tostring()",
         "__bb_truncated = true",
-        'reason = "nested_instance"',
+        'this._omitted(kind, "nested_instance")',
         "marker.state <- this._reflect(_value.m, _depth + 1)",
     ):
         assert token in text
