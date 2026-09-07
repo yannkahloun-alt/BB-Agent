@@ -1,7 +1,7 @@
 param(
     [string]$Log = 'C:\Users\yannk\OneDrive\Documents\Battle Brothers\log.html',
     [string]$Out = 'C:\_dev\BB-Agent\combat-sandbox-latest.json',
-    [int]$WaitSeconds = 60
+    [int]$WaitSeconds = 300
 )
 
 $ErrorActionPreference = 'Stop'
