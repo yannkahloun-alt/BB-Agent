@@ -181,9 +181,7 @@ def _reachable_resources(
     if actor.rooted or actor.stunned:
         return frozenset({origin_id}), {origin_id: (actor.ap, actor.fatigue)}
 
-    labels: dict[str, list[tuple[int, int]]] = {
-        origin_id: [(actor.ap, actor.fatigue)]
-    }
+    labels: dict[str, list[tuple[int, int]]] = {origin_id: [(actor.ap, actor.fatigue)]}
     queue: list[tuple[str, int, int]] = [(origin_id, actor.ap, actor.fatigue)]
 
     while queue:
