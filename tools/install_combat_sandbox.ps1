@@ -70,6 +70,7 @@ if ($preload -notmatch 'runtime_debug_oracle_ally_jump_roster_probe') { throw 'R
 if ($preload -notmatch 'runtime_debug_oracle_movement_validation') { throw 'Staged native movement validation missing' }
 if ($preload -notmatch 'runtime_debug_oracle_movement_validation_fatigue') { throw 'Native movement fatigue-semantics validation missing' }
 if ($preload -notmatch 'runtime_debug_oracle_movement_validation_legality') { throw 'Native movement legality validation missing' }
+if ($preload -notmatch 'runtime_debug_oracle_movement_validation_geometry') { throw 'Native movement geometry validation missing' }
 foreach ($forbidden in @(
     'runtime_combat_sandbox_incremental',
     'runtime_movement_sandbox',
@@ -106,6 +107,7 @@ Write-Host '  hidden occupancy: never inspected by production blocker/movement g
 Write-Host '  ally-jump probe: one DEBUG_ORACLE native sample, roster-scanned when active has no candidate'
 Write-Host '  native movement validation: <=6 deterministic DEBUG samples, one native call per update'
 Write-Host '  native validation split: legality, resource reachability, preview cost, fatigue semantics'
+Write-Host '  native geometry summary: model/native tile-count plus first/end endpoint comparison'
 Write-Host '  native fatigue semantics: compare path-search fatigue and execution fatigue independently'
 Write-Host '  duplicate runtime collections: summarized as bounded actor/skill/item references'
 Write-Host '  unique large fields: second-level sharded with independent reflection budgets'
