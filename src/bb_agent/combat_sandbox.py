@@ -16,7 +16,9 @@ FRAME_PREFIX = "BBCOMBAT1"
 SCHEMA_VERSION = "bb-agent-combat-sandbox.v1"
 _TEXT_DIV_RE = re.compile(rb'<div class="text">(.*?)</div>', re.DOTALL)
 _CHUNK_RE = re.compile(
-    rb"BBCOMBAT1\|([0-9]+)\|([0-9]+)\|([^|]+)\|([^|]+)\|([0-9]+)\|([0-9]+)\|([0-9]+)\|([0-9a-f]{64})\|([A-Za-z0-9_-]+)$"
+    rb"BBCOMBAT1\|([0-9]+)\|([0-9]+)\|([^|]+)\|([^|]+)\|"
+    rb"([0-9]+)\|([0-9]+)\|([0-9]+)\|([0-9a-f]{64})\|"
+    rb"([A-Za-z0-9_-]+)$"
 )
 
 
@@ -56,15 +58,23 @@ def _manifest_expected_records(
     # Backward-compatible support for the initial one-record manifest format.
     direct = payload.get("expected_records")
     if direct is not None:
-        if not isinstance(direct, list) or not all(isinstance(v, str) for v in direct):
+        if not isinstance(direct, list) or not all(
+            isinstance(value, str) for value in direct
+        ):
             raise ValueError("combat sandbox manifest expected_records is invalid")
         return direct
 
     shard_ids = payload.get("expected_shards")
     expected_count = payload.get("expected_record_count")
-    if not isinstance(shard_ids, list) or not all(isinstance(v, str) for v in shard_ids):
+    if not isinstance(shard_ids, list) or not all(
+        isinstance(value, str) for value in shard_ids
+    ):
         raise ValueError("combat sandbox manifest expected_shards is invalid")
-    if not isinstance(expected_count, int) or isinstance(expected_count, bool) or expected_count < 0:
+    if (
+        not isinstance(expected_count, int)
+        or isinstance(expected_count, bool)
+        or expected_count < 0
+    ):
         raise ValueError("combat sandbox manifest expected_record_count is invalid")
 
     expected: list[str] = []
@@ -77,7 +87,7 @@ def _manifest_expected_records(
             shard_payload.get("records") if isinstance(shard_payload, dict) else None
         )
         if not isinstance(shard_records, list) or not all(
-            isinstance(v, str) for v in shard_records
+            isinstance(value, str) for value in shard_records
         ):
             raise ValueError(f"combat sandbox manifest shard is invalid: {shard_id}")
         expected.extend(shard_records)
@@ -119,7 +129,12 @@ def extract_latest_combat_sandbox(log_path: str | Path) -> dict[str, Any]:
             raise ValueError("combat sandbox chunk index/count is invalid")
         slot = grouped[(battle, generation)].setdefault(
             (section, key),
-            {"count": count, "length": expected_length, "digest": digest, "chunks": {}},
+            {
+                "count": count,
+                "length": expected_length,
+                "digest": digest,
+                "chunks": {},
+            },
         )
         if (
             slot["count"] != count
@@ -142,10 +157,14 @@ def extract_latest_combat_sandbox(log_path: str | Path) -> dict[str, Any]:
             for (section, key), slot in grouped[(battle, generation)].items():
                 chunks = slot["chunks"]
                 count = slot["count"]
-                if len(chunks) != count or any(i not in chunks for i in range(count)):
+                if len(chunks) != count or any(
+                    index not in chunks for index in range(count)
+                ):
                     raise ValueError("combat sandbox record has missing chunks")
                 record = _decode_record(
-                    [chunks[i] for i in range(count)], slot["length"], slot["digest"]
+                    [chunks[index] for index in range(count)],
+                    slot["length"],
+                    slot["digest"],
                 )
                 if record.get("section") != section or record.get("key") != key:
                     raise ValueError("combat sandbox section/key mismatch")
