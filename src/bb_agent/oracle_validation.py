@@ -103,6 +103,24 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
         and sample.get("native_complete") is True
         and sample.get("cost_agreement") is False
     )
+    execution_fatigue_matches = sum(
+        1
+        for sample in samples
+        if sample.get("native_matches_execution_fatigue") is True
+    )
+    path_fatigue_matches = sum(
+        1
+        for sample in samples
+        if sample.get("native_matches_path_fatigue") is True
+    )
+    fatigue_semantics_neither = sum(
+        1
+        for sample in samples
+        if sample.get("model_reachable") is True
+        and sample.get("native_complete") is True
+        and sample.get("native_matches_execution_fatigue") is False
+        and sample.get("native_matches_path_fatigue") is False
+    )
 
     return {
         "sample_count": len(samples),
@@ -112,4 +130,7 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
         "reachability_mismatch_count": reachability_mismatches,
         "comparable_cost_sample_count": comparable_cost_samples,
         "cost_mismatch_count": cost_mismatches,
+        "execution_fatigue_match_count": execution_fatigue_matches,
+        "path_fatigue_match_count": path_fatigue_matches,
+        "fatigue_semantics_neither_count": fatigue_semantics_neither,
     }
