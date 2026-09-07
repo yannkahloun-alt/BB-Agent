@@ -23,7 +23,7 @@ def test_ally_jump_cost_layer_loads_after_graph_before_blocking() -> None:
 def test_ally_jump_cost_is_sum_of_two_constituent_steps() -> None:
     text = JUMP.read_text(encoding="utf-8")
     for required in (
-        'transition.kind != "ALLY_JUMP"',
+        "transition.kind != \"ALLY_JUMP\"",
         "_movementStepCosts(",
         "ap = first.ap + second.ap",
         "path_fatigue = first.path_fatigue + second.path_fatigue",
@@ -44,10 +44,10 @@ def test_reference_field_layer_replaces_duplicate_skill_item_graphs() -> None:
 
     text = REFS.read_text(encoding="utf-8")
     for required in (
-        'actor_skills_container" && keyText == "Skills"',
-        '__bb_reference_collection = "actor_skill"',
-        'actor_items_container" && keyText == "Items"',
-        '__bb_reference_collection = "actor_item"',
+        "actor_skills_container\" && keyText == \"Skills\"",
+        "__bb_reference_collection = \"actor_skill\"",
+        "actor_items_container\" && keyText == \"Items\"",
+        "__bb_reference_collection = \"actor_item\"",
         "originalEnqueueStateField.acall",
     ):
         assert required in text
