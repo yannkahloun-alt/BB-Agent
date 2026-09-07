@@ -22,7 +22,11 @@ def test_discovery_override_loads_before_bounds_and_continuity() -> None:
 
 def test_begin_only_seeds_bounded_discovery_jobs() -> None:
     text = _text(DISCOVERY)
-    begin = text[text.index("sandbox.begin = function(_raw)") : text.index("sandbox._processDiscovery")]
+    begin = text[
+        text.index("sandbox.begin = function(_raw)") : text.index(
+            '::logInfo("[BB-Agent Combat Sandbox] discovery_loaded'
+        )
+    ]
 
     for token in (
         'this._enqueue("player_legal_build",',
@@ -53,9 +57,9 @@ def test_discovery_cursors_advance_one_element_at_a_time() -> None:
         'kind == "discover_actor_item"',
         'kind == "discover_tile"',
         "index + 1",
-        "actor_index + 1",
-        "skill_index + 1",
-        "item_index + 1",
+        "actorIndex + 1",
+        "skillIndex + 1",
+        "itemIndex + 1",
         "y + 1",
     ):
         assert token in text
