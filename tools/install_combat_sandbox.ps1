@@ -50,13 +50,14 @@ try {
     $zip.Dispose()
 }
 
-if ($preload -notmatch 'Version = "0\.2\.27"') { throw 'Wrong BB-Agent companion version' }
+if ($preload -notmatch 'Version = "0\.2\.28"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_combat_sandbox') { throw 'Full combat sandbox module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_discovery') { throw 'Combat sandbox discovery module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_fidelity') { throw 'Combat sandbox fidelity module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_oracle_first') { throw 'Oracle-first sandbox module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_bounds') { throw 'Combat sandbox bounds module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_continuity') { throw 'Combat sandbox continuity module missing' }
+if ($preload -notmatch 'runtime_combat_sandbox_recovery') { throw 'Combat sandbox recovery module missing' }
 foreach ($forbidden in @(
     'runtime_combat_sandbox_incremental',
     'runtime_movement_sandbox',
@@ -83,13 +84,14 @@ if ($installed.Count -ne 2) {
 
 Write-Host ''
 Write-Host 'FULL COMBAT SANDBOX INSTALLED'
-Write-Host '  companion: 0.2.27'
+Write-Host '  companion: 0.2.28'
 Write-Host '  capture mode: oracle-first staged discovery + capture'
 Write-Host '  player-legal projection: deferred during oracle capture'
 Write-Host '  runtime scaffolding: summarized, not emitted as per-field jobs'
 Write-Host '  fidelity: state data split into independently bounded field records'
+Write-Host '  recovery: direct floats normalized; oversized state fields retry at lower node budgets'
 Write-Host '  continuity: survives unchanged failed READY signatures'
-Write-Host '  reflection budget: 2048 nodes per field reflection'
+Write-Host '  reflection budget: 2048 nodes normally, adaptive 512/128 on oversized state fields'
 Write-Host '  logical record cap: 32768 decoded bytes'
 Write-Host '  extraction: manifest integrity + capture-error/truncation quality report'
 Write-Host '  omniscient DEBUG snapshot: enabled by separate overlay'
