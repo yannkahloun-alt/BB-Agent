@@ -89,7 +89,7 @@ def test_movement_mismatch_oracle_is_bounded_and_fail_closed() -> None:
     assert "oracle.reportMovementTopologyMismatch(" in compat
     report = compat.index("oracle.reportMovementTopologyMismatch(")
     failure = compat.index(
-        'throw "native movement prefix endpoint is not a canonical adjacent tile";'
+        'throw "native movement cost anchors left a canonical path gap";'
     )
     assert report < failure
 

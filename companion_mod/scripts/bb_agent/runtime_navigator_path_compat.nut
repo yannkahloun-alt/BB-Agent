@@ -3,10 +3,11 @@ local legal = ::BBAGENT_PlayerLegal;
 local oracle = ::BBAGENT_DebugOracle;
 
 // Pinned Battle Brothers scripts 162f498ac7c49b4c317bbf54718a595ecef6a65a
-// expose tactical paths through getCostForPath() summaries (Tiles/End/IsComplete),
-// not through a script getPath accessor. Real 1.5.2.3 traces show Tiles is useful
-// as the engine's zero/nonzero movement sentinel while ordered steps are exposed by
-// successive End changes as AP budget increases.
+// expose tactical paths through getCostForPath() summaries rather than a script
+// getPath accessor. Real 1.5.2.3 traces show First/SecondLastBeforeEnd/
+// LastBeforeEnd/End are native path anchors. Sweep the stored native path across
+// AP budgets, merge those ordered anchors, and validate every appended step against
+// the canonical player-legal topology. Tiles remains only a zero/nonzero sentinel.
 affordances._canonicalNeighbors <- function(_projection, _fromId, _toId)
 {
     if (!(_fromId in _projection.runtime.tile_records)) return false;
@@ -46,6 +47,28 @@ affordances._traceOracleCostAnchors <- function(_label, _costs)
     );
 };
 
+affordances._nativeCostAnchors <- function(_costs)
+{
+    local ret = [];
+    foreach (name in ["First", "SecondLastBeforeEnd", "LastBeforeEnd", "End"])
+    {
+        if (!(name in _costs) || _costs[name] == null) continue;
+        local tile = _costs[name];
+        local tileId = legal.tileID(tile);
+        local duplicate = false;
+        foreach (existing in ret)
+        {
+            if (legal.tileID(existing) == tileId)
+            {
+                duplicate = true;
+                break;
+            }
+        }
+        if (!duplicate) ret.push(tile);
+    }
+    return ret;
+};
+
 affordances._nativeCostPrefixPath <- function(
     _navigator,
     _active,
@@ -74,15 +97,14 @@ affordances._nativeCostPrefixPath <- function(
 
     local fatigueAvailable = _active.getFatigueMax() - _active.getFatigue();
     local path = [];
-    local lastTile = _active.getTile();
-    local lastTileId = legal.tileID(lastTile);
+    local originTile = _active.getTile();
+    local originId = legal.tileID(originTile);
+    local lastTile = originTile;
+    local lastTileId = originId;
+    local destinationId = legal.tileID(_destination);
     local seen = {};
-    seen[lastTileId] <- true;
+    seen[originId] <- true;
 
-    // Sweep the already-stored native path without executing travel. When the
-    // affordable prefix End changes, that endpoint is the next native path step.
-    // Validate adjacency against the canonical player-legal topology rather than
-    // getDistanceTo(), whose square-coordinate distance is not path adjacency.
     for (local apBudget = 0; apBudget <= apRequired; apBudget = ++apBudget)
     {
         local prefix = _navigator.getCostForPath(
@@ -97,36 +119,45 @@ affordances._nativeCostPrefixPath <- function(
         if (!("End" in prefix) || prefix.End == null)
             throw "native movement prefix advanced without an endpoint";
 
-        local tileId = legal.tileID(prefix.End);
-        if (tileId == lastTileId) continue;
-        if (tileId in seen)
-            throw "native movement prefix revisited an earlier path tile";
-        if (!this._canonicalNeighbors(_projection, lastTileId, tileId))
+        local anchors = this._nativeCostAnchors(prefix);
+        if (anchors.len() == 0)
+            throw "native movement prefix exposed no path anchors";
+
+        foreach (tile in anchors)
         {
-            this._traceOracleCostAnchors("full", _costs);
-            this._traceOracleCostAnchors("prefix_" + apBudget, prefix);
-            oracle.reportMovementTopologyMismatch(
-                _navigator,
-                _active,
-                _settings,
-                _costs,
-                _destination,
-                _projection,
-                lastTile,
-                prefix.End
-            );
-            throw "native movement prefix endpoint is not a canonical adjacent tile";
+            local tileId = legal.tileID(tile);
+            if (tileId == originId || tileId in seen) continue;
+            if (!(tileId in _projection.runtime.tile_records))
+                throw "native movement path leaves the player-legal canonical map";
+            if (!this._canonicalNeighbors(_projection, lastTileId, tileId))
+            {
+                this._traceOracleCostAnchors("full", _costs);
+                this._traceOracleCostAnchors("prefix_" + apBudget, prefix);
+                oracle.reportMovementTopologyMismatch(
+                    _navigator,
+                    _active,
+                    _settings,
+                    _costs,
+                    _destination,
+                    _projection,
+                    lastTile,
+                    tile
+                );
+                throw "native movement cost anchors left a canonical path gap";
+            }
+
+            path.push(tile);
+            seen[tileId] <- true;
+            lastTile = tile;
+            lastTileId = tileId;
         }
 
-        path.push(prefix.End);
-        seen[tileId] <- true;
-        lastTile = prefix.End;
-        lastTileId = tileId;
+        if (lastTileId == destinationId) break;
     }
 
     if (path.len() == 0)
         throw "native movement prefixes produced no ordered path steps";
-    if (lastTileId != legal.tileID(_destination))
+    if (lastTileId != destinationId)
         throw "reconstructed native movement path does not terminate at destination";
     return path;
 };

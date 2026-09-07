@@ -24,7 +24,7 @@ def test_load_order() -> None:
     )
 
 
-def test_native_prefix_oracle() -> None:
+def test_native_prefix_anchors_drive_path_reconstruction() -> None:
     text = _text(COMPAT)
     required = (
         PINNED,
@@ -33,12 +33,16 @@ def test_native_prefix_oracle() -> None:
         '"IsComplete" in _costs',
         '"End" in _costs',
         '"Tiles" in _costs',
+        'foreach (name in ["First", "SecondLastBeforeEnd", "LastBeforeEnd", "End"])',
+        "affordances._nativeCostAnchors <- function(_costs)",
         "for (local apBudget = 0; apBudget <= apRequired;",
         "if (prefix.Tiles == 0) continue;",
-        "if (tileId == lastTileId) continue;",
+        "local anchors = this._nativeCostAnchors(prefix);",
+        "foreach (tile in anchors)",
+        "if (tileId == originId || tileId in seen) continue;",
         "this._canonicalNeighbors(_projection, lastTileId, tileId)",
-        "oracle.reportMovementTopologyMismatch(",
-        "path.push(prefix.End);",
+        "path.push(tile);",
+        "if (lastTileId == destinationId) break;",
     )
     for token in required:
         assert token in text
@@ -52,11 +56,26 @@ def test_tiles_are_only_zero_nonzero_sentinel() -> None:
         "prefixSteps",
         "targetSteps",
         "observedSteps",
+        "path.len() == _costs.Tiles",
+        "path.len() != _costs.Tiles",
     )
     for token in forbidden:
         assert token not in text
     assert "costs.Tiles != 0 && costs.IsComplete" in text
     assert "costs.Tiles == 0" in text
+
+
+def test_anchor_gaps_fail_closed() -> None:
+    text = _text(COMPAT)
+    required = (
+        "native movement prefix exposed no path anchors",
+        "native movement path leaves the player-legal canonical map",
+        "native movement cost anchors left a canonical path gap",
+        "oracle.reportMovementTopologyMismatch(",
+        "lastTileId != destinationId",
+    )
+    for token in required:
+        assert token in text
 
 
 def test_complete_paths_only() -> None:
@@ -67,8 +86,7 @@ def test_complete_paths_only() -> None:
         "!found || costs == null || costs.Tiles == 0 || !complete",
         "legal.tileID(_costs.End) != legal.tileID(_destination)",
         "path.len() == 0",
-        "lastTileId != legal.tileID(_destination)",
-        "native movement prefix endpoint is not a canonical adjacent tile",
+        "reconstructed native movement path does not terminate at destination",
     )
     for token in required:
         assert token in text
