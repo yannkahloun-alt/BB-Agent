@@ -114,6 +114,8 @@ local identity = ::BBAGENT_CanonicalIdentity;
     {
         this.LastExportStage = "player_legal_projection";
         local projection = ::BBAGENT_PlayerLegal.build(_raw);
+        this.LastExportStage = "movement_sandbox_snapshot";
+        ::BBAGENT_MovementSandbox.capture(_raw, projection);
         this.LastExportStage = "affordance_acquisition";
         local actions = ::BBAGENT_Affordances.acquire(_raw, projection);
         this.LastExportStage = "state_finalization";
