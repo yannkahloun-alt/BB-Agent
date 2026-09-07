@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -13,6 +15,22 @@ if str(SRC) not in sys.path:
 
 from bb_agent.combat_sandbox import extract_latest_combat_sandbox
 
+_TEXT_RE = re.compile(r'<div class="text">(.*?)</div>', re.DOTALL)
+_TAG_RE = re.compile(r"<.*?>")
+
+
+def _sandbox_diagnostics(path: Path) -> list[str]:
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    result: list[str] = []
+    for match in _TEXT_RE.finditer(raw):
+        text = html.unescape(_TAG_RE.sub("", match.group(1))).strip()
+        if "[BB-Agent Combat Sandbox]" in text:
+            result.append(text)
+    return result[-20:]
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
@@ -23,7 +41,7 @@ def main() -> int:
     parser.add_argument(
         "--wait-seconds",
         type=float,
-        default=0.0,
+        default=300.0,
         help="Poll until a complete manifest-backed snapshot exists.",
     )
     parser.add_argument(
@@ -38,15 +56,20 @@ def main() -> int:
         parser.error("wait/poll durations must be positive")
 
     deadline = time.monotonic() + args.wait_seconds
-    last_error: ValueError | None = None
     while True:
         try:
             snapshot = extract_latest_combat_sandbox(args.log)
             break
         except ValueError as exc:
-            last_error = exc
             if time.monotonic() >= deadline:
                 print(f"Combat sandbox is not complete: {exc}", file=sys.stderr)
+                diagnostics = _sandbox_diagnostics(args.log)
+                if diagnostics:
+                    print("Latest sandbox diagnostics:", file=sys.stderr)
+                    for line in diagnostics:
+                        print(f"  {line}", file=sys.stderr)
+                else:
+                    print("No combat sandbox diagnostics found in log.", file=sys.stderr)
                 return 2
             time.sleep(args.poll_seconds)
 
