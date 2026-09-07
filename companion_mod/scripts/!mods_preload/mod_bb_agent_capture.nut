@@ -31,6 +31,7 @@ mod.queue(function()
     ::include("scripts/bb_agent/runtime_combat_sandbox");
     ::include("scripts/bb_agent/runtime_combat_sandbox_discovery");
     ::include("scripts/bb_agent/runtime_combat_sandbox_fidelity");
+    ::include("scripts/bb_agent/runtime_combat_sandbox_reference_fields");
     ::include("scripts/bb_agent/runtime_combat_sandbox_oracle_first");
     ::include("scripts/bb_agent/runtime_combat_sandbox_bounds");
     ::include("scripts/bb_agent/runtime_combat_sandbox_continuity");
