@@ -23,7 +23,8 @@ def test_tail_status_reports_latest_progress_and_completion(tmp_path: Path) -> N
         _log(
             "noise",
             "[BB-Agent Combat Sandbox] staged battle=1 generation=0 initial_jobs=20",
-            "[BB-Agent Combat Sandbox] progress battle=1 generation=0 cursor=64 jobs=900",
+            "[BB-Agent Combat Sandbox] progress battle=1 generation=0 "
+            "cursor=64 jobs=900",
         ),
         encoding="utf-8",
     )
