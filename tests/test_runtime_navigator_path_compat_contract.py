@@ -16,16 +16,17 @@ def test_load_order() -> None:
     oracle = "scripts/bb_agent/debug_oracle"
     compat = "scripts/bb_agent/runtime_navigator_path_compat"
     graph = "scripts/bb_agent/runtime_movement_graph_compat"
-    probe = "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe"
+    sandbox = "scripts/bb_agent/runtime_combat_sandbox"
     export = "scripts/bb_agent/live_export"
     assert (
         preload.index(hardening)
         < preload.index(oracle)
         < preload.index(compat)
         < preload.index(graph)
-        < preload.index(probe)
+        < preload.index(sandbox)
         < preload.index(export)
     )
+    assert "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe" not in preload
 
 
 def test_source_aligned_tree_selects_path_before_affordability() -> None:
