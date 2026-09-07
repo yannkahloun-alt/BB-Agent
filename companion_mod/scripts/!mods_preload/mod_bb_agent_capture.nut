@@ -43,6 +43,7 @@ mod.queue(function()
     ::include("scripts/bb_agent/runtime_debug_oracle_movement_validation_fatigue");
     ::include("scripts/bb_agent/runtime_debug_oracle_movement_validation_legality");
     ::include("scripts/bb_agent/runtime_debug_oracle_movement_validation_geometry");
+    ::include("scripts/bb_agent/runtime_debug_oracle_movement_validation_remembered");
     ::include("scripts/bb_agent/live_export");
     ::include("scripts/bb_agent/runtime_join_compat");
     ::include("scripts/bb_agent/runtime_sha256_compat");
