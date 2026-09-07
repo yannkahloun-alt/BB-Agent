@@ -1,6 +1,9 @@
 import pytest
 
-from bb_agent.oracle_validation import summarize_ally_jump_probe
+from bb_agent.oracle_validation import (
+    summarize_ally_jump_probe,
+    summarize_movement_validation,
+)
 
 
 def _snapshot(payload: dict[str, object]) -> dict[str, object]:
@@ -51,3 +54,64 @@ def test_ally_jump_probe_preserves_no_candidate_without_inventing_comparison() -
 def test_ally_jump_probe_rejects_missing_record() -> None:
     with pytest.raises(ValueError, match="record is missing"):
         summarize_ally_jump_probe({"records": {}})
+
+
+def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
+    snapshot = {
+        "records": {
+            "debug_movement_validation:0": {
+                "payload": {
+                    "role": "nearest_reachable",
+                    "model_reachable": True,
+                    "native_complete": True,
+                    "reachability_agreement": True,
+                    "cost_agreement": True,
+                }
+            },
+            "debug_movement_validation:1": {
+                "payload": {
+                    "role": "zoc_exit",
+                    "model_reachable": True,
+                    "native_complete": True,
+                    "reachability_agreement": True,
+                    "cost_agreement": False,
+                }
+            },
+            "debug_movement_validation:2": {
+                "payload": {
+                    "role": "model_unreachable_visible",
+                    "model_reachable": False,
+                    "native_complete": True,
+                    "reachability_agreement": False,
+                    "cost_agreement": False,
+                }
+            },
+        }
+    }
+
+    summary = summarize_movement_validation(snapshot)
+    assert summary["sample_count"] == 3
+    assert summary["roles"] == [
+        "nearest_reachable",
+        "zoc_exit",
+        "model_unreachable_visible",
+    ]
+    assert summary["reachability_mismatch_count"] == 1
+    assert summary["comparable_cost_sample_count"] == 2
+    assert summary["cost_mismatch_count"] == 1
+    assert summary["error_count"] == 0
+
+
+def test_movement_validation_reports_sample_errors() -> None:
+    summary = summarize_movement_validation(
+        {
+            "records": {
+                "debug_movement_validation:plan_error": {
+                    "payload": {"role": "plan_error", "error": "boom"}
+                }
+            }
+        }
+    )
+    assert summary["sample_count"] == 1
+    assert summary["error_count"] == 1
+    assert summary["errors"] == ["boom"]
