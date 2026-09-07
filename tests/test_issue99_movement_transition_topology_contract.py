@@ -10,20 +10,24 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_issue98_graph_layer_replaces_smoke_path_selection_overrides() -> None:
+def test_issue98_graph_layer_runs_before_full_sandbox_without_smoke_overrides() -> None:
     preload = _text(PRELOAD)
     base = "scripts/bb_agent/runtime_navigator_path_compat"
     graph = "scripts/bb_agent/runtime_movement_graph_compat"
-    probe = "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe"
+    sandbox = "scripts/bb_agent/runtime_combat_sandbox"
     export = "scripts/bb_agent/live_export"
 
     assert graph in preload
-    assert preload.index(base) < preload.index(graph) < preload.index(probe)
-    assert preload.index(probe) < preload.index(export)
-    assert "runtime_navigator_tiebreak_compat" not in preload
-    assert "runtime_debug_oracle_tiebreak_samples" not in preload
-    assert "runtime_debug_oracle_route_score" not in preload
-    assert "runtime_debug_oracle_movement_compare" not in preload
+    assert preload.index(base) < preload.index(graph) < preload.index(sandbox)
+    assert preload.index(sandbox) < preload.index(export)
+    for forbidden in (
+        "runtime_navigator_tiebreak_compat",
+        "runtime_debug_oracle_tiebreak_samples",
+        "runtime_debug_oracle_route_score",
+        "runtime_debug_oracle_movement_compare",
+        "runtime_debug_oracle_ally_jump_probe",
+    ):
+        assert forbidden not in preload
 
 
 def test_visible_actor_occupancy_is_relation_aware_and_projection_only() -> None:
@@ -35,7 +39,7 @@ def test_visible_actor_occupancy_is_relation_aware_and_projection_only() -> None
         'actor.relation == "HOSTILE"',
         'actor.relation == "ALLY"',
         'actor.relation == "PLAYER"',
-        'ret[actor.position.value] <- kind;',
+        "ret[actor.position.value] <- kind;",
     ):
         assert token in text
 
