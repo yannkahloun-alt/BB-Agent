@@ -3,7 +3,8 @@ local sandbox = ::BBAGENT_CombatSandbox;
 // Large container fields can duplicate information already emitted as dedicated
 // actor / actor_skill / actor_item / turn records. Preserve field existence,
 // cardinality and actor identities while replacing recursive runtime-object
-// expansion with bounded reference summaries.
+// expansion with bounded reference summaries. UI scaffolding is summarized
+// explicitly rather than recursively expanded into unrelated object graphs.
 local originalEnqueueStateField = sandbox._enqueueStateField;
 
 sandbox._runtimeActorReferences <- function(_value)
@@ -57,6 +58,19 @@ sandbox._runtimeActorReferences <- function(_value)
         truncated = _value.len() > limit,
         references = references
     };
+};
+
+sandbox._runtimeScaffoldingSummary <- function(_role, _value)
+{
+    local summary = {
+        __bb_runtime_scaffolding = true,
+        role = _role,
+        runtime_type = typeof _value,
+        recursively_expanded = false
+    };
+    try { summary.class_name <- _value.ClassName; } catch (_error) {}
+    try { summary.instance_name <- _value.InstanceName; } catch (_error) {}
+    return summary;
 };
 
 sandbox._enqueueStateField = function(
@@ -136,6 +150,36 @@ sandbox._enqueueStateField = function(
             _fieldKey,
             _ordinal,
             summary
+        ]);
+    }
+
+    if (_ownerSection == "tactical_state" && keyText == "Factions")
+    {
+        local summary = this._runtimeScaffoldingSummary(
+            "entity_manager_alias",
+            _value
+        );
+        summary.__bb_reference_collection <- "entity_manager";
+        return originalEnqueueStateField.acall([
+            this,
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            summary
+        ]);
+    }
+
+    if (_ownerSection == "tactical_state"
+        && (keyText == "TacticalScreen" || keyText == "MenuStack"))
+    {
+        return originalEnqueueStateField.acall([
+            this,
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            this._runtimeScaffoldingSummary(keyText, _value)
         ]);
     }
 
