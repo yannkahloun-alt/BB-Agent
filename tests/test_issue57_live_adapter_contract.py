@@ -18,9 +18,6 @@ AFFORDANCE_HARDENING = (
 )
 MOVEMENT_GRAPH = ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
 COMBAT_SANDBOX = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox.nut"
-COMBAT_SANDBOX_INCREMENTAL = (
-    ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_incremental.nut"
-)
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 HOOK = ROOT / "companion_mod/scripts/bb_agent/hooks/tactical_state.nut"
 
@@ -44,13 +41,13 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
         "runtime_navigator_path_compat",
         "runtime_movement_graph_compat",
         "runtime_combat_sandbox",
-        "runtime_combat_sandbox_incremental",
         "live_export",
         "hooks/tactical_state",
     )
     offsets = [source.index(f"scripts/bb_agent/{module}") for module in modules]
     assert offsets == sorted(offsets)
     for forbidden in (
+        "runtime_combat_sandbox_incremental",
         "runtime_debug_oracle_movement_compare",
         "runtime_navigator_tiebreak_compat",
         "runtime_debug_oracle_ally_jump_probe",
@@ -154,8 +151,6 @@ def test_affordance_acquisition_keeps_native_probe_out_of_production_graph() -> 
     ):
         assert required in source
 
-    # The historical/base affordance module can still contain native path helpers,
-    # but the loaded #98 production graph itself must not depend on them.
     assert "navigator.findPath(" not in graph
     assert "navigator.getCostForPath(" not in graph
 
@@ -187,16 +182,19 @@ def test_affordance_acquisition_keeps_native_probe_out_of_production_graph() -> 
 
 
 def test_full_combat_sandbox_is_diagnostic_only_and_nonblocking() -> None:
-    base = _text(COMBAT_SANDBOX)
-    incremental = _text(COMBAT_SANDBOX_INCREMENTAL)
+    sandbox = _text(COMBAT_SANDBOX)
     export = _text(EXPORT)
+    hook = _text(HOOK)
 
-    assert 'FramePrefix = "BBCOMBAT1"' in base
-    assert 'information_scope = "omniscient_debug"' in base
-    assert "BatchRecordsPerTick <- 1;" in incremental
-    assert "::TimeUnit.Real" in incremental
-    assert "::TimeUnit.Virtual" not in incremental
-    assert "record.information_profile <- \"player_legal\"" in export
+    assert 'FramePrefix = "BBCOMBAT1"' in sandbox
+    assert 'information_scope = "omniscient_debug"' in sandbox
+    assert "RecordsPerPump = 1" in sandbox
+    assert "function begin(_raw)" in sandbox
+    assert "function pump()" in sandbox
+    assert "BBAGENT_CombatSandbox.capture" not in export
+    assert "::BBAGENT_CombatSandbox.begin(raw);" in hook
+    assert "::BBAGENT_CombatSandbox.pump();" in hook
+    assert 'record.information_profile <- "player_legal"' in export
 
 
 def test_live_export_is_transactional_strict_and_player_legal_only() -> None:
