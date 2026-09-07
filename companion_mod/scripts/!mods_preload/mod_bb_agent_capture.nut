@@ -1,6 +1,6 @@
 local def = ::BBAGENT_Mod <- {
     ID = "mod_bb_agent_capture",
-    Version = "0.2.27",
+    Version = "0.2.28",
     Name = "BB-Agent Capture"
 };
 
@@ -30,6 +30,7 @@ mod.queue(function()
     ::include("scripts/bb_agent/runtime_combat_sandbox_oracle_first");
     ::include("scripts/bb_agent/runtime_combat_sandbox_bounds");
     ::include("scripts/bb_agent/runtime_combat_sandbox_continuity");
+    ::include("scripts/bb_agent/runtime_combat_sandbox_recovery");
     ::include("scripts/bb_agent/live_export");
     ::include("scripts/bb_agent/runtime_join_compat");
     ::include("scripts/bb_agent/runtime_sha256_compat");
