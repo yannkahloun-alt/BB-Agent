@@ -20,7 +20,9 @@ oracle._allyJumpProbeNumber <- function(_value)
 oracle.probeAllyJump <- function(_raw, _projection, _tree)
 {
     if (!this.Enabled) return;
-    local key = _raw.BattleSequence + ":" + _raw.SourceGeneration;
+    local key = _raw.BattleSequence.tostring()
+        + ":"
+        + _raw.SourceGeneration.tostring();
     if (this.LastAllyJumpProbeKey == key) return;
     this.LastAllyJumpProbeKey = key;
 
@@ -105,7 +107,7 @@ oracle.probeAllyJump <- function(_raw, _projection, _tree)
     {
         navigator.clearPath();
         navigator.clearVisualisation();
-        this._log("ally_jump_probe error=" + error);
+        this._log("ally_jump_probe error=" + error.tostring());
         return;
     }
     navigator.clearPath();
