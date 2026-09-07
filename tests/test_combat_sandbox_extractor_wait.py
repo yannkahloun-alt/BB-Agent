@@ -5,7 +5,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools/extract_combat_snapshot.py"
-SPEC = importlib.util.spec_from_file_location("extract_combat_snapshot_tool", MODULE_PATH)
+SPEC = importlib.util.spec_from_file_location(
+    "extract_combat_snapshot_tool", MODULE_PATH
+)
 assert SPEC is not None and SPEC.loader is not None
 TOOL = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(TOOL)
@@ -35,7 +37,8 @@ def test_tail_status_reports_latest_progress_and_completion(tmp_path: Path) -> N
         path.read_text(encoding="utf-8")
         + "\n"
         + _log(
-            "[BB-Agent Combat Sandbox] complete battle=1 generation=0 actors=20 tiles=400"
+            "[BB-Agent Combat Sandbox] complete battle=1 generation=0 "
+            "actors=20 tiles=400"
         ),
         encoding="utf-8",
     )
@@ -50,7 +53,8 @@ def test_tail_status_reports_terminal_cancellation(tmp_path: Path) -> None:
     path.write_text(
         _log(
             "[BB-Agent Combat Sandbox] staged battle=1 generation=0 initial_jobs=20",
-            "[BB-Agent Combat Sandbox] cancelled battle=1 generation=0 cursor=8 jobs=20 reason=generation_changed",
+            "[BB-Agent Combat Sandbox] cancelled battle=1 generation=0 cursor=8 "
+            "jobs=20 reason=generation_changed",
         ),
         encoding="utf-8",
     )
@@ -66,7 +70,10 @@ def test_waiter_uses_tail_status_without_full_snapshot_decode(
 ) -> None:
     path = tmp_path / "log.html"
     path.write_text(
-        _log("[BB-Agent Combat Sandbox] complete battle=1 generation=0 actors=1 tiles=1"),
+        _log(
+            "[BB-Agent Combat Sandbox] complete battle=1 generation=0 "
+            "actors=1 tiles=1"
+        ),
         encoding="utf-8",
     )
 
