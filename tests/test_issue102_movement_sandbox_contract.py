@@ -2,42 +2,28 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
-EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 SANDBOX = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox.nut"
-INCREMENTAL = (
-    ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_incremental.nut"
-)
 
 
 def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_full_combat_sandbox_loads_before_live_export_without_path_probes() -> None:
+def test_full_combat_sandbox_loads_without_old_path_or_scheduler_overrides() -> None:
     preload = _text(PRELOAD)
-    base = preload.index("scripts/bb_agent/runtime_combat_sandbox")
-    incremental = preload.index("scripts/bb_agent/runtime_combat_sandbox_incremental")
-    export = preload.index("scripts/bb_agent/live_export")
-    assert base < incremental < export
+    assert "scripts/bb_agent/runtime_combat_sandbox" in preload
     for forbidden in (
+        "runtime_combat_sandbox_incremental",
+        "runtime_movement_sandbox",
         "runtime_debug_oracle_movement_compare",
         "runtime_debug_oracle_tiebreak_samples",
         "runtime_debug_oracle_route_score",
         "runtime_debug_oracle_ally_jump_probe",
-        "runtime_movement_sandbox",
     ):
         assert forbidden not in preload
 
 
-def test_snapshot_is_started_immediately_after_projection_before_affordances() -> None:
-    text = _text(EXPORT)
-    projection = text.index("local projection = ::BBAGENT_PlayerLegal.build(_raw);")
-    snapshot = text.index("::BBAGENT_CombatSandbox.capture(_raw, projection);")
-    acquire = text.index("local actions = ::BBAGENT_Affordances.acquire(_raw, projection);")
-    assert projection < snapshot < acquire
-
-
-def test_snapshot_is_full_debug_state_not_player_legal_only() -> None:
+def test_snapshot_scope_is_omniscient_full_tactical_state() -> None:
     text = _text(SANDBOX)
     for token in (
         'FramePrefix = "BBCOMBAT1"',
@@ -45,65 +31,63 @@ def test_snapshot_is_full_debug_state_not_player_legal_only() -> None:
         "_raw.EntityManager.getAllInstances()",
         "::Tactical.getMapSize()",
         "::Tactical.getTileSquare(x, y)",
-        "tile.IsVisibleForPlayer",
-        "tile.IsDiscovered",
-        "tile.IsEmpty",
-        "tile.getEntity()",
-        "actor.isHiddenToPlayer()",
-        "actor.getCurrentProperties()",
-        "actor.getBaseProperties()",
+        "_tile.IsVisibleForPlayer",
+        "_tile.IsDiscovered",
+        "_tile.IsEmpty",
+        "_tile.getEntity()",
+        "_actor.isHiddenToPlayer()",
+        "_actor.getCurrentProperties()",
+        "_actor.getBaseProperties()",
         "actor.getSkills().m.Skills",
         "actor.getItems().getAllItems()",
-        "actor.getAIAgent()",
-        "_projection.state",
+        "_job.target.getAIAgent()",
         "capture.getObservationMemory()",
         "_raw.RawSourceFingerprintInputs",
-        "_raw.ValidationContext",
-        "_raw.TacticalState.m",
-        "_raw.TurnSequenceBar.m",
-        "active.getActionPointCosts()",
-        "active.getFatigueCosts()",
+        "raw.TacticalState.m",
+        "raw.TurnSequenceBar.m",
+        "raw.EntityManager.m",
+        "this._reflect(::Tactical)",
+        "this._reflect(raw.Navigator)",
+        "_active.getActionPointCosts()",
+        "_active.getFatigueCosts()",
+        "properties.FatigueEffectMult",
         "wire.canonicalHash(_raw.RawSourceFingerprintInputs)",
     ):
         assert token in text
 
 
-def test_reflective_dump_is_bounded_and_preserves_float_text() -> None:
+def test_reflective_dump_is_bounded_and_preserves_runtime_types() -> None:
     text = _text(SANDBOX)
     for token in (
         "MaxReflectDepth = 6",
         "MaxReflectEntries = 512",
-        '"__bb_type"',
-        '"float"',
+        '__bb_type = "float"',
         "_value.tostring()",
-        '"__bb_truncated"',
+        "__bb_truncated = true",
+        'reason = "nested_instance"',
+        "marker.state <- this._reflect(_value.m, _depth + 1)",
     ):
         assert token in text
 
 
-def test_combat_snapshot_uses_small_integrity_checked_chunk_lines() -> None:
+def test_each_record_uses_small_integrity_checked_log_chunks() -> None:
     text = _text(SANDBOX)
     for token in (
         "ChunkPayloadChars = 1200",
+        "MaxChunkLineBytes = 1500",
+        "wire.sha256(raw)",
         "wire.base64Url(raw)",
         'this.FramePrefix + "|"',
+        "raw.len().tostring()",
         '::logInfo(line);',
-        '"actor",',
-        '"tile",',
-        '"manifest",',
-        '"player_legal",',
     ):
         assert token in text
     assert "::logInfo(frame);" not in text
 
 
-def test_snapshot_is_debug_only_and_nonfatal() -> None:
-    base = _text(SANDBOX)
-    incremental = _text(INCREMENTAL)
-    assert "oracle.Enabled" in base
-    assert "catch (error)" in base
-    assert '[BB-Agent Combat Sandbox] error=' in base
-    assert "navigator.findPath(" not in base
-    assert "navigator.getCostForPath(" not in base
-    assert "::TimeUnit.Real" in incremental
-    assert "::TimeUnit.Virtual" not in incremental
+def test_snapshot_is_debug_only_and_never_invokes_native_pathfinding() -> None:
+    text = _text(SANDBOX)
+    assert "oracle.Enabled" in text
+    assert "navigator.findPath(" not in text
+    assert "navigator.getCostForPath(" not in text
+    assert "omniscient_debug" in text
