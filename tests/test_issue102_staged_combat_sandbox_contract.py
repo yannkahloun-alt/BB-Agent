@@ -54,21 +54,21 @@ def test_snapshot_pump_is_one_bounded_job_per_update() -> None:
 def test_heavy_actor_and_projection_data_are_split_into_independent_records() -> None:
     text = _text(SANDBOX)
     for token in (
-        'kind = "actor_core"',
-        'kind = "actor_state"',
-        'kind = "actor_properties"',
-        'kind = "actor_skills_container"',
-        'kind = "actor_skill"',
-        'kind = "actor_items_container"',
-        'kind = "actor_item"',
-        'kind = "actor_ai"',
-        'kind = "tile"',
-        'kind = "raw_fingerprint_input"',
-        'kind = "observation_memory"',
-        'kind = "player_legal_build"',
-        'kind = "player_legal_meta"',
-        'kind = "player_legal_tile"',
-        'kind = "player_legal_actor"',
+        'this._enqueue("actor_core",',
+        'this._enqueue("actor_state",',
+        'this._enqueue("actor_properties",',
+        'this._enqueue("actor_skills_container",',
+        'this._enqueue("actor_skill",',
+        'this._enqueue("actor_items_container",',
+        'this._enqueue("actor_item",',
+        'this._enqueue("actor_ai",',
+        'this._enqueue("tile",',
+        '"raw_fingerprint_input",',
+        '"observation_memory",',
+        'this._enqueue("player_legal_build",',
+        'this._enqueue("player_legal_meta",',
+        'this._enqueue("player_legal_tile",',
+        'this._enqueue("player_legal_actor",',
     ):
         assert token in text
 
@@ -77,8 +77,8 @@ def test_manifest_is_sharded_and_emitted_only_after_all_jobs_complete() -> None:
     text = _text(SANDBOX)
     for token in (
         "ManifestShardSize = 64",
-        'kind = "manifest_expected"',
-        'kind = "manifest_root"',
+        '"manifest_expected",',
+        'this._enqueue("manifest_root",',
         "expected_record_count",
         "expected_shards",
         "this.State.finalizing",
@@ -97,10 +97,18 @@ def test_generation_change_aborts_instead_of_mixing_combat_states() -> None:
         assert token in text
 
 
+def test_individual_read_failures_emit_error_records_and_continue() -> None:
+    text = _text(SANDBOX)
+    assert "function _emitJobError(_job, _error)" in text
+    assert "__capture_error = _error.tostring()" in text
+    assert "transport_error" in text
+
+
 def test_preload_contains_only_full_combat_forensic_snapshot() -> None:
     preload = _text(PRELOAD)
     assert "runtime_combat_sandbox" in preload
     for forbidden in (
+        "runtime_combat_sandbox_incremental",
         "runtime_movement_sandbox",
         "runtime_debug_oracle_movement_compare",
         "runtime_debug_oracle_ally_jump_probe",
