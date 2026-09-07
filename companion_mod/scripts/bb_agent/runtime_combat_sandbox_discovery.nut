@@ -117,7 +117,7 @@ sandbox._processDiscovery <- function(_job)
         }
 
         local actor = group[actorIndex];
-        if (actor != null && !actor.isNull())
+        if (actor != null)
             this._enqueueActorDiscoveryRecords(actor);
 
         this._enqueue(
