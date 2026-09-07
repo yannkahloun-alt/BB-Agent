@@ -70,6 +70,11 @@ affordances._movementTransitionsFrom <- function(
 
             local landingTile = _tiles[landingId];
             if (landingTile.Type == ::Const.Tactical.TerrainType.Impassable) continue;
+            if (::Math.abs(landingTile.Level - fromTile.Level)
+                > _active.getMaxTraversibleLevels())
+            {
+                continue;
+            }
 
             ret.push({
                 kind = "ALLY_JUMP",
@@ -110,11 +115,60 @@ affordances._movementZocExitPenalty <- function(_zocCounts, _fromTileId)
     return _fromTileId in _zocCounts ? 4 : 0;
 };
 
-// Replace the direct-neighbor expansion with the #98 relation-aware transition
-// layer. For now only resource-resolved ordinary STEP edges participate in the
-// production path tree. Ally-jump edges are enumerated and retained as explicit
-// unresolved topology until their AP/fatigue charging rule is proven.
-affordances._movementTree = function(_raw, _projection)
+// A label dominates another when it leaves at least as much AP and no more
+// fatigue. Equal-resource labels may additionally discard a worse deterministic
+// path score without changing reachability.
+affordances._movementLabelDominates <- function(_left, _right)
+{
+    if (_left.ap_left < _right.ap_left) return false;
+    if (_left.fatigue > _right.fatigue) return false;
+    if (_left.ap_left > _right.ap_left || _left.fatigue < _right.fatigue)
+        return true;
+    if (_left.score < _right.score) return true;
+    if (_left.score > _right.score) return false;
+    if (_left.depth < _right.depth) return true;
+    if (_left.depth > _right.depth) return false;
+    return _left.previous_tile_id <= _right.previous_tile_id;
+};
+
+affordances._movementLabelPathPreferred <- function(_left, _right)
+{
+    if (_right == null) return true;
+    if (_left.score < _right.score) return true;
+    if (_left.score > _right.score) return false;
+    if (_left.depth < _right.depth) return true;
+    if (_left.depth > _right.depth) return false;
+    if (_left.ap_left > _right.ap_left) return true;
+    if (_left.ap_left < _right.ap_left) return false;
+    if (_left.fatigue < _right.fatigue) return true;
+    if (_left.fatigue > _right.fatigue) return false;
+    return _left.previous_tile_id < _right.previous_tile_id;
+};
+
+affordances._movementPathFromLabel <- function(_label, _labelCount)
+{
+    local reversed = [];
+    local cursor = _label;
+    local guard = 0;
+    while (cursor.previous != null)
+    {
+        reversed.push(cursor.tile);
+        cursor = cursor.previous;
+        ++guard;
+        if (guard > _labelCount)
+            throw "movement reachability predecessor chain is invalid";
+    }
+
+    local path = [];
+    for (local i = reversed.len() - 1; i >= 0; i = --i)
+        path.push(reversed[i]);
+    return path;
+};
+
+// Phase B6 reachability: retain Pareto AP/fatigue labels so a destination is
+// reachable whenever ANY legal player-known route is executable. Native path
+// preference is intentionally not required to answer reachability.
+affordances._movementReachability <- function(_raw, _projection)
 {
     local active = _raw.ActiveActor;
     local origin = active.getTile();
@@ -129,60 +183,75 @@ affordances._movementTree = function(_raw, _projection)
     if (typeof apCosts != "array" || typeof fatigueCosts != "array")
         throw "owned actor movement cost tables are unavailable";
 
-    local nodes = {};
-    nodes[originId] <- {
+    local startAP = active.getActionPoints();
+    local startFatigue = active.getFatigue();
+    local fatigueMax = active.getFatigueMax();
+    if (!this._movementIsNumber(startAP)
+        || !this._movementIsNumber(startFatigue)
+        || !this._movementIsNumber(fatigueMax))
+    {
+        throw "owned actor movement resources are non-numeric";
+    }
+
+    local labels_by_tile = {};
+    local originLabel = {
+        tile_id = originId,
         tile = origin,
+        ap_left = startAP,
+        fatigue = startFatigue,
+        ap_spent = 0,
+        fatigue_spent = 0,
         score = 0.0,
         depth = 0,
         previous = null,
-        closed = false
+        previous_tile_id = "",
+        dominated = false
     };
+    labels_by_tile[originId] <- [originLabel];
+    local open = [originLabel];
+    local allLabels = [originLabel];
     local unresolvedJumps = [];
+    local unresolvedSeen = {};
 
     local properties = active.getCurrentProperties();
     if (properties.IsRooted || properties.IsStunned)
     {
-        nodes[originId].closed = true;
         if (oracle.Enabled)
             oracle._log(
                 "movement_tree reachable=0 native_find_path_calls=0"
                 + " disabled=true scope=exact_visible discovered_scope_pending=true"
-                + " topology=issue98"
+                + " topology=issue98 resource_reachability=pareto"
             );
         return {
             origin_id = originId,
             tiles = tiles,
-            nodes = nodes,
-            unresolved_jump_edges = unresolvedJumps
+            nodes = { [originId] = originLabel },
+            labels_by_tile = labels_by_tile,
+            unresolved_jump_edges = unresolvedJumps,
+            label_count = allLabels.len()
         };
     }
 
-    local open = [originId];
     while (open.len() != 0)
     {
-        // Preserve the pre-#98 deterministic ordering for now. Exact native path
-        // preference is Phase D and is not being changed in this topology cycle.
         local bestIndex = 0;
         for (local i = 1; i < open.len(); i = ++i)
         {
-            local candidateId = open[i];
-            local bestId = open[bestIndex];
-            local candidate = nodes[candidateId];
-            local best = nodes[bestId];
+            local candidate = open[i];
+            local best = open[bestIndex];
             if (candidate.score < best.score
                 || (candidate.score == best.score && candidate.depth < best.depth)
                 || (candidate.score == best.score && candidate.depth == best.depth
-                    && candidateId < bestId))
+                    && candidate.tile_id < best.tile_id))
             {
                 bestIndex = i;
             }
         }
 
-        local currentId = open[bestIndex];
+        local current = open[bestIndex];
         open.remove(bestIndex);
-        local current = nodes[currentId];
-        if (current.closed) continue;
-        current.closed = true;
+        if (current.dominated) continue;
+        local currentId = current.tile_id;
 
         local transitions = this._movementTransitionsFrom(
             active,
@@ -197,34 +266,89 @@ affordances._movementTree = function(_raw, _projection)
         {
             if (!transition.resource_cost_resolved)
             {
-                unresolvedJumps.push({
-                    from_tile_id = currentId,
-                    via_tile_id = transition.via_tile_id,
-                    landing_tile_id = transition.landing_tile_id
-                });
+                local jumpKey = currentId
+                    + "|" + transition.via_tile_id
+                    + "|" + transition.landing_tile_id;
+                if (!(jumpKey in unresolvedSeen))
+                {
+                    unresolvedSeen[jumpKey] <- true;
+                    unresolvedJumps.push({
+                        from_tile_id = currentId,
+                        via_tile_id = transition.via_tile_id,
+                        landing_tile_id = transition.landing_tile_id
+                    });
+                }
                 continue;
             }
 
-            local neighborId = transition.landing_tile_id;
             local step = transition.step;
-            local score = current.score
-                + step.ap
-                + step.path_fatigue * ::Const.Movement.FatigueCostFactor
-                + this._movementZocExitPenalty(zocCounts, currentId);
-            local depth = current.depth + 1;
-            local existing = neighborId in nodes ? nodes[neighborId] : null;
-            if (!this._movementTreeIsBetter(score, depth, currentId, existing))
-                continue;
+            if (current.ap_left < step.ap) continue;
+            if (current.fatigue + step.execution_fatigue > fatigueMax) continue;
 
-            nodes[neighborId] <- {
+            local nextAP = ::Math.round(current.ap_left - step.ap);
+            local nextFatigue = ::Math.min(
+                fatigueMax,
+                ::Math.round(current.fatigue + step.execution_fatigue)
+            );
+            local neighborId = transition.landing_tile_id;
+            local candidate = {
+                tile_id = neighborId,
                 tile = transition.landing_tile,
-                score = score,
-                depth = depth,
-                previous = currentId,
-                closed = false
+                ap_left = nextAP,
+                fatigue = nextFatigue,
+                ap_spent = ::Math.round(startAP - nextAP),
+                fatigue_spent = ::Math.round(nextFatigue - startFatigue),
+                score = current.score
+                    + step.ap
+                    + step.path_fatigue * ::Const.Movement.FatigueCostFactor
+                    + this._movementZocExitPenalty(zocCounts, currentId),
+                depth = current.depth + 1,
+                previous = current,
+                previous_tile_id = currentId,
+                dominated = false
             };
-            open.push(neighborId);
+
+            if (!(neighborId in labels_by_tile)) labels_by_tile[neighborId] <- [];
+            local existingLabels = labels_by_tile[neighborId];
+            local rejected = false;
+            foreach (existing in existingLabels)
+            {
+                if (!existing.dominated
+                    && this._movementLabelDominates(existing, candidate))
+                {
+                    rejected = true;
+                    break;
+                }
+            }
+            if (rejected) continue;
+
+            for (local j = existingLabels.len() - 1; j >= 0; j = --j)
+            {
+                local existing = existingLabels[j];
+                if (!existing.dominated
+                    && this._movementLabelDominates(candidate, existing))
+                {
+                    existing.dominated = true;
+                    existingLabels.remove(j);
+                }
+            }
+
+            existingLabels.push(candidate);
+            allLabels.push(candidate);
+            open.push(candidate);
         }
+    }
+
+    local nodes = {};
+    foreach (tileId, labels in labels_by_tile)
+    {
+        local best = null;
+        foreach (label in labels)
+        {
+            if (label.dominated) continue;
+            if (this._movementLabelPathPreferred(label, best)) best = label;
+        }
+        if (best != null) nodes[tileId] <- best;
     }
 
     if (oracle.Enabled)
@@ -232,28 +356,30 @@ affordances._movementTree = function(_raw, _projection)
             "movement_tree reachable=" + (nodes.len() - 1)
             + " native_find_path_calls=0"
             + " unresolved_jump_edges=" + unresolvedJumps.len()
+            + " labels=" + allLabels.len()
             + " scope=exact_visible discovered_scope_pending=true"
-            + " topology=issue98"
+            + " topology=issue98 resource_reachability=pareto"
         );
     return {
         origin_id = originId,
         tiles = tiles,
         nodes = nodes,
-        unresolved_jump_edges = unresolvedJumps
+        labels_by_tile = labels_by_tile,
+        unresolved_jump_edges = unresolvedJumps,
+        label_count = allLabels.len()
     };
 };
 
-// Override only the final MOVE_TO enumeration gate so hidden raw occupancy does
-// not leak through `Tile.IsEmpty`. Visible actor occupancy comes from the
-// player-legal projection. Non-actor visible blockers remain an explicit #96
-// follow-up rather than being guessed from hidden raw tile state.
+// Override final MOVE_TO enumeration so hidden raw occupancy does not leak
+// through Tile.IsEmpty, and use resource-feasible labels directly rather than a
+// post-hoc affordability filter on one preselected route.
 affordances._moveActions = function(_raw, _projection)
 {
     local ret = [];
     local active = _raw.ActiveActor;
     local actorId = _projection.runtime.active_actor_id;
     local occupancy = this._movementVisibleOccupancy(_projection);
-    local tree = this._movementTree(_raw, _projection);
+    local tree = this._movementReachability(_raw, _projection);
 
     foreach (destinationId, node in tree.nodes)
     {
@@ -263,10 +389,7 @@ affordances._moveActions = function(_raw, _projection)
         if (destinationId in occupancy) continue;
         if (destination.Type == ::Const.Tactical.TerrainType.Impassable) continue;
 
-        local pathTiles = this._movementPathFromTree(tree, destinationId, _projection);
-        local affordability = this._movementPathAffordability(active, pathTiles);
-        if (!affordability.affordable) continue;
-
+        local pathTiles = this._movementPathFromLabel(node, tree.label_count);
         local action = this._baseAction(actorId, "MOVE_TO");
         action.destination_tile_id = destinationId;
         foreach (tile in pathTiles)
@@ -276,7 +399,7 @@ affordances._moveActions = function(_raw, _projection)
             active,
             pathTiles
         );
-        this._resolvedCosts(action, affordability.ap, affordability.fatigue);
+        this._resolvedCosts(action, node.ap_spent, node.fatigue_spent);
         ret.push(action);
     }
     return ret;
