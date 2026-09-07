@@ -151,10 +151,10 @@ oracle.probeAllyJump <- function(_raw, _projection, _tree)
     );
 };
 
-local originalMovementTree = affordances._movementTree;
-affordances._movementTree = function(_raw, _projection)
+local originalMovementReachability = affordances._movementReachability;
+affordances._movementReachability = function(_raw, _projection)
 {
-    local tree = originalMovementTree.acall([this, _raw, _projection]);
+    local tree = originalMovementReachability.acall([this, _raw, _projection]);
     oracle.probeAllyJump(_raw, _projection, tree);
     return tree;
 };
