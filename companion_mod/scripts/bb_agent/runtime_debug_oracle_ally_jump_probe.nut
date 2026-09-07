@@ -1,8 +1,10 @@
 local affordances = ::BBAGENT_Affordances;
 local legal = ::BBAGENT_PlayerLegal;
 local oracle = ::BBAGENT_DebugOracle;
+local sandbox = ::BBAGENT_CombatSandbox;
 
 oracle.LastAllyJumpProbeKey <- null;
+oracle.LastAllyJumpProbeRecord <- null;
 
 oracle._allyJumpProbeCost <- function(_costs, _preferred, _fallback)
 {
@@ -17,6 +19,13 @@ oracle._allyJumpProbeNumber <- function(_value)
     return _value == null ? "null" : _value.tostring();
 };
 
+oracle._allyJumpProbeStore <- function(_raw, _record)
+{
+    _record.battle_sequence <- _raw.BattleSequence;
+    _record.source_generation <- _raw.SourceGeneration;
+    this.LastAllyJumpProbeRecord = _record;
+};
+
 oracle.probeAllyJump <- function(_raw, _projection, _tree)
 {
     if (!this.Enabled) return;
@@ -25,10 +34,12 @@ oracle.probeAllyJump <- function(_raw, _projection, _tree)
         + _raw.SourceGeneration.tostring();
     if (this.LastAllyJumpProbeKey == key) return;
     this.LastAllyJumpProbeKey = key;
+    this.LastAllyJumpProbeRecord = null;
 
     if (!("unresolved_jump_edges" in _tree)
         || _tree.unresolved_jump_edges.len() == 0)
     {
+        this._allyJumpProbeStore(_raw, { candidate = false });
         this._log("ally_jump_probe candidate=false");
         return;
     }
@@ -38,6 +49,10 @@ oracle.probeAllyJump <- function(_raw, _projection, _tree)
         || !(edge.via_tile_id in _tree.tiles)
         || !(edge.landing_tile_id in _tree.tiles))
     {
+        this._allyJumpProbeStore(
+            _raw,
+            { candidate = false, reason = "missing_visible_tile" }
+        );
         this._log("ally_jump_probe candidate=false reason=missing_visible_tile");
         return;
     }
@@ -107,6 +122,16 @@ oracle.probeAllyJump <- function(_raw, _projection, _tree)
     {
         navigator.clearPath();
         navigator.clearVisualisation();
+        this._allyJumpProbeStore(
+            _raw,
+            {
+                candidate = true,
+                from_tile_id = edge.from_tile_id,
+                ally_tile_id = edge.via_tile_id,
+                landing_tile_id = edge.landing_tile_id,
+                error = error.tostring()
+            }
+        );
         this._log("ally_jump_probe error=" + error.tostring());
         return;
     }
@@ -127,10 +152,31 @@ oracle.probeAllyJump <- function(_raw, _projection, _tree)
     local complete = costs != null && "IsComplete" in costs && costs.IsComplete;
     local first = costs != null && "First" in costs && costs.First != null
         ? legal.tileID(costs.First)
-        : "null";
+        : null;
     local end = costs != null && "End" in costs && costs.End != null
         ? legal.tileID(costs.End)
-        : "null";
+        : null;
+
+    this._allyJumpProbeStore(
+        _raw,
+        {
+            candidate = true,
+            from_tile_id = edge.from_tile_id,
+            ally_tile_id = edge.via_tile_id,
+            landing_tile_id = edge.landing_tile_id,
+            found = found,
+            complete = complete,
+            native_tiles = nativeTiles,
+            native_ap = nativeAP,
+            native_fatigue = nativeFatigue,
+            two_step_ap = twoStepAP,
+            two_step_fatigue = twoStepFatigue,
+            landing_step_ap = landingStepAP,
+            landing_step_fatigue = landingStepFatigue,
+            first_tile_id = first,
+            end_tile_id = end
+        }
+    );
 
     this._log(
         "ally_jump_probe candidate=true"
@@ -146,8 +192,8 @@ oracle.probeAllyJump <- function(_raw, _projection, _tree)
         + " two_step_fat=" + this._allyJumpProbeNumber(twoStepFatigue)
         + " landing_step_ap=" + this._allyJumpProbeNumber(landingStepAP)
         + " landing_step_fat=" + this._allyJumpProbeNumber(landingStepFatigue)
-        + " first=" + first
-        + " end=" + end
+        + " first=" + (first == null ? "null" : first)
+        + " end=" + (end == null ? "null" : end)
     );
 };
 
@@ -157,4 +203,52 @@ affordances._movementReachability = function(_raw, _projection)
     local tree = originalMovementReachability.acall([this, _raw, _projection]);
     oracle.probeAllyJump(_raw, _projection, tree);
     return tree;
+};
+
+// DEBUG_ORACLE suppresses normal live affordance export, so explicitly run one
+// bounded reachability/probe pass after the deferred player-legal projection is
+// built. Append the result as an expected sandbox record before finalization.
+local originalSandboxProcessJob = sandbox._processJob;
+sandbox._processJob = function(_job)
+{
+    if (_job.kind == "ally_jump_probe_record")
+    {
+        this._emitRecord(this.State.raw, _job.section, _job.key, _job.target);
+        return;
+    }
+
+    local wasPlayerLegalBuild = _job.kind == "player_legal_build";
+    local ret = originalSandboxProcessJob.acall([this, _job]);
+    if (!wasPlayerLegalBuild || this.State == null) return ret;
+    if (this.State.player_legal_projection == null) return ret;
+
+    try
+    {
+        affordances._movementReachability(
+            this.State.raw,
+            this.State.player_legal_projection
+        );
+    }
+    catch (error)
+    {
+        oracle._allyJumpProbeStore(
+            this.State.raw,
+            { candidate = false, probe_setup_error = error.tostring() }
+        );
+    }
+
+    if (oracle.LastAllyJumpProbeRecord == null)
+    {
+        oracle._allyJumpProbeStore(
+            this.State.raw,
+            { candidate = false, reason = "probe_not_produced" }
+        );
+    }
+    this._enqueue(
+        "ally_jump_probe_record",
+        "debug_probe",
+        "ally_jump",
+        oracle.LastAllyJumpProbeRecord
+    );
+    return ret;
 };
