@@ -56,3 +56,32 @@ jobs:
       - run: python tools/verify_workflow_dependency.py
       - run: python -m pip install -e ".[dev]"
       - run: python -m pyflakes src tests tools
+
+  squirrel-sourcecheck:
+    name: squirrel-sourcecheck
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile companion Squirrel sources
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $compiler = Join-Path $env:RUNNER_TEMP "sq_taro.exe"
+          $compilerUrl = "https://raw.githubusercontent.com/TaroEld/BBbuilder/c71840e45801cce21da647a29945feabe4d0041e/BBBuilder.Core/tools/sq_taro.exe"
+          Invoke-WebRequest -Uri $compilerUrl -OutFile $compiler
+          if ((Get-Item $compiler).Length -ne 744960) {
+              throw "Unexpected sq_taro.exe size"
+          }
+          $files = @(
+              Get-ChildItem -Path "companion_mod" -Recurse -File -Filter "*.nut" |
+                  Sort-Object FullName |
+                  ForEach-Object { $_.FullName }
+          )
+          if ($files.Count -eq 0) {
+              throw "No companion Squirrel sources found"
+          }
+          & $compiler @files
+          if ($LASTEXITCODE -ne 0) {
+              throw "sq_taro.exe failed with exit code $LASTEXITCODE"
+          }
+          Write-Host "Successfully compiled $($files.Count) Squirrel files."
