@@ -47,28 +47,23 @@ local legal = ::BBAGENT_PlayerLegal;
     function _nativeTile(_tile)
     {
         if (_tile == null) return "null";
-        local runtimeId = "missing";
-        local square = "missing";
+        local runtimeId = "unavailable";
+        local square = "unavailable";
         local canonicalId = "unavailable";
         try
         {
-            if ("ID" in _tile) runtimeId = _tile.ID.tostring();
+            runtimeId = _tile.ID.tostring();
         }
         catch (_error)
         {
-            runtimeId = "unreadable";
         }
         try
         {
-            if ("SquareCoords" in _tile)
-            {
-                square = _tile.SquareCoords.X + ":" + _tile.SquareCoords.Y;
-                canonicalId = "tile:" + square;
-            }
+            square = _tile.SquareCoords.X + ":" + _tile.SquareCoords.Y;
+            canonicalId = legal.tileID(_tile);
         }
         catch (_error)
         {
-            square = "unreadable";
         }
         return canonicalId + " native_id=" + runtimeId + " square=" + square;
     },
@@ -103,9 +98,9 @@ local legal = ::BBAGENT_PlayerLegal;
         return false;
     },
 
-    function _dumpNativeNeighbors(_tile)
+    function _nativeDirections()
     {
-        local directions = [
+        return [
             ::Const.Direction.N,
             ::Const.Direction.NE,
             ::Const.Direction.SE,
@@ -113,6 +108,11 @@ local legal = ::BBAGENT_PlayerLegal;
             ::Const.Direction.SW,
             ::Const.Direction.NW
         ];
+    },
+
+    function _dumpNativeNeighbors(_tile)
+    {
+        local directions = this._nativeDirections();
         for (local i = 0; i < directions.len(); i = ++i)
         {
             local direction = directions[i];
@@ -136,6 +136,51 @@ local legal = ::BBAGENT_PlayerLegal;
         }
     },
 
+    function _dumpTwoStepBridges(_from, _to)
+    {
+        local directions = this._nativeDirections();
+        local targetId = legal.tileID(_to);
+        local bridgeCount = 0;
+        for (local i = 0; i < directions.len(); i = ++i)
+        {
+            local middle = null;
+            try
+            {
+                if (!_from.hasNextTile(directions[i])) continue;
+                middle = _from.getNextTile(directions[i]);
+            }
+            catch (_error)
+            {
+                continue;
+            }
+            if (middle == null) continue;
+
+            for (local j = 0; j < directions.len(); j = ++j)
+            {
+                local candidate = null;
+                try
+                {
+                    if (!middle.hasNextTile(directions[j])) continue;
+                    candidate = middle.getNextTile(directions[j]);
+                }
+                catch (_error)
+                {
+                    continue;
+                }
+                if (candidate == null) continue;
+                if (legal.tileID(candidate) != targetId) continue;
+                ++bridgeCount;
+                this._log(
+                    "native_two_step_bridge index=" + bridgeCount
+                    + " middle=" + this._nativeTile(middle)
+                    + " from_direction=" + i
+                    + " to_direction=" + j
+                );
+            }
+        }
+        this._log("native_two_step_bridge_count=" + bridgeCount);
+    },
+
     function _describePathEntry(_entry)
     {
         if (_entry == null) return "null";
@@ -147,34 +192,40 @@ local legal = ::BBAGENT_PlayerLegal;
 
         try
         {
-            if ("SquareCoords" in _entry) return "tile:" + this._nativeTile(_entry);
+            local square = _entry.SquareCoords;
+            if (square != null) return "tile:" + this._nativeTile(_entry);
         }
         catch (_error)
         {
         }
 
-        foreach (key in ["Tile", "tile", "End", "end"])
+        try
         {
-            try
-            {
-                if (key in _entry && _entry[key] != null)
-                    return key + "=" + this._nativeTile(_entry[key]);
-            }
-            catch (_error)
-            {
-            }
+            if (_entry.Tile != null) return "Tile=" + this._nativeTile(_entry.Tile);
         }
-
-        foreach (key in ["Pos", "pos"])
+        catch (_error)
         {
-            try
-            {
-                if (key in _entry && _entry[key] != null)
-                    return key + "_type=" + typeof _entry[key];
-            }
-            catch (_error)
-            {
-            }
+        }
+        try
+        {
+            if (_entry.tile != null) return "tile=" + this._nativeTile(_entry.tile);
+        }
+        catch (_error)
+        {
+        }
+        try
+        {
+            if (_entry.End != null) return "End=" + this._nativeTile(_entry.End);
+        }
+        catch (_error)
+        {
+        }
+        try
+        {
+            if (_entry.end != null) return "end=" + this._nativeTile(_entry.end);
+        }
+        catch (_error)
+        {
         }
         return kind;
     },
@@ -184,47 +235,174 @@ local legal = ::BBAGENT_PlayerLegal;
         ++this.NavigatorPathSlots;
         local kind = typeof _value;
         this._log("navigator_path_slot name=" + _name + " type=" + kind);
-        if (kind != "array") return;
+        if (kind == "array")
+        {
+            local limit = ::Math.min(_value.len(), this.MaxPathEntries);
+            this._log("navigator_path_array name=" + _name + " length=" + _value.len());
+            for (local i = 0; i < limit; i = ++i)
+                this._log(
+                    "navigator_path_entry name=" + _name
+                    + " index=" + i
+                    + " value=" + this._describePathEntry(_value[i])
+                );
+            if (_value.len() > limit)
+                this._log("navigator_path_array name=" + _name + " truncated=true");
+            return;
+        }
 
-        local limit = ::Math.min(_value.len(), this.MaxPathEntries);
-        this._log("navigator_path_array name=" + _name + " length=" + _value.len());
-        for (local i = 0; i < limit; i = ++i)
-            this._log(
-                "navigator_path_entry name=" + _name
-                + " index=" + i
-                + " value=" + this._describePathEntry(_value[i])
-            );
-        if (_value.len() > limit)
-            this._log("navigator_path_array name=" + _name + " truncated=true");
-    },
-
-    function _scanPathSlots(_container, _prefix, _scanMembers)
-    {
-        if (_container == null) return;
-        local kind = typeof _container;
         if (kind != "table" && kind != "instance") return;
-
         try
         {
-            foreach (key, value in _container)
+            local count = 0;
+            foreach (key, value in _value)
             {
-                local name = key.tostring();
-                local isPath = name.find("Path") != null || name.find("path") != null;
-                if (isPath) this._dumpPathValue(_prefix + "." + name, value);
-                if (_scanMembers && name == "m")
-                    this._scanPathSlots(value, _prefix + ".m", false);
+                if (count >= this.MaxPathEntries)
+                {
+                    this._log("navigator_path_object name=" + _name + " truncated=true");
+                    break;
+                }
+                this._log(
+                    "navigator_path_object name=" + _name
+                    + " key=" + key.tostring()
+                    + " type=" + typeof value
+                    + " value=" + this._describePathEntry(value)
+                );
+                ++count;
             }
         }
         catch (error)
         {
-            this._log("navigator_path_scan prefix=" + _prefix + " error=" + error.tostring());
+            this._log(
+                "navigator_path_object name=" + _name
+                + " iterate_error=" + error.tostring()
+            );
         }
     },
 
-    function _dumpNavigatorPathInternals(_navigator)
+    function _dumpCostFields(_label, _costs)
+    {
+        if (_costs == null) return;
+        try
+        {
+            foreach (key, value in _costs)
+            {
+                local name = key.tostring();
+                this._log(
+                    "cost_field label=" + _label
+                    + " key=" + name
+                    + " type=" + typeof value
+                );
+                if (name.find("Path") != null
+                    || name.find("path") != null
+                    || name.find("Node") != null
+                    || name.find("node") != null
+                    || name.find("Step") != null
+                    || name.find("step") != null)
+                {
+                    this._dumpPathValue("cost." + _label + "." + name, value);
+                }
+            }
+        }
+        catch (error)
+        {
+            this._log("cost_field_scan label=" + _label + " error=" + error.tostring());
+        }
+    },
+
+    function _probeNavigatorInternals(_navigator)
     {
         this.NavigatorPathSlots = 0;
-        this._scanPathSlots(_navigator, "navigator", true);
+
+        try
+        {
+            this._dumpPathValue("navigator.getPath()", _navigator.getPath());
+        }
+        catch (error)
+        {
+            this._log("navigator_probe name=getPath error=" + error.tostring());
+        }
+
+        try
+        {
+            this._dumpPathValue("navigator.Path", _navigator.Path);
+        }
+        catch (error)
+        {
+            this._log("navigator_probe name=Path error=" + error.tostring());
+        }
+
+        try
+        {
+            this._dumpPathValue("navigator.m.Path", _navigator.m.Path);
+        }
+        catch (error)
+        {
+            this._log("navigator_probe name=m.Path error=" + error.tostring());
+        }
+
+        try
+        {
+            this._dumpPathValue("navigator.m.PathTiles", _navigator.m.PathTiles);
+        }
+        catch (error)
+        {
+            this._log("navigator_probe name=m.PathTiles error=" + error.tostring());
+        }
+
+        try
+        {
+            this._dumpPathValue("navigator.m.CurrentPath", _navigator.m.CurrentPath);
+        }
+        catch (error)
+        {
+            this._log("navigator_probe name=m.CurrentPath error=" + error.tostring());
+        }
+
+        try
+        {
+            this._dumpPathValue("navigator.m.PathResult", _navigator.m.PathResult);
+        }
+        catch (error)
+        {
+            this._log("navigator_probe name=m.PathResult error=" + error.tostring());
+        }
+
+        try
+        {
+            this._dumpPathValue("navigator.m.Nodes", _navigator.m.Nodes);
+        }
+        catch (error)
+        {
+            this._log("navigator_probe name=m.Nodes error=" + error.tostring());
+        }
+
+        try
+        {
+            this._dumpPathValue("navigator.getCurrentPath()", _navigator.getCurrentPath());
+        }
+        catch (error)
+        {
+            this._log("navigator_probe name=getCurrentPath error=" + error.tostring());
+        }
+
+        try
+        {
+            this._dumpPathValue("navigator.getPathTiles()", _navigator.getPathTiles());
+        }
+        catch (error)
+        {
+            this._log("navigator_probe name=getPathTiles error=" + error.tostring());
+        }
+
+        try
+        {
+            this._dumpPathValue("navigator.getPathNodes()", _navigator.getPathNodes());
+        }
+        catch (error)
+        {
+            this._log("navigator_probe name=getPathNodes error=" + error.tostring());
+        }
+
         this._log("navigator_path_slots_found=" + this.NavigatorPathSlots);
     },
 
@@ -254,6 +432,7 @@ local legal = ::BBAGENT_PlayerLegal;
             + " destination=" + this._nativeTile(_destination)
         );
         this._log("full_native " + this._costSummary(_costs));
+        this._dumpCostFields("full", _costs);
 
         local apRequired = 0;
         if ("ActionPointsRequired" in _costs) apRequired = _costs.ActionPointsRequired;
@@ -271,6 +450,8 @@ local legal = ::BBAGENT_PlayerLegal;
                     fatigueAvailable
                 );
                 this._log("budget=" + budget + " " + this._costSummary(prefix));
+                if (budget == 0 || budget == budgetLimit)
+                    this._dumpCostFields("budget_" + budget, prefix);
             }
             catch (error)
             {
@@ -285,6 +466,7 @@ local legal = ::BBAGENT_PlayerLegal;
             + " next=" + this._nativeTile(_next)
         );
         this._dumpNativeNeighbors(_previous);
+        this._dumpTwoStepBridges(_previous, _next);
 
         local previousRecord = previousId in _projection.runtime.tile_records
             ? _projection.runtime.tile_records[previousId]
@@ -313,7 +495,7 @@ local legal = ::BBAGENT_PlayerLegal;
             + " destination_id=" + destinationId
         );
 
-        this._dumpNavigatorPathInternals(_navigator);
+        this._probeNavigatorInternals(_navigator);
         this._log("event=movement_topology_mismatch end=true");
     }
 };

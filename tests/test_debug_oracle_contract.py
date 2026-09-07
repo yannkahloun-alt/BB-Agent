@@ -71,9 +71,12 @@ def test_movement_mismatch_oracle_is_bounded_and_fail_closed() -> None:
         "origin=",
         "destination=",
         "full_native ",
+        "cost_field label=",
         "budget=",
         "transition previous=",
         "native_neighbor direction=",
+        "native_two_step_bridge index=",
+        "native_two_step_bridge_count=",
         "canonical_previous id=",
         "canonical_next id=",
         "canonical_neighbor=",
@@ -95,7 +98,27 @@ def test_private_path_introspection_is_confined_to_oracle_module() -> None:
     oracle = _text(ORACLE)
     compat = _text(COMPAT)
 
-    assert 'name.find("Path") != null || name.find("path") != null' in oracle
-    assert 'if (_scanMembers && name == "m")' in oracle
+    for token in (
+        "_navigator.getPath()",
+        "_navigator.Path",
+        "_navigator.m.Path",
+        "_navigator.m.PathTiles",
+        "_navigator.m.CurrentPath",
+        "_navigator.m.PathResult",
+        "_navigator.m.Nodes",
+        "_navigator.getCurrentPath()",
+        "_navigator.getPathTiles()",
+        "_navigator.getPathNodes()",
+    ):
+        assert token in oracle
+
     for token in (".getPath(", ".Path", ".m.Path"):
         assert token not in compat
+
+
+def test_oracle_reads_native_tiles_without_instance_membership_assumptions() -> None:
+    oracle = _text(ORACLE)
+    assert "runtimeId = _tile.ID.tostring();" in oracle
+    assert "square = _tile.SquareCoords.X + \":\" + _tile.SquareCoords.Y;" in oracle
+    assert 'if ("ID" in _tile)' not in oracle
+    assert 'if ("SquareCoords" in _tile)' not in oracle

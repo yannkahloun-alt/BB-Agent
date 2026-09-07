@@ -1,6 +1,6 @@
 local def = ::BBAGENT_Mod <- {
     ID = "mod_bb_agent_capture",
-    Version = "0.2.14",
+    Version = "0.2.15",
     Name = "BB-Agent Capture"
 };
 
