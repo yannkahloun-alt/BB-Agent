@@ -16,14 +16,14 @@ def test_load_order() -> None:
     oracle = "scripts/bb_agent/debug_oracle"
     compat = "scripts/bb_agent/runtime_navigator_path_compat"
     graph = "scripts/bb_agent/runtime_movement_graph_compat"
-    compare = "scripts/bb_agent/runtime_debug_oracle_movement_compare"
+    probe = "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe"
     export = "scripts/bb_agent/live_export"
     assert (
         preload.index(hardening)
         < preload.index(oracle)
         < preload.index(compat)
         < preload.index(graph)
-        < preload.index(compare)
+        < preload.index(probe)
         < preload.index(export)
     )
 
