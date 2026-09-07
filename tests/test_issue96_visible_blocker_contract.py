@@ -1,52 +1,30 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-BLOCKING = (
-    ROOT / "companion_mod/scripts/bb_agent/runtime_player_legal_blocking_compat.nut"
-)
-MOVEMENT_BLOCKING = (
-    ROOT / "companion_mod/scripts/bb_agent/runtime_movement_blocking_compat.nut"
-)
+GRAPH = ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
+DOC = ROOT / "docs/PLAYER_LEGAL_MOVEMENT.md"
 
 
-def test_visible_tiles_export_player_legal_blocking_without_remembering_dynamic_blockers() -> (
-    None
-):
-    text = BLOCKING.read_text(encoding="utf-8")
-    assert "legal._visibleTileBlocking <- function(_tile)" in text
-    assert "tile.blocking = wire.exactObserved(_record.blocking);" in text
-    assert "tile.blocking = wire.unknownValue();" in text
-
-
-def test_hidden_actor_does_not_become_player_known_blocker() -> None:
-    text = BLOCKING.read_text(encoding="utf-8")
-    helper = text[
-        text.index("legal._visibleTileBlocking") : text.index(
-            "local originalVisibleTileRecord"
-        )
-    ]
-    assert '"isPlayerControlled" in entity' in helper
-    assert "entity.isHiddenToPlayer()" in helper
-    assert "return false;" in helper
-
-
-def test_movement_occupancy_includes_visible_blocker_class_without_raw_tile_reads() -> (
-    None
-):
-    text = MOVEMENT_BLOCKING.read_text(encoding="utf-8")
-    assert 'tile.blocking.representation != "EXACT"' in text
-    assert "tile.blocking.value" in text
-    assert 'ret[tile.tile_id] <- "BLOCKED";' in text
-    assert 'kind == "BLOCKED"' in text
-    for forbidden in ("tile.IsEmpty", ".getEntity()", "isHiddenToPlayer"):
+def test_production_graph_does_not_inspect_raw_hidden_occupancy() -> None:
+    text = GRAPH.read_text(encoding="utf-8")
+    for forbidden in (
+        "tile.IsEmpty",
+        "destination.IsEmpty",
+        ".getEntity()",
+        "isHiddenToPlayer",
+        "getAllInstances",
+    ):
         assert forbidden not in text
 
 
-def test_blocking_layers_load_before_sandbox_and_after_base_graph() -> None:
+def test_hidden_inspecting_blocker_compatibility_layers_are_not_loaded() -> None:
     preload = PRELOAD.read_text(encoding="utf-8")
-    projection = preload.index("scripts/bb_agent/runtime_player_legal_blocking_compat")
-    graph = preload.index("scripts/bb_agent/runtime_movement_graph_compat")
-    movement = preload.index("scripts/bb_agent/runtime_movement_blocking_compat")
-    sandbox = preload.index("scripts/bb_agent/runtime_combat_sandbox")
-    assert projection < graph < movement < sandbox
+    assert "runtime_player_legal_blocking_compat" not in preload
+    assert "runtime_movement_blocking_compat" not in preload
+
+
+def test_visible_non_actor_blocker_acquisition_is_explicitly_unresolved() -> None:
+    text = DOC.read_text(encoding="utf-8")
+    assert "Visible non-actor blocker acquisition is still unresolved" in text
+    assert "must not be inferred from raw `Tile.IsEmpty`" in text
