@@ -7,9 +7,9 @@ is outside its contract.
 
 from __future__ import annotations
 
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from math import floor
-from typing import Mapping, Sequence
 
 
 @dataclass(frozen=True)
