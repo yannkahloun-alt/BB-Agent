@@ -101,8 +101,29 @@ def _manifest_expected_records(
     return expected
 
 
+def _player_legal_semantic_issue_paths(
+    records: dict[str, dict[str, Any]],
+) -> set[str]:
+    issues: set[str] = set()
+    meta = records.get("player_legal_meta:root")
+    if not isinstance(meta, dict):
+        return issues
+    payload = meta.get("payload")
+    if not isinstance(payload, dict):
+        return issues
+    decision = payload.get("decision")
+    if not isinstance(decision, dict):
+        return issues
+    active_actor_id = decision.get("active_actor_id")
+    if not isinstance(active_actor_id, str) or not active_actor_id:
+        return issues
+    if f"player_legal_actor:{active_actor_id}" not in records:
+        issues.add("player_legal_meta:root.payload.decision.active_actor_id")
+    return issues
+
+
 def summarize_combat_sandbox_quality(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Report explicit capture errors and truncation markers in a snapshot."""
+    """Report explicit capture errors, truncations, and semantic defects."""
 
     records = snapshot.get("records")
     if not isinstance(records, dict):
@@ -143,10 +164,13 @@ def summarize_combat_sandbox_quality(snapshot: dict[str, Any]) -> dict[str, Any]
     for record_id, record in records.items():
         walk(record, str(record_id))
 
+    semantic_paths = _player_legal_semantic_issue_paths(records)
+    issue_paths.update(semantic_paths)
     return {
         "capture_error_count": capture_error_count,
         "truncation_count": truncation_count,
         "iteration_error_count": iteration_error_count,
+        "semantic_error_count": len(semantic_paths),
         "issue_paths": sorted(issue_paths),
     }
 
