@@ -155,7 +155,8 @@ def main() -> int:
         "  quality="
         f"capture_errors:{quality['capture_error_count']} "
         f"truncations:{quality['truncation_count']} "
-        f"iteration_errors:{quality['iteration_error_count']}"
+        f"iteration_errors:{quality['iteration_error_count']} "
+        f"semantic_errors:{quality['semantic_error_count']}"
     )
     if quality["issue_paths"]:
         print("  quality_issue_paths:")
