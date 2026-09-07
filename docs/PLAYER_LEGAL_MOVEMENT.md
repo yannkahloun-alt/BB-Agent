@@ -39,6 +39,12 @@ The actor movement tables already incorporate actor-specific movement modifiers 
 
 A destination is resource-reachable when **any** legal player-known route reaches it within those resources. Production therefore preserves non-dominated AP/fatigue states instead of selecting one route first and then rejecting the destination if only that route is unaffordable.
 
+### Ally-jump charging
+
+The previously deferred ally-jump resource rule is now established by a bounded DEBUG_ORACLE native sample. For a pass from `tile:12:18` over allied `tile:12:19` to landing `tile:12:20`, the native navigator reported two movement tiles and a total cost of **4 AP / 6 fatigue**. The two constituent player-known movement steps also total 4 AP / 6 fatigue; treating the landing as one direct step would incorrectly produce 2 AP / 2 fatigue.
+
+Production therefore resolves an `ALLY_JUMP` transition as the sum of the ordinary `from -> ally` and `ally -> landing` step costs, including each constituent terrain/elevation and execution-fatigue contribution. This rule is encoded from the observed mechanic; production still performs no native pathfinding call.
+
 ## Zone of control
 
 Entering hostile ZOC is legal subject to ordinary movement legality. The player navigator's `ZoneOfControlCost = 4` penalty applies to the transition **leaving** hostile ZOC, not to the transition entering it. `AllowZoneOfControlPassing = true` is part of the source configuration.
@@ -49,7 +55,7 @@ AOO/reaction handling belongs to the actual resolved/executed path. It must not 
 
 DEBUG_ORACLE is separate, opt-in, bounded, and validation-only. It may call native pathfinding for a narrowly defined unresolved rule after offline graph/reachability tests are green, but those observations must never become direct production inputs.
 
-The currently unresolved ally-jump AP/fatigue charging convention is intentionally isolated behind a one-sample DEBUG_ORACLE probe. Until that rule is established, allied jump topology may be represented while its resource cost remains unresolved in production.
+The ally-jump probe has now served its intended purpose: it established the constituent-step charging rule above. Its native observation remains diagnostic evidence only; production recomputes the rule from player-legal topology and owned-actor movement data.
 
 ## Performance invariant
 
