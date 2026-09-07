@@ -137,6 +137,45 @@ sandbox._constantRaw <- function(_key)
     return null;
 };
 
+sandbox._skillCoreRecord <- function(_skill)
+{
+    local record = {
+        id = _skill.getID(),
+        runtime_type = typeof _skill
+    };
+    try { record.hidden <- _skill.isHidden(); } catch (_error) {}
+    try { record.active <- _skill.isActive(); } catch (_error) {}
+    try { record.disabled <- _skill.isDisabled(); } catch (_error) {}
+    try { record.usable <- _skill.isUsable(); } catch (_error) {}
+    try { record.affordable <- _skill.isAffordable(); } catch (_error) {}
+    try { record.ap_cost <- this._reflect(_skill.getActionPointCost()); } catch (_error) {}
+    try { record.fatigue_cost <- this._reflect(_skill.getFatigueCost()); } catch (_error) {}
+    try { record.targeted <- _skill.isTargeted(); } catch (_error) {}
+    try { record.targeting_actor <- _skill.isTargetingActor(); } catch (_error) {}
+    try { record.aoe <- _skill.isAOE(); } catch (_error) {}
+    try { record.ranged <- _skill.isRanged(); } catch (_error) {}
+    try { record.min_range <- this._reflect(_skill.getMinRange()); } catch (_error) {}
+    try { record.max_range <- this._reflect(_skill.getMaxRange()); } catch (_error) {}
+    try { record.max_level_difference <- this._reflect(_skill.getMaxLevelDifference()); } catch (_error) {}
+    return record;
+};
+
+sandbox._itemCoreRecord <- function(_item)
+{
+    local record = {
+        id = _item.getID(),
+        runtime_type = typeof _item
+    };
+    try { record.instance_id <- _item.getInstanceID().tostring(); } catch (_error) {}
+    try { record.slot_type <- _item.getCurrentSlotType(); } catch (_error) {}
+    try { record.condition <- _item.getCondition(); } catch (_error) {}
+    try { record.condition_max <- _item.getConditionMax(); } catch (_error) {}
+    try { record.ammo <- _item.getAmmo(); } catch (_error) {}
+    try { record.ammo_max <- _item.getAmmoMax(); } catch (_error) {}
+    try { record.ammo_cost <- _item.getAmmoCost(); } catch (_error) {}
+    return record;
+};
+
 sandbox._turnCorePayload <- function(_raw)
 {
     local order = [];
@@ -322,8 +361,7 @@ sandbox._processJob = function(_job)
     }
     else if (kind == "actor_skill")
     {
-        local skill = this._skillRecord(_job.target);
-        delete skill.state;
+        local skill = this._skillCoreRecord(_job.target);
         parent = {
             actor_id = _job.extra,
             skill = skill,
@@ -336,8 +374,7 @@ sandbox._processJob = function(_job)
     }
     else if (kind == "actor_item")
     {
-        local item = this._itemRecord(_job.target);
-        delete item.state;
+        local item = this._itemCoreRecord(_job.target);
         parent = {
             actor_id = _job.extra,
             item = item,
