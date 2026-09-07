@@ -10,13 +10,14 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_ally_jump_probe_is_deferred_while_full_combat_sandbox_is_loaded() -> None:
+def test_ally_jump_probe_loads_after_full_oracle_layers_before_live_export() -> None:
     preload = _text(PRELOAD)
     graph = preload.index("scripts/bb_agent/runtime_movement_graph_compat")
     sandbox = preload.index("scripts/bb_agent/runtime_combat_sandbox")
+    recovery = preload.index("scripts/bb_agent/runtime_combat_sandbox_recovery")
+    probe = preload.index("scripts/bb_agent/runtime_debug_oracle_ally_jump_probe")
     export = preload.index("scripts/bb_agent/live_export")
-    assert graph < sandbox < export
-    assert "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe" not in preload
+    assert graph < sandbox < recovery < probe < export
     assert "scripts/bb_agent/runtime_debug_oracle_movement_compare" not in preload
 
 
