@@ -88,8 +88,8 @@ def test_combat_snapshot_uses_small_integrity_checked_chunk_lines() -> None:
         "wire.base64Url(raw)",
         'this.FramePrefix + "|"',
         '::logInfo(line);',
-        'this._emitRecord(_raw, "actor"',
-        'this._emitRecord(_raw, "tile"',
+        '"actor",',
+        '"tile",',
         '"manifest",',
         '"player_legal",',
     ):
