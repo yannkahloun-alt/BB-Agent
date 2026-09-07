@@ -101,6 +101,56 @@ def _manifest_expected_records(
     return expected
 
 
+def summarize_combat_sandbox_quality(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Report explicit capture errors and truncation markers in a snapshot."""
+
+    records = snapshot.get("records")
+    if not isinstance(records, dict):
+        raise ValueError("combat sandbox records are invalid")
+
+    capture_error_count = 0
+    truncation_count = 0
+    iteration_error_count = 0
+    issue_paths: set[str] = set()
+
+    def walk(value: Any, path: str) -> None:
+        nonlocal capture_error_count, truncation_count, iteration_error_count
+
+        if isinstance(value, dict):
+            if "__capture_error" in value:
+                capture_error_count += 1
+                issue_paths.add(f"{path}.__capture_error")
+            if value.get("__bb_truncated") is True:
+                truncation_count += 1
+                issue_paths.add(f"{path}.__bb_truncated")
+            if (
+                value.get("capture_mode") == "top_level_field_shards"
+                and value.get("truncated") is True
+            ):
+                truncation_count += 1
+                issue_paths.add(f"{path}.truncated")
+            if value.get("iteration_error") is not None:
+                iteration_error_count += 1
+                issue_paths.add(f"{path}.iteration_error")
+            for key, child in value.items():
+                walk(child, f"{path}.{key}")
+            return
+
+        if isinstance(value, list):
+            for index, child in enumerate(value):
+                walk(child, f"{path}[{index}]")
+
+    for record_id, record in records.items():
+        walk(record, str(record_id))
+
+    return {
+        "capture_error_count": capture_error_count,
+        "truncation_count": truncation_count,
+        "iteration_error_count": iteration_error_count,
+        "issue_paths": sorted(issue_paths),
+    }
+
+
 def extract_latest_combat_sandbox(log_path: str | Path) -> dict[str, Any]:
     """Assemble the latest complete combat-sandbox generation from log.html."""
 
