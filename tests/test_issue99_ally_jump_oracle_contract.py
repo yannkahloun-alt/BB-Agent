@@ -57,3 +57,21 @@ def test_probe_deduplicates_per_battle_generation() -> None:
     assert "_raw.BattleSequence" in text
     assert "_raw.SourceGeneration" in text
     assert "if (this.LastAllyJumpProbeKey == key) return;" in text
+
+
+def test_probe_runs_during_deferred_player_legal_sandbox_phase() -> None:
+    text = _text(PROBE)
+    assert 'local wasPlayerLegalBuild = _job.kind == "player_legal_build";' in text
+    assert "this.State.player_legal_projection == null" in text
+    assert "affordances._movementReachability(" in text
+    assert '"ally_jump_probe_record"' in text
+
+
+def test_probe_result_is_expected_sandbox_record_not_production_payload() -> None:
+    text = _text(PROBE)
+    assert '"debug_probe"' in text
+    assert '"ally_jump"' in text
+    assert "oracle.LastAllyJumpProbeRecord" in text
+    assert "this._emitRecord(this.State.raw, _job.section, _job.key, _job.target);" in text
+    assert "this._enqueue(" in text
+    assert "resource_cost_resolved = false" in _text(GRAPH)
