@@ -71,8 +71,7 @@ def test_waiter_uses_tail_status_without_full_snapshot_decode(
     path = tmp_path / "log.html"
     path.write_text(
         _log(
-            "[BB-Agent Combat Sandbox] complete battle=1 generation=0 "
-            "actors=1 tiles=1"
+            "[BB-Agent Combat Sandbox] complete battle=1 generation=0 actors=1 tiles=1"
         ),
         encoding="utf-8",
     )
