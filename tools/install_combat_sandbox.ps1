@@ -52,6 +52,7 @@ try {
 
 if ($preload -notmatch 'Version = "0\.2\.32"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_player_legal_blocking_compat') { throw 'Player-legal blocker projection missing' }
+if ($preload -notmatch 'runtime_player_legal_actor_enumeration_compat') { throw 'Player-legal actor enumeration compatibility missing' }
 if ($preload -notmatch 'runtime_movement_graph_compat') { throw 'Movement reachability graph missing' }
 if ($preload -notmatch 'runtime_movement_blocking_compat') { throw 'Movement blocker compatibility missing' }
 if ($preload -notmatch 'runtime_combat_sandbox') { throw 'Full combat sandbox module missing' }
@@ -90,6 +91,7 @@ Write-Host 'FULL COMBAT SANDBOX INSTALLED'
 Write-Host '  companion: 0.2.32'
 Write-Host '  capture mode: phased oracle-first staged discovery + capture'
 Write-Host '  player-legal projection: captured only after omniscient oracle jobs complete'
+Write-Host '  player-legal actors: turn-list fallback repairs missing/partial owned roster enumeration'
 Write-Host '  movement reachability: player-known Pareto AP/fatigue labels, no native pathfinder'
 Write-Host '  visible blockers: exact only on currently visible tiles; remembered occupancy unknown'
 Write-Host '  hidden occupancy: never inspected by production blocker/movement graph layers'
@@ -99,7 +101,7 @@ Write-Host '  fidelity: state data split into independently bounded field record
 Write-Host '  continuity: survives unchanged failed READY signatures'
 Write-Host '  reflection budget: 2048 nodes per field reflection with bounded recovery'
 Write-Host '  logical record cap: 32768 decoded bytes'
-Write-Host '  extraction: manifest integrity + capture-error/truncation quality report'
+Write-Host '  extraction: manifest integrity + capture/truncation/iteration/semantic quality report'
 Write-Host '  omniscient DEBUG snapshot: enabled by separate overlay'
 Write-Host '  normal live export while DEBUG_ORACLE is enabled: suppressed'
 Write-Host '  source commit:' $head
