@@ -658,7 +658,7 @@ local oracle = ::BBAGENT_DebugOracle;
         {
             payload = {
                 current = this._reflect(_job.target.getCurrentProperties()),
-                base = this._reflect(_job.target.getBaseProperties())
+                base_properties = this._reflect(_job.target.getBaseProperties())
             };
         }
         else if (_job.kind == "actor_skills_container")
