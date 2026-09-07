@@ -15,11 +15,12 @@ def _text(path: Path) -> str:
 def test_general_movement_comparator_is_deferred_from_sandbox_preload() -> None:
     preload = _text(PRELOAD)
     assert "scripts/bb_agent/runtime_debug_oracle_movement_compare" not in preload
-    assert "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe" not in preload
     graph = preload.index("scripts/bb_agent/runtime_movement_graph_compat")
     sandbox = preload.index("scripts/bb_agent/runtime_combat_sandbox")
+    recovery = preload.index("scripts/bb_agent/runtime_combat_sandbox_recovery")
+    probe = preload.index("scripts/bb_agent/runtime_debug_oracle_ally_jump_probe")
     export = preload.index("scripts/bb_agent/live_export")
-    assert graph < sandbox < export
+    assert graph < sandbox < recovery < probe < export
 
 
 def test_deferred_comparator_remains_bounded_if_reenabled_later() -> None:
