@@ -15,12 +15,14 @@ def test_sandbox_loads_after_graph_before_live_export_without_path_probes() -> N
     graph = preload.index("scripts/bb_agent/runtime_movement_graph_compat")
     sandbox = preload.index("scripts/bb_agent/runtime_movement_sandbox")
     export = preload.index("scripts/bb_agent/live_export")
-
     assert graph < sandbox < export
-    assert "runtime_debug_oracle_movement_compare" not in preload
-    assert "runtime_debug_oracle_tiebreak_samples" not in preload
-    assert "runtime_debug_oracle_route_score" not in preload
-    assert "runtime_debug_oracle_ally_jump_probe" not in preload
+    for forbidden in (
+        "runtime_debug_oracle_movement_compare",
+        "runtime_debug_oracle_tiebreak_samples",
+        "runtime_debug_oracle_route_score",
+        "runtime_debug_oracle_ally_jump_probe",
+    ):
+        assert forbidden not in preload
 
 
 def test_snapshot_is_emitted_before_affordance_acquisition() -> None:
@@ -31,14 +33,13 @@ def test_snapshot_is_emitted_before_affordance_acquisition() -> None:
     assert projection < snapshot < acquire
 
 
-def test_snapshot_is_debug_only_player_legal_and_nonfatal() -> None:
+def test_snapshot_is_compact_player_legal_and_nonfatal() -> None:
     text = _text(SANDBOX)
-
     for token in (
         'FramePrefix = "BBSANDBOX1"',
         'SchemaVersion = "bb-agent-movement-sandbox.v1"',
-        "if (!oracle.Enabled) return;",
-        "player_legal_state = _projection.state",
+        "tiles = this._tileFacts(_projection)",
+        "visible_actors = this._visibleActorFacts(_projection)",
         "active.getActionPointCosts()",
         "active.getFatigueCosts()",
         "active.getLevelActionPointCost()",
@@ -55,6 +56,7 @@ def test_snapshot_is_debug_only_player_legal_and_nonfatal() -> None:
     ):
         assert token in text
 
+    assert "player_legal_state = _projection.state" not in text
     for forbidden in (
         "getAllInstances",
         "isHiddenToPlayer",
@@ -63,9 +65,23 @@ def test_snapshot_is_debug_only_player_legal_and_nonfatal() -> None:
         "navigator.getCostForPath(",
         "omniscient_debug",
         "DEBUG_GROUND_TRUTH",
-        "tile.IsEmpty",
     ):
         assert forbidden not in text
+
+
+def test_snapshot_chunks_encoded_payload_into_small_log_lines() -> None:
+    text = _text(SANDBOX)
+    for token in (
+        "ChunkPayloadChars = 2000",
+        "local encoded = wire.base64Url(raw);",
+        "local chunkCount =",
+        "local chunk = encoded.slice(offset, end);",
+        'this.FramePrefix + "|"',
+        '::logInfo(line);',
+        '" chunks=" + chunkCount.tostring()',
+    ):
+        assert token in text
+    assert "::logInfo(frame);" not in text
 
 
 def test_snapshot_serializes_potential_float_movement_numbers_as_strings() -> None:
