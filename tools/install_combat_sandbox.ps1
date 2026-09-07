@@ -60,6 +60,7 @@ if ($preload -notmatch 'runtime_combat_sandbox') { throw 'Full combat sandbox mo
 if ($preload -notmatch 'runtime_combat_sandbox_discovery') { throw 'Combat sandbox discovery module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_fidelity') { throw 'Combat sandbox fidelity module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_reference_fields') { throw 'Combat sandbox reference-field layer missing' }
+if ($preload -notmatch 'runtime_combat_sandbox_nested_fields') { throw 'Combat sandbox nested-field layer missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_oracle_first') { throw 'Oracle-first sandbox module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_bounds') { throw 'Combat sandbox bounds module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_continuity') { throw 'Combat sandbox continuity module missing' }
@@ -101,6 +102,7 @@ Write-Host '  visible blockers: exact only on currently visible tiles; remembere
 Write-Host '  hidden occupancy: never inspected by production blocker/movement graph layers'
 Write-Host '  ally-jump probe: one DEBUG_ORACLE native sample, roster-scanned when active has no candidate'
 Write-Host '  duplicate runtime collections: summarized as bounded actor/skill/item references'
+Write-Host '  unique large fields: second-level sharded with independent reflection budgets'
 Write-Host '  runtime scaffolding: summarized, not emitted as per-field jobs'
 Write-Host '  fidelity: state data split into independently bounded field records'
 Write-Host '  continuity: survives unchanged failed READY signatures'
