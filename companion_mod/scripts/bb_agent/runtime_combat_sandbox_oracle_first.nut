@@ -3,8 +3,8 @@ local sandbox = ::BBAGENT_CombatSandbox;
 // Oracle-first development captures omniscient script-readable fight state before
 // rebuilding the PLAYER_LEGAL projection. Keep actual data fields, but do not pay
 // one tactical update per executable/runtime-only method marker or scalar field.
-// Scalars are packed into their parent record; nested/complex values remain
-// independently sharded and retain their reflection/transport bounds.
+// Scalars are grouped into one independently bounded pack per top-level container;
+// nested/complex values remain independently sharded.
 sandbox._sandboxStateFieldKind <- function(_value)
 {
     local kind = typeof _value;
@@ -31,6 +31,24 @@ sandbox._sandboxScalarValue <- function(_value)
     return { is_scalar = false, value = null };
 };
 
+sandbox._enqueueScalarPack <- function(_ownerSection, _ownerKey, _fields)
+{
+    if (_fields.len() == 0) return null;
+    local key = this.State.scalar_pack_index.tostring();
+    ++this.State.scalar_pack_index;
+    this._enqueue(
+        "state_scalar_pack",
+        "state_scalar_pack",
+        key,
+        {
+            owner_section = _ownerSection,
+            owner_key = _ownerKey,
+            fields = _fields
+        }
+    );
+    return "state_scalar_pack:" + key;
+};
+
 sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
 {
     local kind = typeof _container;
@@ -39,7 +57,7 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
     local truncated = false;
     local iterationError = null;
     local omittedRuntimeFields = [];
-    local inlineScalarFields = [];
+    local scalarFields = [];
 
     if (kind == "array")
     {
@@ -62,7 +80,7 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
             local scalar = this._sandboxScalarValue(value);
             if (scalar.is_scalar)
             {
-                inlineScalarFields.push({
+                scalarFields.push({
                     field_key_kind = "integer",
                     field_key_text = i.tostring(),
                     ordinal = ordinal,
@@ -108,7 +126,7 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
                 local scalar = this._sandboxScalarValue(value);
                 if (scalar.is_scalar)
                 {
-                    inlineScalarFields.push({
+                    scalarFields.push({
                         field_key_kind = meta.field_key_kind,
                         field_key_text = meta.field_key_text,
                         ordinal = ordinal,
@@ -148,7 +166,7 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
             local scalar = this._sandboxScalarValue(_container);
             if (scalar.is_scalar)
             {
-                inlineScalarFields.push({
+                scalarFields.push({
                     field_key_kind = "string",
                     field_key_text = "value",
                     ordinal = 0,
@@ -169,6 +187,11 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
         }
     }
 
+    local scalarPack = this._enqueueScalarPack(
+        _ownerSection,
+        _ownerKey,
+        scalarFields
+    );
     local parent = {
         capture_mode = "top_level_field_shards",
         field_section = "state_field",
@@ -176,8 +199,8 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
         owner_key = _ownerKey,
         runtime_type = kind,
         field_count = count,
-        inline_scalar_field_count = inlineScalarFields.len(),
-        inline_scalar_fields = inlineScalarFields,
+        scalar_field_count = scalarFields.len(),
+        scalar_pack_record_id = scalarPack,
         inspected_field_count = seen,
         omitted_runtime_field_count = omittedRuntimeFields.len(),
         omitted_runtime_fields = omittedRuntimeFields,
@@ -186,6 +209,22 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
     if (iterationError != null) parent.iteration_error <- iterationError;
     if (kind == "array") parent.original_length <- _container.len();
     return parent;
+};
+
+local originalProcessJob = sandbox._processJob;
+sandbox._processJob = function(_job)
+{
+    if (_job.kind == "state_scalar_pack")
+    {
+        this._emitRecord(
+            this.State.raw,
+            _job.section,
+            _job.key,
+            _job.target
+        );
+        return;
+    }
+    return originalProcessJob.acall([this, _job]);
 };
 
 local originalBegin = sandbox.begin;
@@ -200,9 +239,11 @@ sandbox.begin = function(_raw)
     this.State.jobs = filtered;
     if ("player_legal_projection" in this.State)
         delete this.State.player_legal_projection;
+    if (!("scalar_pack_index" in this.State))
+        this.State.scalar_pack_index <- 0;
 };
 
 ::logInfo(
     "[BB-Agent Combat Sandbox] oracle_first_loaded player_legal_deferred=true"
-    + " runtime_scaffolding_sharded=false scalar_fields_inline=true"
+    + " runtime_scaffolding_sharded=false scalar_pack_records=true"
 );
