@@ -12,13 +12,15 @@ This artifact is **omniscient debug data**. It is not a `player_legal` input and
 
 The forensic snapshot is staged when the capture substrate produces a `DECISION_READY` generation. The tactical-state hook then calls `BBAGENT_CombatSandbox.pump()` before normal live export on each tactical `onUpdate`.
 
-Only one bounded logical record is processed per update (`RecordsPerPump = 1`). Full actor/map breadth is preserved, but deep reflection, canonical JSON, SHA-256, Base64URL encoding and log emission are spread over many game updates instead of blocking one READY callback.
+Only one bounded sandbox job is processed per update (`RecordsPerPump = 1`). Both discovery and serialization are incremental: raw-source inputs, actors, skills, items and tactical map squares are traversed by cursor jobs over successive updates. `begin()` only seeds those cursors and fixed metadata jobs; it never walks the complete roster or map synchronously.
 
-This nonblocking requirement is part of the contract. A synchronous full-map/full-actor dump in one callback is forbidden because it can freeze Battle Brothers.
+Full actor/map breadth is preserved, but discovery, deep reflection, canonical JSON, SHA-256, Base64URL encoding and log emission are spread over many game updates instead of blocking one READY callback.
 
-Generation consistency comes from the normal capture substrate. Every tactical update observes the live state first. If that observation advances battle/source generation, the old forensic job is cancelled/superseded before it can complete. Battle end, runtime incompatibility and tactical-state teardown also cancel any in-progress job.
+This nonblocking requirement is part of the contract. A synchronous full-map/full-actor discovery or dump in one callback is forbidden because it can freeze Battle Brothers.
 
-The forensic pump runs before normal live export. Therefore a later affordance/export failure cannot force the entire forensic dump into one frame. Repeated READY observations of the same unchanged generation allow the staged dump to continue advancing across tactical updates.
+Generation consistency comes from the capture substrate plus a forensic continuity guard. A failed normal `DECISION_READY` export may latch the unchanged production READY signature off, but the debug snapshot continues while command readiness and its original battle/source signature still match. If the actual battle/source generation or signature changes, the old forensic job is cancelled/superseded. Battle end, runtime incompatibility and tactical-state teardown also cancel any in-progress job.
+
+The forensic pump runs before normal live export. Therefore a later affordance/export failure cannot prevent the debug dump from advancing or force the entire forensic snapshot into one game frame.
 
 No extra `TimeUnit.Virtual` or `TimeUnit.Real` scheduler is used; the tactical update hook is the sole pump authority.
 
@@ -71,7 +73,9 @@ Each valid tactical tile record includes:
 
 ## Reflective state
 
-The generic reflective dumper captures primitive, table and array data up to depth 6 and 512 entries per container. Floats are preserved as explicit typed string values because the canonical live JSON encoder intentionally rejects raw floats. Nested native/script instances are represented with bounded state markers, and unsupported runtime values are represented by type markers, preventing object cycles and function graphs from making the snapshot unbounded.
+The generic reflective dumper captures primitive, table and array data up to depth 6 and 512 entries per container, with a global 2048-node budget per top-level reflection. Any one logical record is capped at 32768 decoded bytes. Floats are preserved as explicit typed string values because the canonical live JSON encoder intentionally rejects raw floats. Nested native/script instances are represented with bounded state markers, and unsupported runtime values are represented by type markers, preventing object cycles and function graphs from making the snapshot unbounded.
+
+A read failure for an individual ordinary record produces an explicit `__capture_error` record and capture continues. Discovery or transport failure cancels the generation rather than allowing the manifest to describe a silently incomplete full snapshot.
 
 ## Transport and integrity
 
@@ -87,7 +91,11 @@ Large log lines are unsafe in Battle Brothers. Each record is canonicalized inde
 
 Each chunk payload is at most 1200 characters. The Python extractor reassembles records, verifies lengths and SHA-256 digests, reconstructs the manifest expected-record shards, and rejects incomplete captures before writing the standalone JSON sandbox.
 
-The user-facing extraction helper polls for a completed manifest instead of requiring the user to guess when staged capture has finished.
+The user-facing extraction helper polls for a completed manifest instead of requiring the user to guess when staged capture has finished. On timeout it prints the latest sandbox progress/cancellation/error diagnostics.
+
+## Validation
+
+PR CI runs the normal `tests`, `ruff`, and `pyflakes` gates plus a Windows `squirrel-sourcecheck`. The sourcecheck downloads the exact `sq_taro.exe` compiler tracked by pinned BBBuilder commit `c71840e45801cce21da647a29945feabe4d0041e`, verifies the compiler binary size, and compiles every companion `.nut` file. This catches Battle Brothers Squirrel grammar errors without requiring a user-side BBBuilder run.
 
 ## Offline workflow
 
