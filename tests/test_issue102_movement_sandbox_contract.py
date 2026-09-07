@@ -79,7 +79,7 @@ def test_each_record_uses_small_integrity_checked_log_chunks() -> None:
         "wire.base64Url(raw)",
         'this.FramePrefix + "|"',
         "raw.len().tostring()",
-        '::logInfo(line);',
+        "::logInfo(line);",
     ):
         assert token in text
     assert "::logInfo(frame);" not in text
