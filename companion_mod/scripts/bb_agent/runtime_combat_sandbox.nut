@@ -625,12 +625,27 @@ local oracle = ::BBAGENT_DebugOracle;
         local payload = null;
         if (_job.kind == "raw_meta") payload = this._rawMetaPayload(raw);
         else if (_job.kind == "raw_fingerprint_input")
-            payload = { index = _job.extra, value = this._reflect(_job.target) };
+        {
+            payload = {
+                index = _job.extra,
+                value = this._reflect(_job.target)
+            };
+        }
         else if (_job.kind == "tactical_state")
-            payload = { state = this._reflect(raw.TacticalState.m), runtime_type = typeof raw.TacticalState };
+        {
+            payload = {
+                state = this._reflect(raw.TacticalState.m),
+                runtime_type = typeof raw.TacticalState
+            };
+        }
         else if (_job.kind == "turn") payload = this._turnPayload(raw);
         else if (_job.kind == "entity_manager")
-            payload = { state = this._reflect(raw.EntityManager.m), runtime = this._reflect(raw.EntityManager) };
+        {
+            payload = {
+                state = this._reflect(raw.EntityManager.m),
+                runtime = this._reflect(raw.EntityManager)
+            };
+        }
         else if (_job.kind == "tactical_global") payload = this._reflect(::Tactical);
         else if (_job.kind == "navigator") payload = this._reflect(raw.Navigator);
         else if (_job.kind == "navigator_settings")
@@ -640,18 +655,30 @@ local oracle = ::BBAGENT_DebugOracle;
             payload = this._actorCorePayload(_job.target, raw.ActiveActor);
         else if (_job.kind == "actor_state") payload = this._reflect(_job.target.m);
         else if (_job.kind == "actor_properties")
+        {
             payload = {
                 current = this._reflect(_job.target.getCurrentProperties()),
                 base = this._reflect(_job.target.getBaseProperties())
             };
+        }
         else if (_job.kind == "actor_skills_container")
             payload = this._reflect(_job.target.getSkills().m);
         else if (_job.kind == "actor_skill")
-            payload = { actor_id = _job.extra, skill = this._skillRecord(_job.target) };
+        {
+            payload = {
+                actor_id = _job.extra,
+                skill = this._skillRecord(_job.target)
+            };
+        }
         else if (_job.kind == "actor_items_container")
             payload = this._reflect(_job.target.getItems().m);
         else if (_job.kind == "actor_item")
-            payload = { actor_id = _job.extra, item = this._itemRecord(_job.target) };
+        {
+            payload = {
+                actor_id = _job.extra,
+                item = this._itemRecord(_job.target)
+            };
+        }
         else if (_job.kind == "actor_ai")
         {
             local agent = null;
@@ -666,7 +693,12 @@ local oracle = ::BBAGENT_DebugOracle;
             payload = _job.target;
         }
         else if (_job.kind == "observation_memory")
-            payload = { original_key = _job.extra, fact = this._reflect(_job.target) };
+        {
+            payload = {
+                original_key = _job.extra,
+                fact = this._reflect(_job.target)
+            };
+        }
         else if (_job.kind == "manifest_expected") payload = _job.target;
         else if (_job.kind == "manifest_root") payload = this._manifestPayload();
         else throw "unknown combat sandbox job kind: " + _job.kind;
