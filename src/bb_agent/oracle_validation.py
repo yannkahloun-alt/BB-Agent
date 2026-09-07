@@ -63,3 +63,55 @@ def summarize_ally_jump_probe(snapshot: dict[str, Any]) -> dict[str, Any]:
         and (native_ap != direct_ap or native_fatigue != direct_fatigue)
     )
     return result
+
+
+def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
+    """Aggregate staged DEBUG_ORACLE/native movement comparison records."""
+
+    records = snapshot.get("records")
+    if not isinstance(records, dict):
+        raise ValueError("combat sandbox records are invalid")
+
+    samples: list[dict[str, Any]] = []
+    for record_id, record in sorted(records.items()):
+        if not record_id.startswith("debug_movement_validation:"):
+            continue
+        if not isinstance(record, dict):
+            raise ValueError("movement validation record is invalid")
+        payload = record.get("payload")
+        if not isinstance(payload, dict):
+            raise ValueError("movement validation payload is invalid")
+        samples.append(payload)
+
+    roles = [sample.get("role") for sample in samples]
+    errors = [
+        sample.get("error")
+        for sample in samples
+        if sample.get("error") is not None
+    ]
+    reachability_mismatches = sum(
+        1 for sample in samples if sample.get("reachability_agreement") is False
+    )
+    comparable_cost_samples = sum(
+        1
+        for sample in samples
+        if sample.get("model_reachable") is True
+        and sample.get("native_complete") is True
+    )
+    cost_mismatches = sum(
+        1
+        for sample in samples
+        if sample.get("model_reachable") is True
+        and sample.get("native_complete") is True
+        and sample.get("cost_agreement") is False
+    )
+
+    return {
+        "sample_count": len(samples),
+        "roles": roles,
+        "error_count": len(errors),
+        "errors": errors,
+        "reachability_mismatch_count": reachability_mismatches,
+        "comparable_cost_sample_count": comparable_cost_samples,
+        "cost_mismatch_count": cost_mismatches,
+    }
