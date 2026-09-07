@@ -105,9 +105,9 @@ def extract_latest_combat_sandbox(log_path: str | Path) -> dict[str, Any]:
     """Assemble the latest complete combat-sandbox generation from log.html."""
 
     data = Path(log_path).read_bytes()
-    grouped: dict[
-        tuple[int, int], dict[tuple[str, str], dict[str, Any]]
-    ] = defaultdict(dict)
+    grouped: dict[tuple[int, int], dict[tuple[str, str], dict[str, Any]]] = defaultdict(
+        dict
+    )
 
     for div in _TEXT_DIV_RE.finditer(data):
         content = div.group(1).strip()
