@@ -210,6 +210,17 @@ sandbox._processJob = function(_job)
 {
     if (_job.kind == "movement_validation_sample")
     {
+        if (!oracle.Enabled)
+        {
+            _job.target.error <- "debug_oracle_disabled";
+            this._emitRecord(
+                this.State.raw,
+                _job.section,
+                _job.key,
+                _job.target
+            );
+            return;
+        }
         local sample = oracle._movementValidationSample(
             this.State.raw,
             this.State.player_legal_projection,
@@ -222,6 +233,7 @@ sandbox._processJob = function(_job)
     local wasPlayerLegalBuild = _job.kind == "player_legal_build";
     local ret = originalSandboxProcessJob.acall([this, _job]);
     if (!wasPlayerLegalBuild || this.State == null) return ret;
+    if (!oracle.Enabled) return ret;
     if (this.State.player_legal_projection == null) return ret;
 
     local samples = [];
