@@ -187,7 +187,9 @@ def main() -> int:
             f"cost_mismatches:{validation['cost_mismatch_count']} "
             f"execution_fatigue_matches:{validation['execution_fatigue_match_count']} "
             f"path_fatigue_matches:{validation['path_fatigue_match_count']} "
-            f"fatigue_neither:{validation['fatigue_semantics_neither_count']}"
+            f"fatigue_neither:{validation['fatigue_semantics_neither_count']} "
+            f"tile_count_mismatches:{validation['tile_count_mismatch_count']} "
+            f"endpoint_mismatches:{validation['endpoint_mismatch_count']}"
         )
     if quality["issue_paths"]:
         print("  quality_issue_paths:")
