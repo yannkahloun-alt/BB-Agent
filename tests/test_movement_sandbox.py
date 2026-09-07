@@ -12,11 +12,21 @@ from bb_agent.serialization import canonical_json_bytes
 PREFIX = "BBCOMBAT1"
 
 
-def _chunk_lines(section: str, key: str, record: dict[str, object], *, battle: int = 1, generation: int = 2, chunk_chars: int = 17) -> list[str]:
+def _chunk_lines(
+    section: str,
+    key: str,
+    record: dict[str, object],
+    *,
+    battle: int = 1,
+    generation: int = 2,
+    chunk_chars: int = 17,
+) -> list[str]:
     raw = canonical_json_bytes(record)
     digest = hashlib.sha256(raw).hexdigest()
     encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
-    chunks = [encoded[i : i + chunk_chars] for i in range(0, len(encoded), chunk_chars)]
+    chunks = [
+        encoded[i : i + chunk_chars] for i in range(0, len(encoded), chunk_chars)
+    ]
     return [
         f"{PREFIX}|{battle}|{generation}|{section}|{key}|{i}|{len(chunks)}|{len(raw)}|{digest}|{chunk}"
         for i, chunk in enumerate(chunks)
@@ -33,7 +43,11 @@ def _record(section: str, key: str) -> dict[str, object]:
 
 
 def _log(lines: list[str]) -> str:
-    return "<html><body>" + "".join(f'<div class="text">{line}</div>' for line in lines) + "</body></html>"
+    return (
+        "<html><body>"
+        + "".join(f'<div class="text">{line}</div>' for line in lines)
+        + "</body></html>"
+    )
 
 
 def test_extract_reassembles_full_generation_by_section_and_key(tmp_path: Path) -> None:
@@ -47,7 +61,11 @@ def test_extract_reassembles_full_generation_by_section_and_key(tmp_path: Path) 
     }
     actor = _record("actor", "actor:1")
     tile = _record("tile", "tile:1:1")
-    lines = _chunk_lines("actor", "actor:1", actor) + _chunk_lines("tile", "tile:1:1", tile) + _chunk_lines("manifest", "root", manifest)
+    lines = (
+        _chunk_lines("actor", "actor:1", actor)
+        + _chunk_lines("tile", "tile:1:1", tile)
+        + _chunk_lines("manifest", "root", manifest)
+    )
     path = tmp_path / "log.html"
     path.write_text(_log(lines), encoding="utf-8")
 
