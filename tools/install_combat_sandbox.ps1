@@ -88,6 +88,7 @@ Write-Host '  fidelity: large state split into independently bounded field recor
 Write-Host '  continuity: survives unchanged failed READY signatures'
 Write-Host '  reflection budget: 2048 nodes per field reflection'
 Write-Host '  logical record cap: 32768 decoded bytes'
+Write-Host '  extraction: manifest integrity + capture-error/truncation quality report'
 Write-Host '  omniscient DEBUG snapshot: enabled by separate overlay'
 Write-Host '  old path-comparison probes: absent'
 Write-Host '  source commit:' $head
