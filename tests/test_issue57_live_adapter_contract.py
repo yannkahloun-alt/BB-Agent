@@ -18,6 +18,9 @@ AFFORDANCE_HARDENING = (
 )
 MOVEMENT_GRAPH = ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
 COMBAT_SANDBOX = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox.nut"
+COMBAT_SANDBOX_INCREMENTAL = (
+    ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_incremental.nut"
+)
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 HOOK = ROOT / "companion_mod/scripts/bb_agent/hooks/tactical_state.nut"
 
@@ -28,7 +31,7 @@ def _text(path: Path) -> str:
 
 def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook() -> None:
     source = _text(PRELOAD)
-    assert 'Version = "0.2.24"' in source
+    assert 'Version = "0.2.25"' in source
     modules = (
         "canonical_wire",
         "player_legal_projection",
@@ -41,6 +44,7 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
         "runtime_navigator_path_compat",
         "runtime_movement_graph_compat",
         "runtime_combat_sandbox",
+        "runtime_combat_sandbox_incremental",
         "live_export",
         "hooks/tactical_state",
     )
@@ -51,6 +55,7 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
         "runtime_navigator_tiebreak_compat",
         "runtime_debug_oracle_ally_jump_probe",
         "runtime_debug_oracle_route_score",
+        "runtime_movement_sandbox",
     ):
         assert forbidden not in source
 
@@ -127,11 +132,10 @@ def test_canonical_identity_matches_existing_action_and_state_identity_boundarie
     assert '"action:" + wire.canonicalHash(this._actionIntent(_action))' in source
 
 
-def test_affordance_acquisition_keeps_native_pathfinding_out_of_loaded_production_graph() -> None:
+def test_affordance_acquisition_keeps_native_probe_out_of_production_graph() -> None:
     source = _text(AFFORDANCES)
     hardening = _text(AFFORDANCE_HARDENING)
     graph = _text(MOVEMENT_GRAPH)
-    sandbox = _text(COMBAT_SANDBOX)
 
     for required in (
         "queryActives()",
@@ -150,10 +154,10 @@ def test_affordance_acquisition_keeps_native_pathfinding_out_of_loaded_productio
     ):
         assert required in source
 
+    # The historical/base affordance module can still contain native path helpers,
+    # but the loaded #98 production graph itself must not depend on them.
     assert "navigator.findPath(" not in graph
     assert "navigator.getCostForPath(" not in graph
-    assert "navigator.findPath(" not in sandbox
-    assert "navigator.getCostForPath(" not in sandbox
 
     assert "native movement path leaves the player-legal canonical map" in hardening
     assert "this.CurrentProjection.runtime.tile_records" in hardening
@@ -180,6 +184,19 @@ def test_affordance_acquisition_keeps_native_pathfinding_out_of_loaded_productio
     ):
         assert forbidden not in source
         assert forbidden not in hardening
+
+
+def test_full_combat_sandbox_is_diagnostic_only_and_nonblocking() -> None:
+    base = _text(COMBAT_SANDBOX)
+    incremental = _text(COMBAT_SANDBOX_INCREMENTAL)
+    export = _text(EXPORT)
+
+    assert 'FramePrefix = "BBCOMBAT1"' in base
+    assert 'information_scope = "omniscient_debug"' in base
+    assert "BatchRecordsPerTick <- 1;" in incremental
+    assert "::TimeUnit.Real" in incremental
+    assert "::TimeUnit.Virtual" not in incremental
+    assert "record.information_profile <- \"player_legal\"" in export
 
 
 def test_live_export_is_transactional_strict_and_player_legal_only() -> None:
