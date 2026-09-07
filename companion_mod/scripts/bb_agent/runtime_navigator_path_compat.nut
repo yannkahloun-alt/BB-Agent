@@ -123,6 +123,84 @@ affordances._nativeCostAnchorPath <- function(
     return path;
 };
 
+affordances._minimumTraversableMovementAPCost <- function(_active)
+{
+    local costs = _active.getActionPointCosts();
+    if (typeof costs != "array" || costs.len() <= 1)
+        throw "native movement AP cost table is unavailable";
+
+    local minCost = null;
+    for (local i = 1; i < costs.len(); i = ++i)
+    {
+        local cost = costs[i];
+        local kind = typeof cost;
+        if ((kind != "integer" && kind != "float") || cost <= 0)
+            throw "native traversable movement AP cost is invalid";
+        if (minCost == null || cost < minCost) minCost = cost;
+    }
+    if (minCost == null)
+        throw "native movement AP cost table has no traversable entries";
+    return minCost;
+};
+
+affordances._movementCandidateTileIds <- function(_active, _projection)
+{
+    local ap = _active.getActionPoints();
+    if (typeof ap != "integer" || ap < 0)
+        throw "active actor has invalid action points";
+
+    local minCost = this._minimumTraversableMovementAPCost(_active);
+    local maxSteps = ::Math.floor(ap / minCost);
+    local originId = legal.tileID(_active.getTile());
+    if (!(originId in _projection.runtime.tile_records))
+        throw "active actor origin is absent from canonical tile records";
+
+    local candidates = {};
+    local candidateCount = 0;
+    if (maxSteps <= 0)
+    {
+        if (oracle.Enabled)
+            oracle._log(
+                "movement_candidate_bound min_ap=" + minCost
+                + " max_steps=0 candidates=0"
+            );
+        return candidates;
+    }
+
+    local visited = {};
+    visited[originId] <- true;
+    local frontier = [originId];
+
+    for (local depth = 0; depth < maxSteps; depth = ++depth)
+    {
+        local next = [];
+        foreach (tileId in frontier)
+        {
+            if (!(tileId in _projection.runtime.tile_records)) continue;
+            local record = _projection.runtime.tile_records[tileId];
+            foreach (neighborId in record.neighbor_ids)
+            {
+                if (neighborId == null || neighborId in visited) continue;
+                if (!(neighborId in _projection.runtime.tile_records)) continue;
+                visited[neighborId] <- true;
+                candidates[neighborId] <- true;
+                ++candidateCount;
+                next.push(neighborId);
+            }
+        }
+        frontier = next;
+        if (frontier.len() == 0) break;
+    }
+
+    if (oracle.Enabled)
+        oracle._log(
+            "movement_candidate_bound min_ap=" + minCost
+            + " max_steps=" + maxSteps
+            + " candidates=" + candidateCount
+        );
+    return candidates;
+};
+
 // Replace movement enumeration only. Skill, wait/end-turn, equipment, identity,
 // and the hardening acquire wrapper remain unchanged.
 affordances._moveActions = function(_raw, _projection)
@@ -132,9 +210,13 @@ affordances._moveActions = function(_raw, _projection)
     local actorId = _projection.runtime.active_actor_id;
     local navigator = _raw.Navigator;
     local targetTiles = this._visibleTargetTiles(_projection);
+    local candidateIds = this._movementCandidateTileIds(active, _projection);
     foreach (destination in targetTiles)
     {
         if (destination.ID == active.getTile().ID) continue;
+        local destinationId = legal.tileID(destination);
+        if (!(destinationId in candidateIds)) continue;
+
         navigator.clearPath();
         navigator.clearVisualisation();
         local settings = this._movementSettings(active, navigator);
@@ -184,7 +266,7 @@ affordances._moveActions = function(_raw, _projection)
         local fatigueCost = this._movementCost(costs, "FatigueRequired", "Fatigue");
 
         local action = this._baseAction(actorId, "MOVE_TO");
-        action.destination_tile_id = legal.tileID(destination);
+        action.destination_tile_id = destinationId;
         foreach (tile in pathTiles) action.resolved_path.push(legal.tileID(tile));
         action.contingent_reactions = this._aooReactions(
             _projection.state,

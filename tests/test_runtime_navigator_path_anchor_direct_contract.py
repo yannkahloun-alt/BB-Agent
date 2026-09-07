@@ -15,13 +15,13 @@ def test_movement_mismatch_logs_engine_cost_anchors_before_failure() -> None:
         '"LastBeforeEnd"',
         '"End"',
         'this._traceOracleCostAnchors("full", _costs);',
-        'this._traceOracleCostAnchors("prefix_" + apBudget, prefix);',
+        'throw "native movement cost anchors left a canonical path gap";',
     ):
         assert token in text
 
     full = text.index('this._traceOracleCostAnchors("full", _costs);')
-    report = text.index("oracle.reportMovementTopologyMismatch(")
     failure = text.index(
-        'throw "native movement prefix endpoint is not a canonical adjacent tile";'
+        'throw "native movement cost anchors left a canonical path gap";'
     )
-    assert full < report < failure
+    assert full < failure
+    assert '"prefix_" + apBudget' not in text

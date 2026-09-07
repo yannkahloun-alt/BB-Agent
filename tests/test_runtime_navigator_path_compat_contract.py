@@ -47,6 +47,28 @@ def test_single_native_cost_result_drives_path_reconstruction() -> None:
     assert "_navigator.getCostForPath(" not in text
 
 
+def test_movement_candidates_are_bounded_before_native_path_search() -> None:
+    text = _text(COMPAT)
+    for token in (
+        "affordances._minimumTraversableMovementAPCost <- function(_active)",
+        "_active.getActionPointCosts()",
+        "for (local i = 1; i < costs.len(); i = ++i)",
+        'kind != "integer" && kind != "float"',
+        "affordances._movementCandidateTileIds <- function(_active, _projection)",
+        "maxSteps = ::Math.floor(ap / minCost)",
+        "record.neighbor_ids",
+        "candidates[neighborId] <- true",
+        "movement_candidate_bound min_ap=",
+        "local candidateIds = this._movementCandidateTileIds(active, _projection);",
+        "if (!(destinationId in candidateIds)) continue;",
+    ):
+        assert token in text
+
+    candidate_filter = text.index("if (!(destinationId in candidateIds)) continue;")
+    native_find = text.index("found = navigator.findPath(")
+    assert candidate_filter < native_find
+
+
 def test_anchor_gaps_and_count_mismatches_fail_closed() -> None:
     text = _text(COMPAT)
     for token in (
@@ -99,7 +121,7 @@ def test_move_override_preserves_costs_path_and_reactions() -> None:
         "settings.ZoneOfControlCost = 0;",
         'this._movementCost(costs, "ActionPointsRequired", "ActionPoints")',
         'this._movementCost(costs, "FatigueRequired", "Fatigue")',
-        "action.destination_tile_id = legal.tileID(destination);",
+        "action.destination_tile_id = destinationId;",
         "action.resolved_path.push(legal.tileID(tile))",
         "this._aooReactions(",
         "this._resolvedCosts(action, apCost, fatigueCost);",
