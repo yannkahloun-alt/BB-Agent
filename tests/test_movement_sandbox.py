@@ -6,108 +6,77 @@ from pathlib import Path
 
 import pytest
 
-from bb_agent.movement_sandbox import (
-    SANDBOX_FRAME_PREFIX,
-    decode_movement_sandbox_chunks,
-    decode_movement_sandbox_frame,
-    extract_latest_movement_sandbox,
-)
+from bb_agent.combat_sandbox import extract_latest_combat_sandbox
 from bb_agent.serialization import canonical_json_bytes
 
+PREFIX = "BBCOMBAT1"
 
-def _frame(record: dict[str, object]) -> str:
+
+def _chunk_lines(section: str, key: str, record: dict[str, object], *, battle: int = 1, generation: int = 2, chunk_chars: int = 17) -> list[str]:
     raw = canonical_json_bytes(record)
     digest = hashlib.sha256(raw).hexdigest()
     encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
-    return f"{SANDBOX_FRAME_PREFIX}|{len(raw)}|{digest}|{encoded}"
-
-
-def _chunks(record: dict[str, object], chunk_size: int = 17) -> list[str]:
-    raw = canonical_json_bytes(record)
-    digest = hashlib.sha256(raw).hexdigest()
-    encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
-    fragments = [encoded[i : i + chunk_size] for i in range(0, len(encoded), chunk_size)]
-    battle = record["battle_sequence"]
-    generation = record["source_generation"]
+    chunks = [encoded[i : i + chunk_chars] for i in range(0, len(encoded), chunk_chars)]
     return [
-        f"{SANDBOX_FRAME_PREFIX}|{battle}|{generation}|{index}|{len(fragments)}|"
-        f"{len(raw)}|{digest}|{fragment}"
-        for index, fragment in enumerate(fragments)
+        f"{PREFIX}|{battle}|{generation}|{section}|{key}|{i}|{len(chunks)}|{len(raw)}|{digest}|{chunk}"
+        for i, chunk in enumerate(chunks)
     ]
 
 
-def _record(generation: int) -> dict[str, object]:
+def _record(section: str, key: str) -> dict[str, object]:
     return {
-        "record_type": "MOVEMENT_SANDBOX",
-        "schema_version": "bb-agent-movement-sandbox.v1",
-        "battle_sequence": 1,
-        "source_generation": generation,
-        "raw_source_fingerprint": "a" * 64,
-        "runtime_game_version": "1.5.2.3",
-        "ruleset_game_version": "1.5.2.3",
-        "ruleset_content_fingerprint": "b" * 64,
-        "companion_version": "0.2.23",
-        "payload": {
-            "tiles": [],
-            "visible_actors": [],
-            "movement_context": {"active_tile_id": "tile:1:1"},
-        },
+        "section": section,
+        "key": key,
+        "schema_version": "bb-agent-combat-sandbox.v1",
+        "payload": {"value": f"{section}:{key}"},
     }
 
 
-def test_decode_movement_sandbox_frame_validates_integrity() -> None:
-    record = _record(3)
-    assert decode_movement_sandbox_frame(_frame(record)) == record
-
-    frame = _frame(record)
-    fields = frame.split("|")
-    fields[2] = "0" * 64
-    with pytest.raises(ValueError, match="SHA-256"):
-        decode_movement_sandbox_frame("|".join(fields))
+def _log(lines: list[str]) -> str:
+    return "<html><body>" + "".join(f'<div class="text">{line}</div>' for line in lines) + "</body></html>"
 
 
-def test_decode_chunked_snapshot_validates_reassembly_and_integrity() -> None:
-    record = _record(4)
-    chunks = _chunks(record)
-    assert decode_movement_sandbox_chunks(chunks) == record
+def test_extract_reassembles_full_generation_by_section_and_key(tmp_path: Path) -> None:
+    manifest = {
+        "section": "manifest",
+        "key": "root",
+        "schema_version": "bb-agent-combat-sandbox.v1",
+        "payload": {
+            "expected_records": ["actor:actor:1", "manifest:root", "tile:tile:1:1"],
+        },
+    }
+    actor = _record("actor", "actor:1")
+    tile = _record("tile", "tile:1:1")
+    lines = _chunk_lines("actor", "actor:1", actor) + _chunk_lines("tile", "tile:1:1", tile) + _chunk_lines("manifest", "root", manifest)
+    path = tmp_path / "log.html"
+    path.write_text(_log(lines), encoding="utf-8")
 
-    with pytest.raises(ValueError, match="missing movement sandbox chunk"):
-        decode_movement_sandbox_chunks(chunks[:-1])
-
-    with pytest.raises(ValueError, match="duplicate movement sandbox chunk"):
-        decode_movement_sandbox_chunks([chunks[0], chunks[0], *chunks[1:]])
-
-    corrupted = chunks.copy()
-    parts = corrupted[-1].split("|")
-    parts[-1] = parts[-1][:-1] + ("A" if parts[-1][-1] != "A" else "B")
-    corrupted[-1] = "|".join(parts)
-    with pytest.raises(ValueError, match="SHA-256|base64|length"):
-        decode_movement_sandbox_chunks(corrupted)
-
-
-def test_extract_latest_chunked_movement_sandbox_from_log(tmp_path: Path) -> None:
-    first = _record(1)
-    latest = _record(2)
-    lines = [
-        '<div class="text">ordinary log line</div>',
-        *[f'<div class="text">{chunk}</div>' for chunk in _chunks(first)],
-        '<div class="text">another ordinary line</div>',
-        *[f'<div class="text">{chunk}</div>' for chunk in _chunks(latest)],
-    ]
-    log = tmp_path / "log.html"
-    log.write_text("<html><body>" + "".join(lines) + "</body></html>", encoding="utf-8")
-    assert extract_latest_movement_sandbox(log) == latest
+    snapshot = extract_latest_combat_sandbox(path)
+    assert snapshot["battle_sequence"] == 1
+    assert snapshot["source_generation"] == 2
+    assert snapshot["records"]["actor:actor:1"] == actor
+    assert snapshot["records"]["tile:tile:1:1"] == tile
 
 
-def test_extract_requires_a_snapshot(tmp_path: Path) -> None:
-    log = tmp_path / "log.html"
-    log.write_text('<div class="text">nothing useful</div>', encoding="utf-8")
-    with pytest.raises(ValueError, match="no movement sandbox snapshot"):
-        extract_latest_movement_sandbox(log)
+def test_extract_rejects_missing_expected_record(tmp_path: Path) -> None:
+    manifest = {
+        "section": "manifest",
+        "key": "root",
+        "schema_version": "bb-agent-combat-sandbox.v1",
+        "payload": {"expected_records": ["manifest:root", "tile:tile:1:1"]},
+    }
+    path = tmp_path / "log.html"
+    path.write_text(_log(_chunk_lines("manifest", "root", manifest)), encoding="utf-8")
+    with pytest.raises(ValueError, match="missing expected combat sandbox record"):
+        extract_latest_combat_sandbox(path)
 
 
-def test_decoder_rejects_wrong_record_type() -> None:
-    record = _record(1)
-    record["record_type"] = "DECISION_READY"
-    with pytest.raises(ValueError, match="record type"):
-        decode_movement_sandbox_frame(_frame(record))
+def test_extract_rejects_corrupt_chunk(tmp_path: Path) -> None:
+    record = _record("manifest", "root")
+    record["payload"] = {"expected_records": ["manifest:root"]}
+    lines = _chunk_lines("manifest", "root", record)
+    lines[-1] = lines[-1][:-1] + ("A" if lines[-1][-1] != "A" else "B")
+    path = tmp_path / "log.html"
+    path.write_text(_log(lines), encoding="utf-8")
+    with pytest.raises(ValueError):
+        extract_latest_combat_sandbox(path)
