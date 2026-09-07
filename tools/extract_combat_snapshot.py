@@ -13,7 +13,7 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from bb_agent.combat_sandbox import extract_latest_combat_sandbox
+from bb_agent.combat_sandbox import extract_latest_combat_sandbox  # noqa: E402
 
 _TEXT_RE = re.compile(r'<div class="text">(.*?)</div>', re.DOTALL)
 _TAG_RE = re.compile(r"<.*?>")
