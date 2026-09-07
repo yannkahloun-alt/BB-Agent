@@ -3,7 +3,9 @@ from __future__ import annotations
 from bb_agent.movement_graph import ActorMovement, Tile, build_movement_graph
 
 
-def _line_tiles(*, terrain: tuple[int, ...] = (1, 1, 1), levels=(0, 0, 0)):
+def _line_tiles(
+    *, terrain: tuple[int, ...] = (1, 1, 1), levels=(0, 0, 0)
+):
     tiles = {
         "a": Tile("a", terrain[0], levels[0], ("b", None, None, None, None, None)),
         "b": Tile("b", terrain[1], levels[1], ("c", None, None, "a", None, None)),
@@ -62,12 +64,15 @@ def test_actor_modified_tables_are_authoritative() -> None:
 
 
 def test_ap_and_fatigue_limits_prune_only_unaffordable_routes() -> None:
-    assert "c" not in build_movement_graph(
-        _line_tiles(), "a", _actor(ap=3)
-    ).reachable
-    assert "b" not in build_movement_graph(
-        _line_tiles(), "a", _actor(fatigue=99, fatigue_max=100)
-    ).reachable
+    assert (
+        "c" not in build_movement_graph(_line_tiles(), "a", _actor(ap=3)).reachable
+    )
+    assert (
+        "b"
+        not in build_movement_graph(
+            _line_tiles(), "a", _actor(fatigue=99, fatigue_max=100)
+        ).reachable
+    )
 
 
 def test_resource_reachability_accepts_any_feasible_route() -> None:
@@ -136,12 +141,18 @@ def test_landing_then_later_jump_is_two_distinct_transitions() -> None:
         _actor(),
         known_occupancy={"b": "ALLY", "d": "ALLY"},
     )
-    assert [(e.via, e.destination) for e in graph.edges["a"] if e.kind == "ALLY_JUMP"] == [
-        ("b", "c")
-    ]
-    assert [(e.via, e.destination) for e in graph.edges["c"] if e.kind == "ALLY_JUMP"] == [
-        ("d", "e")
-    ]
+    first = {
+        (edge.via, edge.destination)
+        for edge in graph.edges["a"]
+        if edge.kind == "ALLY_JUMP"
+    }
+    later = {
+        (edge.via, edge.destination)
+        for edge in graph.edges["c"]
+        if edge.kind == "ALLY_JUMP"
+    }
+    assert ("b", "c") in first
+    assert ("d", "e") in later
 
 
 def test_hidden_occupant_is_absent_from_player_known_graph() -> None:
