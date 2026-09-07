@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import argparse
+import html
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -11,6 +13,9 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from bb_agent.movement_sandbox import extract_latest_movement_sandbox
+
+_TEXT_RE = re.compile(r'<div class="text">(.*?)</div>', re.DOTALL)
+_TAG_RE = re.compile(r"<.*?>")
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -22,9 +27,39 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _relevant_log_lines(path: Path) -> list[str]:
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return []
+    result: list[str] = []
+    for match in _TEXT_RE.finditer(raw):
+        text = html.unescape(_TAG_RE.sub("", match.group(1))).strip()
+        if (
+            "[BB-Agent Sandbox]" in text
+            or "DEBUG_ORACLE explicitly enabled" in text
+            or "[BB-Agent Capture]" in text
+            or "BB-Agent Capture 0.2.23" in text
+        ):
+            result.append(text)
+    return result[-40:]
+
+
 def main() -> int:
     args = _parser().parse_args()
-    snapshot = extract_latest_movement_sandbox(args.log)
+    try:
+        snapshot = extract_latest_movement_sandbox(args.log)
+    except ValueError as exc:
+        print(f"Movement sandbox extraction failed: {exc}", file=sys.stderr)
+        lines = _relevant_log_lines(args.log)
+        if lines:
+            print("Relevant Battle Brothers log entries:", file=sys.stderr)
+            for line in lines:
+                print(f"  {line}", file=sys.stderr)
+        else:
+            print("No BB-Agent sandbox/oracle/capture diagnostics found in log.", file=sys.stderr)
+        return 2
+
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(
         json.dumps(snapshot, allow_nan=False, indent=2, sort_keys=True) + "\n",
