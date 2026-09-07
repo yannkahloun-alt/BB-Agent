@@ -67,6 +67,7 @@ if ($preload -notmatch 'runtime_combat_sandbox_continuity') { throw 'Combat sand
 if ($preload -notmatch 'runtime_combat_sandbox_recovery') { throw 'Combat sandbox recovery module missing' }
 if ($preload -notmatch 'runtime_debug_oracle_ally_jump_probe') { throw 'Ally-jump oracle probe missing' }
 if ($preload -notmatch 'runtime_debug_oracle_ally_jump_roster_probe') { throw 'Roster ally-jump oracle probe missing' }
+if ($preload -notmatch 'runtime_debug_oracle_movement_validation') { throw 'Staged native movement validation missing' }
 foreach ($forbidden in @(
     'runtime_combat_sandbox_incremental',
     'runtime_movement_sandbox',
@@ -101,6 +102,7 @@ Write-Host '  ally-jump movement cost: sum of both constituent movement steps'
 Write-Host '  visible blockers: exact only on currently visible tiles; remembered occupancy unknown'
 Write-Host '  hidden occupancy: never inspected by production blocker/movement graph layers'
 Write-Host '  ally-jump probe: one DEBUG_ORACLE native sample, roster-scanned when active has no candidate'
+Write-Host '  native movement validation: <=6 deterministic DEBUG samples, one native call per update'
 Write-Host '  duplicate runtime collections: summarized as bounded actor/skill/item references'
 Write-Host '  unique large fields: second-level sharded with independent reflection budgets'
 Write-Host '  runtime scaffolding: summarized, not emitted as per-field jobs'
