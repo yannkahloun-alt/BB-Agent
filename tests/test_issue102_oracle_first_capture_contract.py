@@ -46,6 +46,13 @@ def test_simple_scalar_state_is_packed_without_losing_values() -> None:
     assert "this._floatValue(_value)" in text
 
 
+def test_native_instance_iteration_limit_is_explicit_not_quality_error() -> None:
+    text = _text(ORACLE_FIRST)
+    assert 'message == "_nexti failed"' in text
+    assert 'iterationUnavailable = "native_instance_not_enumerable"' in text
+    assert "iteration_unavailable_reason" in text
+
+
 def test_oracle_first_layer_loads_after_fidelity_before_bounds() -> None:
     text = _text(PRELOAD)
     fidelity = text.index("runtime_combat_sandbox_fidelity")
