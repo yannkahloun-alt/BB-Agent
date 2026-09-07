@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+SRC = ROOT / "src"
+if str(SRC) not in sys.path:
+    sys.path.insert(0, str(SRC))
 
 from bb_agent.movement_sandbox import extract_latest_movement_sandbox
 
@@ -31,7 +37,10 @@ def main() -> int:
     tiles = state.get("tiles", []) if isinstance(state, dict) else []
     actors = state.get("combatants", []) if isinstance(state, dict) else []
     print(f"Wrote movement sandbox snapshot: {args.out}")
-    print(f"  battle={snapshot.get('battle_sequence')} generation={snapshot.get('source_generation')}")
+    print(
+        f"  battle={snapshot.get('battle_sequence')} "
+        f"generation={snapshot.get('source_generation')}"
+    )
     print(f"  active_tile={movement.get('active_tile_id')}")
     print(f"  tiles={len(tiles)} combatants={len(actors)}")
     return 0
