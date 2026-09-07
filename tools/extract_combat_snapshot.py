@@ -175,9 +175,7 @@ def main() -> int:
             f"cost_agreement:{comparison['cost_agreement']} "
             f"direct_landing_rejected:{comparison['direct_landing_rejected']}"
         )
-    if any(
-        record_id.startswith("debug_movement_validation:") for record_id in records
-    ):
+    if any(record_id.startswith("debug_movement_validation:") for record_id in records):
         validation = summarize_movement_validation(snapshot)
         print(
             "  movement_oracle="
