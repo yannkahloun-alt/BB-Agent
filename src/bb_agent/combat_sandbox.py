@@ -55,7 +55,6 @@ def _manifest_expected_records(
     if not isinstance(payload, dict):
         raise ValueError("combat sandbox manifest payload is invalid")
 
-    # Backward-compatible support for the initial one-record manifest format.
     direct = payload.get("expected_records")
     if direct is not None:
         if not isinstance(direct, list) or not all(
@@ -123,7 +122,7 @@ def _player_legal_semantic_issue_paths(
 
 
 def summarize_combat_sandbox_quality(snapshot: dict[str, Any]) -> dict[str, Any]:
-    """Report explicit capture errors, truncations, and semantic defects."""
+    """Report capture defects plus explicit bounded-summary counts."""
 
     records = snapshot.get("records")
     if not isinstance(records, dict):
@@ -132,10 +131,18 @@ def summarize_combat_sandbox_quality(snapshot: dict[str, Any]) -> dict[str, Any]
     capture_error_count = 0
     truncation_count = 0
     iteration_error_count = 0
+    reference_summary_count = 0
+    runtime_scaffolding_count = 0
+    nested_shard_summary_count = 0
     issue_paths: set[str] = set()
 
     def walk(value: Any, path: str) -> None:
-        nonlocal capture_error_count, truncation_count, iteration_error_count
+        nonlocal capture_error_count
+        nonlocal truncation_count
+        nonlocal iteration_error_count
+        nonlocal reference_summary_count
+        nonlocal runtime_scaffolding_count
+        nonlocal nested_shard_summary_count
 
         if isinstance(value, dict):
             if "__capture_error" in value:
@@ -153,6 +160,12 @@ def summarize_combat_sandbox_quality(snapshot: dict[str, Any]) -> dict[str, Any]
             if value.get("iteration_error") is not None:
                 iteration_error_count += 1
                 issue_paths.add(f"{path}.iteration_error")
+            if "__bb_reference_collection" in value:
+                reference_summary_count += 1
+            if value.get("__bb_runtime_scaffolding") is True:
+                runtime_scaffolding_count += 1
+            if value.get("__bb_nested_field_shards") is True:
+                nested_shard_summary_count += 1
             for key, child in value.items():
                 walk(child, f"{path}.{key}")
             return
@@ -171,6 +184,9 @@ def summarize_combat_sandbox_quality(snapshot: dict[str, Any]) -> dict[str, Any]
         "truncation_count": truncation_count,
         "iteration_error_count": iteration_error_count,
         "semantic_error_count": len(semantic_paths),
+        "reference_summary_count": reference_summary_count,
+        "runtime_scaffolding_count": runtime_scaffolding_count,
+        "nested_shard_summary_count": nested_shard_summary_count,
         "issue_paths": sorted(issue_paths),
     }
 
