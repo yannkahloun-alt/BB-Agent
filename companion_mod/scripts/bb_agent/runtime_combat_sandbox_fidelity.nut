@@ -181,7 +181,7 @@ sandbox._turnCorePayload <- function(_raw)
     local order = [];
     foreach (index, actor in _raw.TurnSequenceBar.getCurrentEntities())
     {
-        if (actor == null || actor.isNull()) continue;
+        if (actor == null) continue;
         order.push({ index = index, runtime_id = actor.getID().tostring() });
     }
     return {
