@@ -7,8 +7,8 @@ local oracle = ::BBAGENT_DebugOracle;
 ::BBAGENT_MovementSandbox <- {
     FramePrefix = "BBSANDBOX1",
     SchemaVersion = "bb-agent-movement-sandbox.v1",
-    ChunkPayloadChars = 2000,
-    MaxChunkLineBytes = 2300,
+    ChunkPayloadChars = 1200,
+    MaxChunkLineBytes = 1400,
     MaxDecodedBytes = 4194304,
     MaxEncodedBytes = 6291456,
     LastSnapshotKey = null,
