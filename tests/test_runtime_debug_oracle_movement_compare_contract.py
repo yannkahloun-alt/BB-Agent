@@ -3,7 +3,6 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 COMPARE = ROOT / "companion_mod/scripts/bb_agent/runtime_debug_oracle_movement_compare.nut"
-COMPAT = ROOT / "companion_mod/scripts/bb_agent/runtime_navigator_path_compat.nut"
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 
 
@@ -11,17 +10,17 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_movement_comparator_loads_after_production_tree_before_export() -> None:
+def test_general_movement_comparator_is_deferred_from_topology_preload() -> None:
     preload = _text(PRELOAD)
-    compat = preload.index("scripts/bb_agent/runtime_navigator_path_compat")
-    compare = preload.index("scripts/bb_agent/runtime_debug_oracle_movement_compare")
+    assert "scripts/bb_agent/runtime_debug_oracle_movement_compare" not in preload
+    graph = preload.index("scripts/bb_agent/runtime_movement_graph_compat")
+    probe = preload.index("scripts/bb_agent/runtime_debug_oracle_ally_jump_probe")
     export = preload.index("scripts/bb_agent/live_export")
-    assert compat < compare < export
+    assert graph < probe < export
 
 
-def test_native_pathfinder_is_confined_to_bounded_debug_oracle_comparator() -> None:
+def test_deferred_comparator_remains_bounded_if_reenabled_later() -> None:
     compare = _text(COMPARE)
-    compat = _text(COMPAT)
     assert "oracle.MaxMovementCompareSamples <- 3;" in compare
     assert "if (!this.Enabled) return;" in compare
     assert "navigator.findPath(" in compare
@@ -29,8 +28,6 @@ def test_native_pathfinder_is_confined_to_bounded_debug_oracle_comparator() -> N
     assert "movement_compare_begin samples=" in compare
     assert "movement_compare_end samples=" in compare
     assert 'throw "DEBUG_ORACLE movement comparison mismatch";' in compare
-    assert "navigator.findPath(" not in compat
-    assert "navigator.getCostForPath(" not in compat
 
 
 def test_comparator_validates_but_never_supplies_player_legal_values() -> None:
