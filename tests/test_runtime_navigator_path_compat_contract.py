@@ -15,12 +15,14 @@ def test_load_order() -> None:
     hardening = "scripts/bb_agent/affordance_export_hardening"
     oracle = "scripts/bb_agent/debug_oracle"
     compat = "scripts/bb_agent/runtime_navigator_path_compat"
+    graph = "scripts/bb_agent/runtime_movement_graph_compat"
     compare = "scripts/bb_agent/runtime_debug_oracle_movement_compare"
     export = "scripts/bb_agent/live_export"
     assert (
         preload.index(hardening)
         < preload.index(oracle)
         < preload.index(compat)
+        < preload.index(graph)
         < preload.index(compare)
         < preload.index(export)
     )
@@ -91,16 +93,18 @@ def test_actor_step_rounding_occurs_after_each_selected_step() -> None:
     assert "active actor has invalid fatigue values" not in text
 
 
-def test_visible_occupancy_and_discovered_destination_gate() -> None:
+def test_discovered_destination_gate_remains_separate_from_graph_occupancy() -> None:
     text = _text(COMPAT)
     for token in (
         "affordances._movementExactVisibleTileMap <- function",
-        "if (!tile.IsEmpty) blocked[tileId] <- true;",
         "if (!destination.IsDiscovered) continue;",
         "if (!destination.IsEmpty) continue;",
         "scope=exact_visible discovered_scope_pending=true",
     ):
         assert token in text
+
+    # Issue #98 moves relation-aware traversal into a dedicated graph layer.
+    assert "if (!tile.IsEmpty) blocked[tileId] <- true;" not in text
 
 
 def test_visible_zoc_and_aoo_do_not_use_hidden_global_zone_counts() -> None:
