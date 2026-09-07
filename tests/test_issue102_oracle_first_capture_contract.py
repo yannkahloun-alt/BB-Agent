@@ -35,6 +35,15 @@ def test_state_field_sharding_skips_executable_runtime_scaffolding() -> None:
     assert "omitted_runtime_fields" in text
 
 
+def test_simple_scalar_state_is_packed_without_losing_values() -> None:
+    text = _text(ORACLE_FIRST)
+    assert "sandbox._sandboxScalarValue <- function(_value)" in text
+    assert "inline_scalar_field_count" in text
+    assert "inline_scalar_fields" in text
+    assert "value = scalar.value" in text
+    assert "this._floatValue(_value)" in text
+
+
 def test_oracle_first_layer_loads_after_fidelity_before_bounds() -> None:
     text = _text(PRELOAD)
     fidelity = text.index("runtime_combat_sandbox_fidelity")
