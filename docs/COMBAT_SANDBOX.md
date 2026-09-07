@@ -24,23 +24,26 @@ The forensic pump runs before normal live export. Therefore a later affordance/e
 
 No extra `TimeUnit.Virtual` or `TimeUnit.Real` scheduler is used; the tactical update hook is the sole pump authority.
 
+The result is generation-consistent forensic state, not an atomic dump of native engine memory. Script-readable objects are captured over successive updates while the same battle/source signature remains command-ready. For the intended workflow the user stops at a stable player decision while capture completes.
+
 ## Captured sections
 
 The `BBCOMBAT1` stream contains independently hashed/chunked records for:
 
 - `raw`: capture provenance, validation context, source generation and raw-source fingerprint metadata;
 - `raw_fingerprint_input`: the complete raw-source fingerprint input list split into individual records;
-- `tactical_state`: bounded reflective tactical-state script data;
-- `turn`: round, turn position, active runtime actor, current turn-sequence entity order, and bounded turn-bar state;
-- `entity_manager`: bounded script-readable entity-manager state;
-- `tactical_global`: bounded reflective `::Tactical` state;
-- `navigator`: bounded script-readable navigator state;
+- `tactical_state`: tactical-state parent metadata with large state split into field shards;
+- `turn`: round, turn position, active runtime actor, current turn-sequence entity order, plus sharded turn-bar state;
+- `entity_manager`: sharded script-readable entity-manager state and runtime fields;
+- `tactical_global`: sharded `::Tactical` state;
+- `navigator`: sharded script-readable navigator state;
 - `navigator_settings`: the exact active-player movement settings constructed from the current actor;
-- `constant`: Battle Brothers movement/direction/tactical/combat/item/skill/slot/body-part/morale constants used by the adapter;
+- `constant`: Battle Brothers movement/direction/tactical/combat/item/skill/slot/body-part/morale constants used by the adapter, with large tables sharded by top-level field;
 - `player_legal_meta`, `player_legal_tile`, and `player_legal_actor`: the complete player-legal projection split into bounded records for side-by-side comparison with debug truth;
 - `observation_memory`: each current player-legal observation-memory fact;
 - `actor_core`, `actor_state`, `actor_properties`, `actor_skills_container`, `actor_items_container`, `actor_ai`, `actor_skill`, and `actor_item`: full actor truth split into bounded records for every tactical actor returned by `Tactical.Entities.getAllInstances()`, including hidden enemies;
-- one `tile` record for every valid tactical map square;
+- `state_field`: independently bounded top-level fields belonging to heavy actor/global/container/tile/constant parent records;
+- one `tile` parent record for every valid tactical map square, with properties and occupant internals sharded separately;
 - `manifest_expected` shards plus `manifest`: provenance, counts, reflection limits, staging settings, and the complete expected-record set used by the extractor to reject incomplete captures.
 
 ## Actor records
@@ -53,27 +56,33 @@ Actor records collectively include, where script-readable:
 - HP, armor, AP, fatigue, morale and initiative;
 - wait/turn state;
 - movement AP/fatigue tables, elevation costs and maximum traversable levels;
-- full bounded `actor.m` state;
-- current and base properties;
-- skills-container state plus each skill's ID, common queried properties and bounded `skill.m` state;
-- items-container state plus each item's ID, common queried properties and bounded `item.m` state;
-- AI-agent `m` state when available;
+- sharded `actor.m` state;
+- sharded current and base properties;
+- sharded skills-container state plus each skill's ID, common queried properties and sharded `skill.m` state;
+- sharded items-container state plus each item's ID, common queried properties and sharded `item.m` state;
+- sharded AI-agent `m` state when available;
 - ZOC/AoO state and allied factions when available.
+
+Skill/item core records are built from lightweight getters only. They do not first recursively reflect `skill.m` or `item.m` and then discard it; those internal tables are touched only by their later field-shard jobs.
 
 ## Tile records
 
-Each valid tactical tile record includes:
+Each valid tactical tile parent record includes:
 
 - canonical ID and square coordinates;
 - elevation, terrain type and subtype;
 - all six canonical neighbors;
 - `IsEmpty`, `IsVisibleForPlayer`, and `IsDiscovered`;
-- bounded tile `Properties`, including script-readable effects;
-- current occupant identity/state where `getEntity()` exposes one, including hidden occupancy in this debug artifact.
+- a reference summary for sharded tile `Properties`, including script-readable effects;
+- current occupant identity where `getEntity()` exposes one, including hidden occupancy in this debug artifact, plus sharded occupant `m` state when readable.
 
-## Reflective state
+## Reflective fidelity and bounds
 
 The generic reflective dumper captures primitive, table and array data up to depth 6 and 512 entries per container, with a global 2048-node budget per top-level reflection. Any one logical record is capped at 32768 decoded bytes. Floats are preserved as explicit typed string values because the canonical live JSON encoder intentionally rejects raw floats. Nested native/script instances are represented with bounded state markers, and unsupported runtime values are represented by type markers, preventing object cycles and function graphs from making the snapshot unbounded.
+
+Heavy script-readable objects are not reflected as one monolithic value. The fidelity layer creates a small parent record and emits each top-level field as its own `state_field` record. Each field therefore receives an independent 2048-node reflection budget, 32768-byte record cap, SHA-256 digest and chunk stream. The field record carries its owner section/key, original field-key type/text and ordinal so the structure can be reconstructed offline.
+
+This sharding is used for tactical state, turn-bar state, entity-manager state/runtime fields, `::Tactical`, navigator state, configured constants, actor `m`, current/base actor properties, skills/items containers, AI state, individual skill/item `m`, tile properties and readable tile-occupant state.
 
 A read failure for an individual ordinary record produces an explicit `__capture_error` record and capture continues. Discovery or transport failure cancels the generation rather than allowing the manifest to describe a silently incomplete full snapshot.
 
@@ -93,15 +102,26 @@ Each chunk payload is at most 1200 characters. The Python extractor reassembles 
 
 The user-facing extraction helper polls for a completed manifest instead of requiring the user to guess when staged capture has finished. On timeout it prints the latest sandbox progress/cancellation/error diagnostics.
 
+After a complete snapshot is assembled, the extractor also reports capture-quality counts and paths for:
+
+- explicit `__capture_error` records;
+- recursive `__bb_truncated` reflection markers;
+- parent field-shard truncation;
+- field-container iteration errors.
+
+A manifest-complete snapshot can therefore be distinguished from a high-fidelity snapshot. Any nonzero quality count is visible immediately and remains inspectable in the JSON artifact.
+
 ## Validation
 
 PR CI runs the normal `tests`, `ruff`, and `pyflakes` gates plus a Windows `squirrel-sourcecheck`. The sourcecheck downloads the exact `sq_taro.exe` compiler tracked by pinned BBBuilder commit `c71840e45801cce21da647a29945feabe4d0041e`, verifies the compiler binary size, and compiles every companion `.nut` file. This catches Battle Brothers Squirrel grammar errors without requiring a user-side BBBuilder run.
+
+The installer independently rebuilds with the user's BBBuilder and refuses to install unless the preload contains the staged discovery, fidelity, bounds and continuity layers and excludes the old movement-comparison/probe overrides.
 
 ## Offline workflow
 
 1. Install the exact full-combat sandbox build.
 2. Enter one fresh combat and stop at the first active player brother.
 3. Run `tools/extract_combat_snapshot.ps1`; it waits for a completed manifest and writes `combat-sandbox-latest.json`.
-4. Preserve/upload the resulting JSON artifact.
+4. Read the printed quality summary. Preserve/upload the resulting JSON artifact even if quality markers are nonzero so the exact gaps can be inspected.
 5. Build mechanics tests from the captured state and synthetic mutations offline.
 6. Return to the live game only for mechanics that remain native-only after source and snapshot analysis.
