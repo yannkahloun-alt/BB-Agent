@@ -86,15 +86,19 @@ def test_manifest_is_sharded_after_all_jobs_complete() -> None:
         assert token in text
 
 
-def test_generation_change_aborts_instead_of_mixing_combat_states() -> None:
+def test_failed_ready_latch_does_not_cancel_forensic_generation() -> None:
     text = _text(SANDBOX)
     for token in (
-        "capture.getCurrentRawAcquisition()",
-        "current.BattleSequence != this.State.battle_sequence",
-        "current.SourceGeneration != this.State.source_generation",
+        "capture._commandReadiness(this.State.raw.TacticalState)",
+        "if (!readiness.Ready) return;",
+        "capture.State.BattleSequence != this.State.battle_sequence",
+        "capture.State.SourceGeneration != this.State.source_generation",
+        "capture.State.LastReadySignature != this.State.source_signature",
         'this.cancel("generation_changed")',
+        "source_signature = capture.State.LastReadySignature",
     ):
         assert token in text
+    assert "capture.getCurrentRawAcquisition()" not in text
 
 
 def test_individual_read_failures_emit_error_records_and_continue() -> None:
