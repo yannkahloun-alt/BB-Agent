@@ -3,11 +3,11 @@ local legal = ::BBAGENT_PlayerLegal;
 local oracle = ::BBAGENT_DebugOracle;
 
 // Pinned Battle Brothers scripts 162f498ac7c49b4c317bbf54718a595ecef6a65a
-// expose tactical paths through getCostForPath() summaries rather than a script
-// getPath accessor. Real 1.5.2.3 traces show First/SecondLastBeforeEnd/
-// LastBeforeEnd/End are native path anchors. Sweep the stored native path across
-// AP budgets, merge those ordered anchors, and validate every appended step against
-// the canonical player-legal topology. Tiles remains only a zero/nonzero sentinel.
+// expose tactical path anchors directly in getCostForPath(): First,
+// SecondLastBeforeEnd, LastBeforeEnd, and End. Real 1.5.2.3 traces show that
+// after removing origin/duplicates those anchors exactly cover affordable
+// player movement paths of up to four tiles. Reconstruct from that single native
+// cost result and validate every step against the canonical player-legal topology.
 affordances._canonicalNeighbors <- function(_projection, _fromId, _toId)
 {
     if (!(_fromId in _projection.runtime.tile_records)) return false;
@@ -69,94 +69,55 @@ affordances._nativeCostAnchors <- function(_costs)
     return ret;
 };
 
-affordances._nativeCostPrefixPath <- function(
-    _navigator,
+affordances._nativeCostAnchorPath <- function(
     _active,
-    _settings,
     _costs,
     _destination,
     _projection
 )
 {
     if (!("Tiles" in _costs) || typeof _costs.Tiles != "integer" || _costs.Tiles <= 0)
-        throw "native movement preview returned no affordable movement prefix";
+        throw "native movement preview returned no affordable movement path";
     if (!("IsComplete" in _costs) || typeof _costs.IsComplete != "bool" || !_costs.IsComplete)
         throw "native movement path reconstruction requires a complete path";
     if (!("End" in _costs) || _costs.End == null)
         throw "native movement preview returned no complete path endpoint";
-    if (legal.tileID(_costs.End) != legal.tileID(_destination))
+
+    local destinationId = legal.tileID(_destination);
+    if (legal.tileID(_costs.End) != destinationId)
         throw "native complete movement endpoint differs from requested destination";
 
-    local apRequired = this._movementCost(
-        _costs,
-        "ActionPointsRequired",
-        "ActionPoints"
-    );
-    if (apRequired <= 0)
-        throw "native movement path has steps but no positive action-point cost";
-
-    local fatigueAvailable = _active.getFatigueMax() - _active.getFatigue();
+    local originId = legal.tileID(_active.getTile());
+    local anchors = this._nativeCostAnchors(_costs);
     local path = [];
-    local originTile = _active.getTile();
-    local originId = legal.tileID(originTile);
-    local lastTile = originTile;
-    local lastTileId = originId;
-    local destinationId = legal.tileID(_destination);
     local seen = {};
     seen[originId] <- true;
+    local lastTileId = originId;
 
-    for (local apBudget = 0; apBudget <= apRequired; apBudget = ++apBudget)
+    foreach (tile in anchors)
     {
-        local prefix = _navigator.getCostForPath(
-            _active,
-            _settings,
-            apBudget,
-            fatigueAvailable
-        );
-        if (!("Tiles" in prefix) || typeof prefix.Tiles != "integer" || prefix.Tiles < 0)
-            throw "native movement prefix returned an invalid movement sentinel";
-        if (prefix.Tiles == 0) continue;
-        if (!("End" in prefix) || prefix.End == null)
-            throw "native movement prefix advanced without an endpoint";
-
-        local anchors = this._nativeCostAnchors(prefix);
-        if (anchors.len() == 0)
-            throw "native movement prefix exposed no path anchors";
-
-        foreach (tile in anchors)
+        local tileId = legal.tileID(tile);
+        if (tileId == originId || tileId in seen) continue;
+        if (!(tileId in _projection.runtime.tile_records))
+            throw "native movement path leaves the player-legal canonical map";
+        if (!this._canonicalNeighbors(_projection, lastTileId, tileId))
         {
-            local tileId = legal.tileID(tile);
-            if (tileId == originId || tileId in seen) continue;
-            if (!(tileId in _projection.runtime.tile_records))
-                throw "native movement path leaves the player-legal canonical map";
-            if (!this._canonicalNeighbors(_projection, lastTileId, tileId))
-            {
-                this._traceOracleCostAnchors("full", _costs);
-                this._traceOracleCostAnchors("prefix_" + apBudget, prefix);
-                oracle.reportMovementTopologyMismatch(
-                    _navigator,
-                    _active,
-                    _settings,
-                    _costs,
-                    _destination,
-                    _projection,
-                    lastTile,
-                    tile
-                );
-                throw "native movement cost anchors left a canonical path gap";
-            }
-
-            path.push(tile);
-            seen[tileId] <- true;
-            lastTile = tile;
-            lastTileId = tileId;
+            this._traceOracleCostAnchors("full", _costs);
+            throw "native movement cost anchors left a canonical path gap";
         }
 
-        if (lastTileId == destinationId) break;
+        path.push(tile);
+        seen[tileId] <- true;
+        lastTileId = tileId;
     }
 
+    if (path.len() != _costs.Tiles)
+    {
+        this._traceOracleCostAnchors("count_mismatch", _costs);
+        throw "native movement anchor count differs from native tile count";
+    }
     if (path.len() == 0)
-        throw "native movement prefixes produced no ordered path steps";
+        throw "native movement anchors produced no ordered path steps";
     if (lastTileId != destinationId)
         throw "reconstructed native movement path does not terminate at destination";
     return path;
@@ -199,10 +160,8 @@ affordances._moveActions = function(_raw, _projection)
                     throw "native movement preview did not expose path completeness";
                 if (costs.Tiles != 0 && costs.IsComplete)
                 {
-                    pathTiles = this._nativeCostPrefixPath(
-                        navigator,
+                    pathTiles = this._nativeCostAnchorPath(
                         active,
-                        settings,
                         costs,
                         destination,
                         _projection
