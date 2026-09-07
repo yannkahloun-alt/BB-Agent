@@ -51,7 +51,7 @@ def test_snapshot_pump_is_one_bounded_job_per_update() -> None:
     assert "while (processed < this.RecordsPerPump" in pump
 
 
-def test_heavy_actor_and_projection_data_are_split_into_independent_records() -> None:
+def test_heavy_data_is_split_into_independent_records() -> None:
     text = _text(SANDBOX)
     for token in (
         'this._enqueue("actor_core",',
@@ -73,7 +73,7 @@ def test_heavy_actor_and_projection_data_are_split_into_independent_records() ->
         assert token in text
 
 
-def test_manifest_is_sharded_and_emitted_only_after_all_jobs_complete() -> None:
+def test_manifest_is_sharded_after_all_jobs_complete() -> None:
     text = _text(SANDBOX)
     for token in (
         "ManifestShardSize = 64",
