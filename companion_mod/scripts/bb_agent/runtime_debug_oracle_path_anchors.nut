@@ -18,9 +18,9 @@ oracle._anchorTileID <- function(_costs, _name)
 
 oracle._costSummary = function(_costs)
 {
-    local base = originalCostSummary.acall([this, _costs]);
-    if (_costs == null) return base;
-    return base
+    local summary = originalCostSummary.acall([this, _costs]);
+    if (_costs == null) return summary;
+    return summary
         + " first=" + this._anchorTileID(_costs, "First")
         + " second_last=" + this._anchorTileID(_costs, "SecondLastBeforeEnd")
         + " last=" + this._anchorTileID(_costs, "LastBeforeEnd");

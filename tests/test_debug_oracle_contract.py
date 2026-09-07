@@ -19,12 +19,11 @@ def _text(path: Path) -> str:
 def test_debug_oracle_is_off_in_normal_companion() -> None:
     oracle = _text(ORACLE)
     preload = _text(PRELOAD)
-    assert 'root.BBAGENT_DEBUG_ORACLE <- false;' in oracle
+    assert "root.BBAGENT_DEBUG_ORACLE <- false;" in oracle
     assert "Enabled = root.BBAGENT_DEBUG_ORACLE == true" in oracle
     assert "scripts/bb_agent/debug_oracle" in preload
     assert not (
-        ROOT
-        / "companion_mod/scripts/!mods_preload/00_bb_agent_debug_oracle.nut"
+        ROOT / "companion_mod/scripts/!mods_preload/00_bb_agent_debug_oracle.nut"
     ).exists()
 
 
@@ -103,6 +102,6 @@ def test_private_native_path_introspection_is_confined_to_oracle_module() -> Non
 def test_oracle_reads_native_tiles_without_instance_membership_assumptions() -> None:
     oracle = _text(ORACLE)
     assert "runtimeId = _tile.ID.tostring();" in oracle
-    assert "square = _tile.SquareCoords.X + \":\" + _tile.SquareCoords.Y;" in oracle
+    assert 'square = _tile.SquareCoords.X + ":" + _tile.SquareCoords.Y;' in oracle
     assert 'if ("ID" in _tile)' not in oracle
     assert 'if ("SquareCoords" in _tile)' not in oracle

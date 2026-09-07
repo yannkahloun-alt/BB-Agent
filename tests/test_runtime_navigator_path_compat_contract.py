@@ -15,78 +15,116 @@ def test_load_order() -> None:
     hardening = "scripts/bb_agent/affordance_export_hardening"
     oracle = "scripts/bb_agent/debug_oracle"
     compat = "scripts/bb_agent/runtime_navigator_path_compat"
+    compare = "scripts/bb_agent/runtime_debug_oracle_movement_compare"
     export = "scripts/bb_agent/live_export"
     assert (
         preload.index(hardening)
         < preload.index(oracle)
         < preload.index(compat)
+        < preload.index(compare)
         < preload.index(export)
     )
 
 
-def test_player_legal_movement_tree_replaces_per_destination_native_pathfinding() -> None:
+def test_source_aligned_tree_selects_path_before_affordability() -> None:
     text = _text(COMPAT)
     for token in (
         PINNED,
-        "affordances._movementVisibleTileMap <- function",
-        "affordances._movementVisibleBlockedTiles <- function",
-        "affordances._movementStepCosts <- function(",
         "affordances._movementTree <- function(_raw, _projection)",
-        "affordances._movementPathFromTree <- function(",
-        "record.neighbor_ids",
-        "active.getActionPointCosts()",
-        "active.getFatigueCosts()",
-        "active.getLevelActionPointCost()",
-        "active.getLevelFatigueCost()",
-        "active.getMaxTraversibleLevels()",
-        "FatigueEffectMult",
-        "::Const.Movement.LevelClimbingFatigueCost",
-        "::Const.Movement.FatigueCostFactor",
-        "movement_tree reachable=",
-        "native_find_path_calls=0",
+        "affordances._movementPathAffordability <- function(_active, _pathTiles)",
+        "local tree = this._movementTree(_raw, _projection);",
+        "local affordability = this._movementPathAffordability(active, pathTiles);",
+        "if (!affordability.affordable) continue;",
     ):
         assert token in text
 
+    tree = text[
+        text.index("affordances._movementTree <- function") : text.index(
+            "affordances._movementPathFromTree <- function"
+        )
+    ]
+    assert "getActionPoints()" not in tree
+    assert "getFatigueMax()" not in tree
+    assert "getFatigue()" not in tree
+    assert "remainingAP" not in tree
+
+
+def test_search_and_execution_use_distinct_fatigue_costs() -> None:
+    text = _text(COMPAT)
+    for token in (
+        "path_fatigue = pathFatigue",
+        "execution_fatigue = pathFatigue * fatigueEffectMult",
+        "step.path_fatigue * ::Const.Movement.FatigueCostFactor",
+        "fatigue + step.execution_fatigue > fatigueMax",
+        "::Math.round(fatigue + step.execution_fatigue)",
+    ):
+        assert token in text
+
+    score = text[
+        text.index("local score = current.score") : text.index(
+            "local depth = current.depth + 1;"
+        )
+    ]
+    assert "execution_fatigue" not in score
+    assert "FatigueEffectMult" not in score
+
+
+def test_actor_step_rounding_occurs_after_each_selected_step() -> None:
+    text = _text(COMPAT)
+    affordability = text[
+        text.index("affordances._movementPathAffordability") : text.index(
+            "// Replace movement enumeration only"
+        )
+    ]
+    for token in (
+        "if (ap < step.ap || fatigue + step.execution_fatigue > fatigueMax)",
+        "ap = ::Math.round(ap - step.ap);",
+        "fatigue = ::Math.min(",
+        "::Math.round(fatigue + step.execution_fatigue)",
+        "ap = ::Math.round(startAP - ap)",
+        "fatigue = ::Math.round(fatigue - startFatigue)",
+    ):
+        assert token in affordability
+
+    assert "fatigueBudget" not in text
+    assert "active actor has invalid fatigue budget" not in text
+    assert "active actor has invalid fatigue values" not in text
+
+
+def test_visible_occupancy_and_discovered_destination_gate() -> None:
+    text = _text(COMPAT)
+    for token in (
+        "affordances._movementExactVisibleTileMap <- function",
+        "if (!tile.IsEmpty) blocked[tileId] <- true;",
+        "if (!destination.IsDiscovered) continue;",
+        "if (!destination.IsEmpty) continue;",
+        "scope=exact_visible discovered_scope_pending=true",
+    ):
+        assert token in text
+
+
+def test_visible_zoc_and_aoo_do_not_use_hidden_global_zone_counts() -> None:
+    text = _text(COMPAT)
+    for token in (
+        "affordances._movementVisibleZocCounts <- function",
+        "nativeActor.isExertingZoneOfControl()",
+        "nativeActor.hasZoneOfControl()",
+        "affordances._movementVisibleAooReactors <- function",
+        "_active.getCurrentProperties().IsImmuneToZoneOfControl",
+        '_originTile.Properties.Effect.Type == "smoke"',
+        "reactor.isExertingZoneOfControl()",
+        "reactor.hasZoneOfControl()",
+    ):
+        assert token in text
+    assert "getZoneOfControlCountOtherThan" not in text
+
+
+def test_player_legal_producer_has_zero_native_pathfinder_calls() -> None:
+    text = _text(COMPAT)
     assert "navigator.findPath(" not in text
     assert "navigator.getCostForPath(" not in text
     assert "_navigator.getCostForPath(" not in text
-
-
-def test_movement_tree_is_player_legal_and_affordability_bounded() -> None:
-    text = _text(COMPAT)
-    for token in (
-        "this._visibleTargetTiles(_projection)",
-        "_projection.runtime.tile_records",
-        "_projection.state.combatants",
-        'actor.position.representation != "EXACT"',
-        'actor.visible',
-        "properties.IsRooted || properties.IsStunned",
-        "remainingAP < step.ap",
-        "currentFatigue + step.fatigue > fatigueMax",
-        "::Math.round(remainingAP - step.ap)",
-        "::Math.round(currentFatigue + step.fatigue)",
-        "this._canonicalNeighbors(_projection, currentId, neighborId)",
-        "this._movementVisibleZocPenalty(_projection, active, nextTile)",
-    ):
-        assert token in text
-
-    for forbidden in (
-        "omniscient_debug",
-        "DEBUG_GROUND_TRUTH",
-        "BBAGENT_DEBUG_ORACLE",
-        "getAllInstances",
-        "isHiddenToPlayer",
-    ):
-        assert forbidden not in text
-
-
-def test_over_cap_fatigue_is_zero_available_budget_not_capture_failure() -> None:
-    text = _text(COMPAT)
-    assert "local fatigueBudget = ::Math.max(0, fatigueMax - fatigueStart);" in text
-    assert "fatigueBudget < 0" not in text
-    assert "active actor has invalid fatigue budget" not in text
-    assert "active actor has invalid fatigue values" in text
-    assert '" fatigue=" + fatigueStart + "/" + fatigueMax' in text
+    assert "native_find_path_calls=0" in text
 
 
 def test_movement_tree_rejects_unsupported_or_impossible_steps() -> None:
@@ -95,7 +133,8 @@ def test_movement_tree_rejects_unsupported_or_impossible_steps() -> None:
         "::Const.Tactical.TerrainType.Impassable",
         "visible movement tile has unsupported terrain cost index",
         "::Math.abs(levelDifference) > _active.getMaxTraversibleLevels()",
-        "owned actor movement rule produced an invalid step cost",
+        "owned actor movement rule produced an invalid AP step cost",
+        "owned actor movement rule produced unsupported negative path fatigue",
         "movement tree reached a tile outside canonical records",
         "movement tree encountered inconsistent canonical adjacency",
         "movement tree predecessor chain is invalid",
@@ -119,6 +158,11 @@ def test_read_only_movement_enumerator_never_executes_commands() -> None:
         ".use(",
         ".wait(",
         ".endTurn(",
+        "omniscient_debug",
+        "DEBUG_GROUND_TRUTH",
+        "BBAGENT_DEBUG_ORACLE",
+        "getAllInstances",
+        "isHiddenToPlayer",
     ):
         assert forbidden not in text
 
@@ -127,11 +171,10 @@ def test_move_override_preserves_paths_costs_and_reactions() -> None:
     text = _text(COMPAT)
     for token in (
         "affordances._moveActions = function(_raw, _projection)",
-        "local tree = this._movementTree(_raw, _projection);",
         "local pathTiles = this._movementPathFromTree(",
         "action.destination_tile_id = destinationId;",
         "action.resolved_path.push(legal.tileID(tile))",
         "this._aooReactions(",
-        "this._resolvedCosts(action, node.ap, node.fatigue);",
+        "this._resolvedCosts(action, affordability.ap, affordability.fatigue);",
     ):
         assert token in text
