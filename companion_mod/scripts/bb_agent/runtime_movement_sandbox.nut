@@ -7,6 +7,8 @@ local oracle = ::BBAGENT_DebugOracle;
 ::BBAGENT_MovementSandbox <- {
     FramePrefix = "BBSANDBOX1",
     SchemaVersion = "bb-agent-movement-sandbox.v1",
+    ChunkPayloadChars = 2000,
+    MaxChunkLineBytes = 2300,
     MaxDecodedBytes = 4194304,
     MaxEncodedBytes = 6291456,
     LastSnapshotKey = null,
@@ -27,6 +29,90 @@ local oracle = ::BBAGENT_DebugOracle;
             throw "movement sandbox numeric table must be an array";
         local ret = [];
         foreach (value in _values) ret.push(this._numberText(value));
+        return ret;
+    },
+
+    function _visibleActorFacts(_projection)
+    {
+        local ret = [];
+        foreach (actor in _projection.state.combatants)
+        {
+            if (!actor.visible || actor.life_state != "ALIVE") continue;
+            if (actor.position.representation != "EXACT") continue;
+            ret.push({
+                actor_id = actor.actor_id,
+                relation = actor.relation,
+                tile_id = actor.position.value,
+                is_player_controlled = actor.is_player_controlled
+            });
+        }
+        ret.sort(@(a, b) a.actor_id <=> b.actor_id);
+        return ret;
+    },
+
+    function _visibleActorByTile(_projection)
+    {
+        local ret = {};
+        foreach (actor in this._visibleActorFacts(_projection))
+            ret[actor.tile_id] <- actor;
+        return ret;
+    },
+
+    function _nativeProjectedTiles(_projection)
+    {
+        local ret = {};
+        local size = ::Tactical.getMapSize();
+        for (local x = 0; x < size.X; x = ++x)
+        {
+            for (local y = 0; y < size.Y; y = ++y)
+            {
+                if (!::Tactical.isValidTileSquare(x, y)) continue;
+                local tile = ::Tactical.getTileSquare(x, y);
+                local tileId = legal.tileID(tile);
+                if (tileId in _projection.runtime.tile_records)
+                    ret[tileId] <- tile;
+            }
+        }
+        return ret;
+    },
+
+    function _tileFacts(_projection)
+    {
+        local ret = [];
+        local nativeTiles = this._nativeProjectedTiles(_projection);
+        local actorsByTile = this._visibleActorByTile(_projection);
+        foreach (tileId, record in _projection.runtime.tile_records)
+        {
+            local tile = tileId in nativeTiles ? nativeTiles[tileId] : null;
+            local visible = tileId in _projection.runtime.tile_visible;
+            local discovered = tile != null ? tile.IsDiscovered : false;
+            local occupancy = "UNKNOWN";
+            if (visible)
+            {
+                if (tileId in actorsByTile)
+                    occupancy = actorsByTile[tileId].relation;
+                else if (tile != null && !tile.IsEmpty)
+                    occupancy = "BLOCKED_OTHER";
+                else
+                    occupancy = "EMPTY";
+            }
+
+            local neighbors = [];
+            foreach (neighborId in record.neighbor_ids) neighbors.push(neighborId);
+            ret.push({
+                tile_id = tileId,
+                q = record.coordinate.q,
+                r = record.coordinate.r,
+                elevation = record.elevation,
+                terrain = record.terrain,
+                neighbor_ids = neighbors,
+                visible = visible,
+                discovered = discovered,
+                visible_occupancy = occupancy,
+                dynamic_effects = record.dynamic_effects
+            });
+        }
+        ret.sort(@(a, b) a.tile_id <=> b.tile_id);
         return ret;
     },
 
@@ -100,22 +186,51 @@ local oracle = ::BBAGENT_DebugOracle;
             ruleset_content_fingerprint = capture.RulesetContentFingerprint,
             companion_version = provenance.CompanionVersion,
             payload = {
-                player_legal_state = _projection.state,
+                tiles = this._tileFacts(_projection),
+                visible_actors = this._visibleActorFacts(_projection),
                 movement_context = this._movementContext(_raw, _projection)
             }
         };
     },
 
-    function _encode(_record)
+    function _emitChunked(_record)
     {
         local raw = wire.canonicalJson(_record);
         if (raw.len() > this.MaxDecodedBytes)
             throw "movement sandbox record exceeds decoded payload bound";
-        local frame = this.FramePrefix + "|" + raw.len().tostring()
-            + "|" + wire.sha256(raw) + "|" + wire.base64Url(raw);
-        if (frame.len() > this.MaxEncodedBytes)
+        local digest = wire.sha256(raw);
+        local encoded = wire.base64Url(raw);
+        if (encoded.len() > this.MaxEncodedBytes)
             throw "movement sandbox record exceeds encoded payload bound";
-        return frame;
+
+        local chunkCount = 0;
+        for (local offset = 0; offset < encoded.len(); offset += this.ChunkPayloadChars)
+            ++chunkCount;
+        if (chunkCount == 0) chunkCount = 1;
+
+        local index = 0;
+        for (local offset = 0; offset < encoded.len(); offset += this.ChunkPayloadChars)
+        {
+            local end = ::Math.min(encoded.len(), offset + this.ChunkPayloadChars);
+            local chunk = encoded.slice(offset, end);
+            local line = this.FramePrefix + "|"
+                + _record.battle_sequence.tostring() + "|"
+                + _record.source_generation.tostring() + "|"
+                + index.tostring() + "|"
+                + chunkCount.tostring() + "|"
+                + raw.len().tostring() + "|"
+                + digest + "|" + chunk;
+            if (line.len() > this.MaxChunkLineBytes)
+                throw "movement sandbox chunk exceeds log line bound";
+            ::logInfo(line);
+            ++index;
+        }
+
+        return {
+            chunks = chunkCount,
+            decoded_bytes = raw.len(),
+            encoded_bytes = encoded.len()
+        };
     },
 
     function capture(_raw, _projection)
@@ -140,13 +255,14 @@ local oracle = ::BBAGENT_DebugOracle;
         try
         {
             local record = this._record(_raw, _projection);
-            local frame = this._encode(record);
-            ::logInfo(frame);
+            local emitted = this._emitChunked(record);
             this.LastSnapshotKey = key;
             ::logInfo(
                 "[BB-Agent Sandbox] emitted battle=" + _raw.BattleSequence.tostring()
                 + " generation=" + _raw.SourceGeneration.tostring()
-                + " bytes=" + frame.len().tostring()
+                + " chunks=" + emitted.chunks.tostring()
+                + " decoded_bytes=" + emitted.decoded_bytes.tostring()
+                + " encoded_bytes=" + emitted.encoded_bytes.tostring()
             );
         }
         catch (error)
