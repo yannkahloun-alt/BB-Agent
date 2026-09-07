@@ -46,6 +46,51 @@ def _decode_record(
     return decoded
 
 
+def _manifest_expected_records(
+    records: dict[str, dict[str, Any]], manifest: dict[str, Any]
+) -> list[str]:
+    payload = manifest.get("payload")
+    if not isinstance(payload, dict):
+        raise ValueError("combat sandbox manifest payload is invalid")
+
+    # Backward-compatible support for the initial one-record manifest format.
+    direct = payload.get("expected_records")
+    if direct is not None:
+        if not isinstance(direct, list) or not all(isinstance(v, str) for v in direct):
+            raise ValueError("combat sandbox manifest expected_records is invalid")
+        return direct
+
+    shard_ids = payload.get("expected_shards")
+    expected_count = payload.get("expected_record_count")
+    if not isinstance(shard_ids, list) or not all(isinstance(v, str) for v in shard_ids):
+        raise ValueError("combat sandbox manifest expected_shards is invalid")
+    if not isinstance(expected_count, int) or isinstance(expected_count, bool) or expected_count < 0:
+        raise ValueError("combat sandbox manifest expected_record_count is invalid")
+
+    expected: list[str] = []
+    for shard_id in shard_ids:
+        shard = records.get(shard_id)
+        if shard is None:
+            raise ValueError(f"combat sandbox manifest shard is missing: {shard_id}")
+        shard_payload = shard.get("payload")
+        shard_records = (
+            shard_payload.get("records") if isinstance(shard_payload, dict) else None
+        )
+        if not isinstance(shard_records, list) or not all(
+            isinstance(v, str) for v in shard_records
+        ):
+            raise ValueError(f"combat sandbox manifest shard is invalid: {shard_id}")
+        expected.extend(shard_records)
+
+    if len(expected) != expected_count:
+        raise ValueError(
+            "combat sandbox manifest expected-record count does not match shards"
+        )
+    if len(set(expected)) != len(expected):
+        raise ValueError("combat sandbox manifest contains duplicate expected records")
+    return expected
+
+
 def extract_latest_combat_sandbox(log_path: str | Path) -> dict[str, Any]:
     """Assemble the latest complete combat-sandbox generation from log.html."""
 
@@ -109,10 +154,7 @@ def extract_latest_combat_sandbox(log_path: str | Path) -> dict[str, Any]:
             manifest = records.get("manifest:root")
             if manifest is None:
                 raise ValueError("combat sandbox manifest is missing")
-            payload = manifest.get("payload")
-            expected = payload.get("expected_records") if isinstance(payload, dict) else None
-            if not isinstance(expected, list) or not all(isinstance(v, str) for v in expected):
-                raise ValueError("combat sandbox manifest expected_records is invalid")
+            expected = _manifest_expected_records(records, manifest)
             for record_id in expected:
                 if record_id not in records:
                     raise ValueError(
