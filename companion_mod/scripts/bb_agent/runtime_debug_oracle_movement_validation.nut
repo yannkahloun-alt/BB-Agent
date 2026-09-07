@@ -113,6 +113,7 @@ oracle._movementValidationPlan <- function(_raw, _projection)
     foreach (tileId in visibleIds)
     {
         local tile = visibleTiles[tileId];
+        if (!tile.IsEmpty) continue;
         if (tile.Type == ::Const.Tactical.TerrainType.Impassable) continue;
         this._movementValidationAdd(
             samples, seen, "model_unreachable_visible", tileId, null
