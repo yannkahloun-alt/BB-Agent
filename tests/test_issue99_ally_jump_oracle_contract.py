@@ -3,6 +3,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 PROBE = ROOT / "companion_mod/scripts/bb_agent/runtime_debug_oracle_ally_jump_probe.nut"
+ROSTER_PROBE = (
+    ROOT
+    / "companion_mod/scripts/bb_agent/runtime_debug_oracle_ally_jump_roster_probe.nut"
+)
 GRAPH = ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
 
 
@@ -16,8 +20,11 @@ def test_ally_jump_probe_loads_after_full_oracle_layers_before_live_export() -> 
     sandbox = preload.index("scripts/bb_agent/runtime_combat_sandbox")
     recovery = preload.index("scripts/bb_agent/runtime_combat_sandbox_recovery")
     probe = preload.index("scripts/bb_agent/runtime_debug_oracle_ally_jump_probe")
+    roster_probe = preload.index(
+        "scripts/bb_agent/runtime_debug_oracle_ally_jump_roster_probe"
+    )
     export = preload.index("scripts/bb_agent/live_export")
-    assert graph < sandbox < recovery < probe < export
+    assert graph < sandbox < recovery < probe < roster_probe < export
     assert "scripts/bb_agent/runtime_debug_oracle_movement_compare" not in preload
 
 
@@ -77,3 +84,31 @@ def test_probe_result_is_expected_sandbox_record_not_production_payload() -> Non
     )
     assert "this._enqueue(" in text
     assert "resource_cost_resolved = false" in _text(GRAPH)
+
+
+def test_roster_probe_only_uses_owned_live_turn_actors() -> None:
+    text = _text(ROSTER_PROBE)
+    assert "_raw.TurnSequenceBar.getCurrentEntities()" in text
+    assert "actor.isPlayerControlled()" in text
+    assert "actor.isAlive()" in text
+    assert "actor.isPlacedOnMap()" in text
+    assert "probeRaw.ActiveActor = actor;" in text
+    assert "probeProjection.runtime.active_actor_id = legal.actorID(actor);" in text
+
+
+def test_roster_probe_replaces_only_debug_sandbox_record() -> None:
+    text = _text(ROSTER_PROBE)
+    assert 'job.kind != "ally_jump_probe_record"' in text
+    assert 'job.section != "debug_probe" || job.key != "ally_jump"' in text
+    assert "job.target = replacement;" in text
+    assert "BBAGENT1|" not in text
+    assert "information_profile" not in text
+    assert "record.payload" not in text
+
+
+def test_roster_probe_stops_after_first_native_candidate() -> None:
+    text = _text(ROSTER_PROBE)
+    assert "if (record == null" in text
+    assert "!record.candidate" in text
+    assert "return record;" in text
+    assert 'reason = "no_candidate_across_owned_roster"' in text
