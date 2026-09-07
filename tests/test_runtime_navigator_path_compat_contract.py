@@ -17,6 +17,8 @@ def test_load_order() -> None:
     compat = "scripts/bb_agent/runtime_navigator_path_compat"
     graph = "scripts/bb_agent/runtime_movement_graph_compat"
     sandbox = "scripts/bb_agent/runtime_combat_sandbox"
+    recovery = "scripts/bb_agent/runtime_combat_sandbox_recovery"
+    probe = "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe"
     export = "scripts/bb_agent/live_export"
     assert (
         preload.index(hardening)
@@ -24,9 +26,10 @@ def test_load_order() -> None:
         < preload.index(compat)
         < preload.index(graph)
         < preload.index(sandbox)
+        < preload.index(recovery)
+        < preload.index(probe)
         < preload.index(export)
     )
-    assert "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe" not in preload
 
 
 def test_source_aligned_tree_selects_path_before_affordability() -> None:
