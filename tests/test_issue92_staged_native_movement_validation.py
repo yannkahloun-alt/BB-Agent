@@ -4,14 +4,16 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_ROOT = ROOT / "companion_mod/scripts/bb_agent"
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 VALIDATION = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation.nut"
+FATIGUE = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_fatigue.nut"
 
 
 def test_native_movement_validation_loads_after_ally_probe_before_export() -> None:
     preload = PRELOAD.read_text(encoding="utf-8")
     roster = preload.index("runtime_debug_oracle_ally_jump_roster_probe")
     validation = preload.index("runtime_debug_oracle_movement_validation")
+    fatigue = preload.index("runtime_debug_oracle_movement_validation_fatigue")
     export = preload.index("scripts/bb_agent/live_export")
-    assert roster < validation < export
+    assert roster < validation < fatigue < export
 
 
 def test_native_movement_validation_is_debug_only_and_staged() -> None:
@@ -54,3 +56,18 @@ def test_native_calls_only_exist_in_debug_validation_sample_path() -> None:
     )
     assert "findPath(" not in production_graph
     assert "getCostForPath(" not in production_graph
+
+
+def test_native_validation_distinguishes_path_and_execution_fatigue() -> None:
+    text = FATIGUE.read_text(encoding="utf-8")
+    for required in (
+        "_movementValidationPathFatigue",
+        "matched.step.path_fatigue",
+        "model_execution_fatigue",
+        "model_path_fatigue",
+        "native_matches_execution_fatigue",
+        "native_matches_path_fatigue",
+    ):
+        assert required in text
+    assert "findPath(" not in text
+    assert "getCostForPath(" not in text
