@@ -128,6 +128,23 @@ oracle._rememberedMovementValidationSample <- function(_raw, _nativeTiles, _samp
     return _sample;
 };
 
+sandbox._scheduleRememberedMovementValidationPlan <- function()
+{
+    if (!oracle.Enabled || this.State == null) return;
+    if (!this.State.remembered_validation_requested) return;
+    if (!this.State.tile_discovery_complete) return;
+    if (this.State.remembered_validation_plan_scheduled) return;
+    this.State.remembered_validation_plan_scheduled = true;
+    this._enqueue(
+        "remembered_movement_validation_plan",
+        null,
+        null,
+        null,
+        null,
+        false
+    );
+};
+
 local originalProcessDiscovery = sandbox._processDiscovery;
 sandbox._processDiscovery = function(_job)
 {
@@ -141,6 +158,7 @@ sandbox._processDiscovery = function(_job)
     if (size != null && x >= size.X)
     {
         this.State.tile_discovery_complete = true;
+        this._scheduleRememberedMovementValidationPlan();
         return ret;
     }
     if (size == null || !::Tactical.isValidTileSquare(x, y)) return ret;
@@ -155,19 +173,6 @@ sandbox._processJob = function(_job)
     if (_job.kind == "remembered_movement_validation_plan")
     {
         if (!oracle.Enabled || this.State == null) return;
-        if (!this.State.tile_discovery_complete)
-        {
-            this._enqueue(
-                "remembered_movement_validation_plan",
-                null,
-                null,
-                null,
-                null,
-                false
-            );
-            return;
-        }
-
         local samples = oracle._rememberedMovementValidationPlan(
             this.State.raw,
             this.State.player_legal_projection,
@@ -201,14 +206,8 @@ sandbox._processJob = function(_job)
     local ret = originalSandboxProcessJob.acall([this, _job]);
     if (!oracle.Enabled || !wasPlayerLegalBuild || this.State == null) return ret;
     if (this.State.player_legal_projection == null) return ret;
-    this._enqueue(
-        "remembered_movement_validation_plan",
-        null,
-        null,
-        null,
-        null,
-        false
-    );
+    this.State.remembered_validation_requested = true;
+    this._scheduleRememberedMovementValidationPlan();
     return ret;
 };
 
@@ -217,8 +216,13 @@ sandbox.begin = function(_raw)
 {
     originalBegin.acall([this, _raw]);
     if (this.State == null) return;
-    this.State.native_tile_by_id <- {};
-    this.State.tile_discovery_complete <- false;
+    if (!("native_tile_by_id" in this.State)) this.State.native_tile_by_id <- {};
+    if (!("tile_discovery_complete" in this.State))
+        this.State.tile_discovery_complete <- false;
+    if (!("remembered_validation_requested" in this.State))
+        this.State.remembered_validation_requested <- false;
+    if (!("remembered_validation_plan_scheduled" in this.State))
+        this.State.remembered_validation_plan_scheduled <- false;
 };
 
 ::logInfo(
