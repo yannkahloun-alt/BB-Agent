@@ -26,8 +26,8 @@ def test_probe_is_single_sample_debug_only_and_never_supplies_values() -> None:
     for token in (
         "oracle.LastAllyJumpProbeKey <- null;",
         "if (!this.Enabled) return;",
-        "tree.unresolved_jump_edges",
-        "local edge = tree.unresolved_jump_edges[0];",
+        "_tree.unresolved_jump_edges",
+        "local edge = _tree.unresolved_jump_edges[0];",
         "navigator.findPath(",
         "navigator.getCostForPath(",
         "ally_jump_probe",
