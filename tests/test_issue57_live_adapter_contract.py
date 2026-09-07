@@ -37,7 +37,6 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
         "canonical_wire",
         "player_legal_projection",
         "player_legal_hardening",
-        "runtime_player_legal_blocking_compat",
         "canonical_identity",
         "affordance_export",
         "affordance_export_hardening",
@@ -45,7 +44,6 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
         "runtime_debug_oracle_path_anchors",
         "runtime_navigator_path_compat",
         "runtime_movement_graph_compat",
-        "runtime_movement_blocking_compat",
         "runtime_combat_sandbox",
         "runtime_debug_oracle_ally_jump_probe",
         "live_export",
@@ -59,6 +57,8 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
         "runtime_navigator_tiebreak_compat",
         "runtime_debug_oracle_route_score",
         "runtime_movement_sandbox",
+        "runtime_player_legal_blocking_compat",
+        "runtime_movement_blocking_compat",
     ):
         assert forbidden not in source
 
