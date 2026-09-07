@@ -56,6 +56,7 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
     local seen = 0;
     local truncated = false;
     local iterationError = null;
+    local iterationUnavailable = null;
     local omittedRuntimeFields = [];
     local scalarFields = [];
 
@@ -146,7 +147,11 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
         }
         catch (error)
         {
-            iterationError = error.tostring();
+            local message = error.tostring();
+            if (kind == "instance" && message == "_nexti failed")
+                iterationUnavailable = "native_instance_not_enumerable";
+            else
+                iterationError = message;
         }
     }
     else if (kind != "null")
@@ -207,6 +212,8 @@ sandbox._shardTopLevel = function(_ownerSection, _ownerKey, _container)
         truncated = truncated
     };
     if (iterationError != null) parent.iteration_error <- iterationError;
+    if (iterationUnavailable != null)
+        parent.iteration_unavailable_reason <- iterationUnavailable;
     if (kind == "array") parent.original_length <- _container.len();
     return parent;
 };
