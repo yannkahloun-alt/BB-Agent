@@ -50,7 +50,7 @@ try {
     $zip.Dispose()
 }
 
-if ($preload -notmatch 'Version = "0\.2\.25"') { throw 'Wrong BB-Agent companion version' }
+if ($preload -notmatch 'Version = "0\.2\.26"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_combat_sandbox') { throw 'Full combat sandbox module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_discovery') { throw 'Combat sandbox discovery module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_fidelity') { throw 'Combat sandbox fidelity module missing' }
@@ -82,7 +82,7 @@ if ($installed.Count -ne 2) {
 
 Write-Host ''
 Write-Host 'FULL COMBAT SANDBOX INSTALLED'
-Write-Host '  companion: 0.2.25'
+Write-Host '  companion: 0.2.26'
 Write-Host '  capture mode: staged discovery + capture (1 bounded job per update)'
 Write-Host '  fidelity: large state split into independently bounded field records'
 Write-Host '  continuity: survives unchanged failed READY signatures'
