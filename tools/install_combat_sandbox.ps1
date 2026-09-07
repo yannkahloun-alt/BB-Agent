@@ -50,7 +50,7 @@ try {
     $zip.Dispose()
 }
 
-if ($preload -notmatch 'Version = "0\.2\.33"') { throw 'Wrong BB-Agent companion version' }
+if ($preload -notmatch 'Version = "0\.2\.32"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_player_legal_blocking_compat') { throw 'Player-legal blocker projection missing' }
 if ($preload -notmatch 'runtime_player_legal_actor_enumeration_compat') { throw 'Player-legal actor enumeration compatibility missing' }
 if ($preload -notmatch 'runtime_movement_graph_compat') { throw 'Movement reachability graph missing' }
@@ -91,7 +91,7 @@ if ($installed.Count -ne 2) {
 
 Write-Host ''
 Write-Host 'FULL COMBAT SANDBOX INSTALLED'
-Write-Host '  companion: 0.2.33'
+Write-Host '  companion: 0.2.32'
 Write-Host '  capture mode: phased oracle-first staged discovery + capture'
 Write-Host '  player-legal projection: captured only after omniscient oracle jobs complete'
 Write-Host '  player-legal actors: turn-list fallback repairs missing/partial owned roster enumeration'
