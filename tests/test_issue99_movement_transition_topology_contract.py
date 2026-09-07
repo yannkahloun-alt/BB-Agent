@@ -81,6 +81,19 @@ def test_ordinary_empty_neighbor_remains_a_direct_transition() -> None:
         assert token in text
 
 
+def test_final_destination_uses_player_visible_occupancy_not_raw_is_empty() -> None:
+    text = _text(GRAPH)
+    for token in (
+        "affordances._moveActions = function(_raw, _projection)",
+        "local occupancy = this._movementVisibleOccupancy(_projection);",
+        "if (destinationId in occupancy) continue;",
+        "if (!destination.IsDiscovered) continue;",
+    ):
+        assert token in text
+
+    assert "destination.IsEmpty" not in text
+
+
 def test_zoc_path_penalty_is_attached_to_exit_edge() -> None:
     text = _text(GRAPH)
     for token in (
