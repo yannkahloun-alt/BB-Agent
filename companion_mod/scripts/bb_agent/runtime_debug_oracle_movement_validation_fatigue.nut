@@ -1,7 +1,7 @@
 local affordances = ::BBAGENT_Affordances;
 local oracle = ::BBAGENT_DebugOracle;
 
-// Native getCostForPath() fatigue semantics are intentionally not assumed here.
+// Native movement-cost fatigue semantics are intentionally not assumed here.
 // Reconstruct the model's path-search fatigue independently from execution
 // fatigue so bounded DEBUG_ORACLE samples can tell us which quantity BB exposes.
 oracle._movementValidationPathFatigue <- function(
