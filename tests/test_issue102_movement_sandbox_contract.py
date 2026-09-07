@@ -3,19 +3,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
-SANDBOX = ROOT / "companion_mod/scripts/bb_agent/runtime_movement_sandbox.nut"
+SANDBOX = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox.nut"
 
 
 def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_sandbox_loads_after_graph_before_live_export_without_path_probes() -> None:
+def test_full_combat_sandbox_loads_before_live_export_without_path_probes() -> None:
     preload = _text(PRELOAD)
-    graph = preload.index("scripts/bb_agent/runtime_movement_graph_compat")
-    sandbox = preload.index("scripts/bb_agent/runtime_movement_sandbox")
+    sandbox = preload.index("scripts/bb_agent/runtime_combat_sandbox")
     export = preload.index("scripts/bb_agent/live_export")
-    assert graph < sandbox < export
+    assert sandbox < export
     for forbidden in (
         "runtime_debug_oracle_movement_compare",
         "runtime_debug_oracle_tiebreak_samples",
@@ -25,77 +24,79 @@ def test_sandbox_loads_after_graph_before_live_export_without_path_probes() -> N
         assert forbidden not in preload
 
 
-def test_snapshot_is_emitted_before_affordance_acquisition() -> None:
+def test_snapshot_is_emitted_immediately_after_projection_before_affordances() -> None:
     text = _text(EXPORT)
     projection = text.index("local projection = ::BBAGENT_PlayerLegal.build(_raw);")
-    snapshot = text.index("::BBAGENT_MovementSandbox.capture(_raw, projection);")
+    snapshot = text.index("::BBAGENT_CombatSandbox.capture(_raw, projection);")
     acquire = text.index("local actions = ::BBAGENT_Affordances.acquire(_raw, projection);")
     assert projection < snapshot < acquire
 
 
-def test_snapshot_is_compact_player_legal_and_nonfatal() -> None:
+def test_snapshot_is_full_debug_state_not_player_legal_only() -> None:
     text = _text(SANDBOX)
     for token in (
-        'FramePrefix = "BBSANDBOX1"',
-        'SchemaVersion = "bb-agent-movement-sandbox.v1"',
-        "tiles = this._tileFacts(_projection)",
-        "visible_actors = this._visibleActorFacts(_projection)",
+        'FramePrefix = "BBCOMBAT1"',
+        'SchemaVersion = "bb-agent-combat-sandbox.v1"',
+        "_raw.EntityManager.getAllInstances()",
+        "::Tactical.getMapSize()",
+        "::Tactical.getTileSquare(x, y)",
+        "tile.IsVisibleForPlayer",
+        "tile.IsDiscovered",
+        "tile.IsEmpty",
+        "tile.getEntity()",
+        "actor.isHiddenToPlayer()",
+        "actor.getCurrentProperties()",
+        "actor.getBaseProperties()",
+        "actor.getSkills().m.Skills",
+        "actor.getItems().getAllItems()",
+        "actor.getAIAgent()",
+        "_projection.state",
+        "capture.getObservationMemory()",
+        "_raw.RawSourceFingerprintInputs",
+        "_raw.ValidationContext",
+        "_raw.TacticalState.m",
+        "_raw.TurnSequenceBar.m",
         "active.getActionPointCosts()",
         "active.getFatigueCosts()",
-        "active.getLevelActionPointCost()",
-        "active.getLevelFatigueCost()",
-        "active.getMaxTraversibleLevels()",
         "properties.FatigueEffectMult",
-        "properties.IsRooted",
-        "properties.IsStunned",
-        "affordances._movementVisibleZocCounts(_projection, visibleTiles)",
         "wire.canonicalHash(_raw.RawSourceFingerprintInputs)",
-        '::logInfo("[BB-Agent Sandbox] emitted',
-        '::logError("[BB-Agent Sandbox] error=',
-        "catch (error)",
     ):
         assert token in text
 
-    assert "player_legal_state = _projection.state" not in text
-    for forbidden in (
-        "getAllInstances",
-        "isHiddenToPlayer",
-        "getZoneOfControlCountOtherThan",
-        "navigator.findPath(",
-        "navigator.getCostForPath(",
-        "omniscient_debug",
-        "DEBUG_GROUND_TRUTH",
+
+def test_reflective_dump_is_bounded_and_preserves_float_text() -> None:
+    text = _text(SANDBOX)
+    for token in (
+        "MaxReflectDepth = 6",
+        "MaxReflectEntries = 512",
+        '"__bb_type"',
+        '"float"',
+        "_value.tostring()",
+        '"__bb_truncated"',
     ):
-        assert forbidden not in text
+        assert token in text
 
 
-def test_snapshot_chunks_encoded_payload_below_known_safe_log_line_size() -> None:
+def test_combat_snapshot_uses_small_chunk_lines_and_sections() -> None:
     text = _text(SANDBOX)
     for token in (
         "ChunkPayloadChars = 1200",
-        "MaxChunkLineBytes = 1400",
-        "local encoded = wire.base64Url(raw);",
-        "local chunkCount =",
-        "local chunk = encoded.slice(offset, end);",
+        "wire.base64Url(raw)",
         'this.FramePrefix + "|"',
         '::logInfo(line);',
-        '" chunks=" + emitted.chunks.tostring()',
+        'section = "actor"',
+        'section = "tile"',
+        'section = "manifest"',
+        'section = "player_legal"',
     ):
         assert token in text
     assert "::logInfo(frame);" not in text
 
 
-def test_snapshot_serializes_potential_float_movement_numbers_as_strings() -> None:
+def test_snapshot_is_debug_only_and_nonfatal() -> None:
     text = _text(SANDBOX)
-    assert "_numberText" in text
-    assert "_numberArray" in text
-    assert "value.tostring()" in text
-    assert "movement_ap_costs = this._numberArray(active.getActionPointCosts())" in text
-    assert "movement_fatigue_costs = this._numberArray(active.getFatigueCosts())" in text
-    assert "fatigue_effect_mult = this._numberText(properties.FatigueEffectMult)" in text
-
-
-def test_snapshot_uses_distinct_frame_prefix_from_live_protocol() -> None:
-    text = _text(SANDBOX)
-    assert 'FramePrefix = "BBSANDBOX1"' in text
-    assert '"BBAGENT1"' not in text
+    assert "oracle.Enabled" in text
+    assert "catch (error)" in text
+    assert '[BB-Agent Combat Sandbox] error=' in text
+    assert "navigator.findPath(" not in text
+    assert "navigator.getCostForPath(" not in text
