@@ -12,13 +12,13 @@ def _text(path: Path) -> str:
 def test_full_combat_sandbox_loads_without_old_path_or_scheduler_overrides() -> None:
     preload = _text(PRELOAD)
     assert "scripts/bb_agent/runtime_combat_sandbox" in preload
+    assert "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe" in preload
     for forbidden in (
         "runtime_combat_sandbox_incremental",
         "runtime_movement_sandbox",
         "runtime_debug_oracle_movement_compare",
         "runtime_debug_oracle_tiebreak_samples",
         "runtime_debug_oracle_route_score",
-        "runtime_debug_oracle_ally_jump_probe",
     ):
         assert forbidden not in preload
 
