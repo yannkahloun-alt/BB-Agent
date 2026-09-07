@@ -16,7 +16,9 @@ AFFORDANCES = ROOT / "companion_mod/scripts/bb_agent/affordance_export.nut"
 AFFORDANCE_HARDENING = (
     ROOT / "companion_mod/scripts/bb_agent/affordance_export_hardening.nut"
 )
-MOVEMENT_GRAPH = ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
+MOVEMENT_GRAPH = (
+    ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
+)
 COMBAT_SANDBOX = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox.nut"
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 HOOK = ROOT / "companion_mod/scripts/bb_agent/hooks/tactical_state.nut"
@@ -26,7 +28,9 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook() -> None:
+def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook() -> (
+    None
+):
     source = _text(PRELOAD)
     assert 'Version = "0.2.25"' in source
     modules = (
