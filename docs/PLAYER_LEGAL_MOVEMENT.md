@@ -20,7 +20,7 @@ Hidden current occupancy must not be consulted while enumerating the player-know
 
 Visible actor occupancy is relation-aware. A visible allied unit is not a universal blocker: the player may pass over exactly one ally to a legal landing tile beyond it. The allied tile is intermediate only. The actor must land before another allied jump can occur. Enemies cannot be jumped or crossed. Visible occupied landing tiles and visible non-traversable tactical objects block their landing tile.
 
-Visible non-actor blocker acquisition is still unresolved. The forensic snapshot showed visible scenery occupiers, but their tile terrain and property fields were indistinguishable from ordinary empty tiles; the differentiating data was the raw occupant/entity state. A production blocker bit therefore must not be inferred from raw `Tile.IsEmpty`, `getEntity()`, or hidden-actor state merely to distinguish scenery, because doing so would inspect hidden occupancy before encounter. Until a source-proven player-facing blocker signal is identified, production keeps this limitation explicit instead of violating the no-cheat boundary.
+The visible-blocker acquisition boundary is source-proven by the pinned Battle Brothers `scripts/states/tactical_state.nut` path-computation gate. For a currently visible tile, current `IsEmpty` state is player-facing and may be projected as an exact blocker observation. For a non-visible/remembered tile, current occupancy is ignored and the blocker field remains unknown. Production therefore reads `IsEmpty` only inside the existing visible-tile projection hook and does not call `getEntity()`, `isHiddenToPlayer()`, or global entity enumeration to construct blocker state. Actor relation projection is overlaid afterward so a visible ally remains jumpable rather than collapsing into a generic blocker.
 
 ## Source-derived movement costs
 
@@ -57,6 +57,6 @@ Production must never restore the old per-destination native `findPath()` loop. 
 
 ## Test authority
 
-Issue #94 is the deterministic offline fixture gate for #98. The executable corpus covers terrain, elevation, actor-modified costs, AP/fatigue limits, relation-aware actor occupancy, allied jump topology, a synthetic known-blocker class, hidden-state exclusion, ZOC entry/exit placement, rooted/stunned movement, deterministic adjacency, and any-feasible-route resource reachability.
+Issue #94 is the deterministic offline fixture gate for #98. The executable corpus covers terrain, elevation, actor-modified costs, AP/fatigue limits, relation-aware actor occupancy, allied jump topology, visible blocker projection, hidden-state exclusion, ZOC entry/exit placement, rooted/stunned movement, deterministic adjacency, and any-feasible-route resource reachability.
 
-The synthetic blocker fixture proves graph behavior once a legal blocker observation exists; it does not claim that production has already acquired visible non-actor blockers safely. Native chosen-path identity and tie-breaking are not prerequisites for this corpus.
+Native chosen-path identity and tie-breaking are not prerequisites for this corpus.
