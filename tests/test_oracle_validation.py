@@ -69,6 +69,8 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
                     "cost_agreement": True,
                     "native_matches_execution_fatigue": True,
                     "native_matches_path_fatigue": True,
+                    "tile_count_agreement": True,
+                    "endpoint_agreement": True,
                 }
             },
             "debug_movement_validation:1": {
@@ -81,6 +83,8 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
                     "cost_agreement": False,
                     "native_matches_execution_fatigue": False,
                     "native_matches_path_fatigue": True,
+                    "tile_count_agreement": False,
+                    "endpoint_agreement": True,
                 }
             },
             "debug_movement_validation:2": {
@@ -93,6 +97,8 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
                     "cost_agreement": False,
                     "native_matches_execution_fatigue": False,
                     "native_matches_path_fatigue": False,
+                    "tile_count_agreement": True,
+                    "endpoint_agreement": False,
                 }
             },
             "debug_movement_validation:3": {
@@ -123,6 +129,8 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
     assert summary["execution_fatigue_match_count"] == 1
     assert summary["path_fatigue_match_count"] == 2
     assert summary["fatigue_semantics_neither_count"] == 1
+    assert summary["tile_count_mismatch_count"] == 1
+    assert summary["endpoint_mismatch_count"] == 1
     assert summary["error_count"] == 0
 
 
