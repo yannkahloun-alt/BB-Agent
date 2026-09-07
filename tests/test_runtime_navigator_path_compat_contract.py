@@ -24,77 +24,54 @@ def test_load_order() -> None:
     )
 
 
-def test_native_prefix_anchors_drive_path_reconstruction() -> None:
+def test_single_native_cost_result_drives_path_reconstruction() -> None:
     text = _text(COMPAT)
     required = (
         PINNED,
         "navigator.findPath(",
-        "_navigator.getCostForPath(",
-        '"IsComplete" in _costs',
-        '"End" in _costs',
-        '"Tiles" in _costs',
+        "navigator.getCostForPath(",
         'foreach (name in ["First", "SecondLastBeforeEnd", "LastBeforeEnd", "End"])',
         "affordances._nativeCostAnchors <- function(_costs)",
-        "for (local apBudget = 0; apBudget <= apRequired;",
-        "if (prefix.Tiles == 0) continue;",
-        "local anchors = this._nativeCostAnchors(prefix);",
+        "affordances._nativeCostAnchorPath <- function(",
+        "local anchors = this._nativeCostAnchors(_costs);",
         "foreach (tile in anchors)",
-        "if (tileId == originId || tileId in seen) continue;",
         "this._canonicalNeighbors(_projection, lastTileId, tileId)",
         "path.push(tile);",
-        "if (lastTileId == destinationId) break;",
+        "path.len() != _costs.Tiles",
+        "native movement anchor count differs from native tile count",
     )
     for token in required:
         assert token in text
 
+    assert "for (local apBudget" not in text
+    assert "_navigator.getCostForPath(" not in text
 
-def test_tiles_are_only_zero_nonzero_sentinel() -> None:
+
+def test_anchor_gaps_and_count_mismatches_fail_closed() -> None:
     text = _text(COMPAT)
-    forbidden = (
-        "_nativeMovementStepCount",
-        "return _tiles - 1",
-        "prefixSteps",
-        "targetSteps",
-        "observedSteps",
-        "path.len() == _costs.Tiles",
-        "path.len() != _costs.Tiles",
-    )
-    for token in forbidden:
-        assert token not in text
-    assert "costs.Tiles != 0 && costs.IsComplete" in text
-    assert "costs.Tiles == 0" in text
-
-
-def test_anchor_gaps_fail_closed() -> None:
-    text = _text(COMPAT)
-    required = (
-        "native movement prefix exposed no path anchors",
+    for token in (
         "native movement path leaves the player-legal canonical map",
         "native movement cost anchors left a canonical path gap",
-        "oracle.reportMovementTopologyMismatch(",
-        "lastTileId != destinationId",
-    )
-    for token in required:
+        "native movement anchor count differs from native tile count",
+        "reconstructed native movement path does not terminate at destination",
+    ):
         assert token in text
 
 
 def test_complete_paths_only() -> None:
     text = _text(COMPAT)
-    required = (
+    for token in (
         '"IsComplete" in costs',
         "costs.Tiles != 0 && costs.IsComplete",
         "!found || costs == null || costs.Tiles == 0 || !complete",
-        "legal.tileID(_costs.End) != legal.tileID(_destination)",
-        "path.len() == 0",
-        "reconstructed native movement path does not terminate at destination",
-    )
-    for token in required:
+        "legal.tileID(_costs.End) != destinationId",
+    ):
         assert token in text
 
 
 def test_read_only_path_api() -> None:
     text = _text(COMPAT)
-    forbidden = (
+    for token in (
         ".getPath(",
         ".Path",
         ".m.Path",
@@ -111,14 +88,13 @@ def test_read_only_path_api() -> None:
         ".endTurn(",
         "DEBUG_GROUND_TRUTH",
         "omniscient_debug",
-    )
-    for token in forbidden:
+    ):
         assert token not in text
 
 
 def test_move_override_preserves_costs_path_and_reactions() -> None:
     text = _text(COMPAT)
-    required = (
+    for token in (
         "affordances._moveActions = function(_raw, _projection)",
         "settings.ZoneOfControlCost = 0;",
         'this._movementCost(costs, "ActionPointsRequired", "ActionPoints")',
@@ -127,7 +103,5 @@ def test_move_override_preserves_costs_path_and_reactions() -> None:
         "action.resolved_path.push(legal.tileID(tile))",
         "this._aooReactions(",
         "this._resolvedCosts(action, apCost, fatigueCost);",
-    )
-    for token in required:
+    ):
         assert token in text
-    assert "this._navigatorPath(" not in text
