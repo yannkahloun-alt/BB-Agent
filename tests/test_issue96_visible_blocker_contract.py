@@ -2,7 +2,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 GRAPH = ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
-BLOCKING = ROOT / "companion_mod/scripts/bb_agent/runtime_player_legal_blocking_compat.nut"
+BLOCKING = (
+    ROOT / "companion_mod/scripts/bb_agent/runtime_player_legal_blocking_compat.nut"
+)
 MOVEMENT_BLOCKING = (
     ROOT / "companion_mod/scripts/bb_agent/runtime_movement_blocking_compat.nut"
 )
@@ -36,13 +38,21 @@ def test_movement_graph_consumes_only_projected_blocker_state() -> None:
     assert "tile.blocking.value" in text
     assert 'ret[tile.tile_id] <- "BLOCKED";' in text
     assert 'if (kind == "BLOCKED") continue;' in text
-    for forbidden in ("IsEmpty", "getEntity(", "isHiddenToPlayer", "getAllInstances"):
+    for forbidden in (
+        "IsEmpty",
+        "getEntity(",
+        "isHiddenToPlayer",
+        "getAllInstances",
+    ):
         assert forbidden not in text
 
 
 def test_actor_relations_override_generic_visible_blocker_class() -> None:
     text = MOVEMENT_BLOCKING.read_text(encoding="utf-8")
-    assert "local actorOccupancy = baseVisibleOccupancy.acall([this, _projection]);" in text
+    assert (
+        "local actorOccupancy = baseVisibleOccupancy.acall([this, _projection]);"
+        in text
+    )
     assert "ret[tileId] <- kind;" in text
 
 
