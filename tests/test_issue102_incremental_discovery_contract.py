@@ -30,8 +30,8 @@ def test_begin_only_seeds_bounded_discovery_jobs() -> None:
         'this._enqueue("player_legal_build",',
         'this._enqueue("raw_meta",',
         'this._enqueue("discover_raw_input",',
-        'this._enqueue("discover_actor",',
-        'this._enqueue("discover_tile",',
+        '"discover_actor",',
+        '"discover_tile",',
     ):
         assert token in begin
 
