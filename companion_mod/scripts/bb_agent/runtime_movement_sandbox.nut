@@ -10,6 +10,7 @@ local oracle = ::BBAGENT_DebugOracle;
     MaxDecodedBytes = 4194304,
     MaxEncodedBytes = 6291456,
     LastSnapshotKey = null,
+    LastAttemptKey = null,
 
     function _numberText(_value)
     {
@@ -119,8 +120,21 @@ local oracle = ::BBAGENT_DebugOracle;
 
     function capture(_raw, _projection)
     {
-        if (!oracle.Enabled) return;
         local key = _raw.BattleSequence.tostring() + ":" + _raw.SourceGeneration.tostring();
+        if (this.LastAttemptKey == key) return;
+        this.LastAttemptKey = key;
+
+        ::logInfo(
+            "[BB-Agent Sandbox] capture_attempt battle=" + _raw.BattleSequence.tostring()
+            + " generation=" + _raw.SourceGeneration.tostring()
+            + " oracle_enabled=" + oracle.Enabled.tostring()
+        );
+
+        if (!oracle.Enabled)
+        {
+            ::logInfo("[BB-Agent Sandbox] skipped reason=oracle_disabled");
+            return;
+        }
         if (this.LastSnapshotKey == key) return;
 
         try
@@ -138,7 +152,13 @@ local oracle = ::BBAGENT_DebugOracle;
         catch (error)
         {
             // Diagnostic snapshot failure must never invalidate the live capture.
-            ::logError("[BB-Agent Sandbox] error=" + error);
+            ::logError("[BB-Agent Sandbox] error=" + error.tostring());
         }
     }
 };
+
+::logInfo(
+    "[BB-Agent Sandbox] module_loaded schema="
+    + ::BBAGENT_MovementSandbox.SchemaVersion
+    + " oracle_enabled=" + oracle.Enabled.tostring()
+);
