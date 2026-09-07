@@ -26,8 +26,8 @@ def test_tactical_update_starts_and_pumps_snapshot_incrementally() -> None:
     for token in (
         "::BBAGENT_CombatSandbox.begin(raw);",
         "::BBAGENT_CombatSandbox.pump();",
-        "::BBAGENT_CombatSandbox.cancel(\"battle_ended\");",
-        "::BBAGENT_CombatSandbox.cancel(\"tactical_state_finished\");",
+        '::BBAGENT_CombatSandbox.cancel("battle_ended");',
+        '::BBAGENT_CombatSandbox.cancel("tactical_state_finished");',
     ):
         assert token in hook
 
