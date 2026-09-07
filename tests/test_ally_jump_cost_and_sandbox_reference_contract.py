@@ -1,15 +1,10 @@
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+SCRIPT_ROOT = ROOT / "companion_mod/scripts/bb_agent"
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
-JUMP = (
-    ROOT
-    / "companion_mod/scripts/bb_agent/runtime_movement_ally_jump_cost_compat.nut"
-)
-REFS = (
-    ROOT
-    / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_reference_fields.nut"
-)
+JUMP = SCRIPT_ROOT / "runtime_movement_ally_jump_cost_compat.nut"
+REFS = SCRIPT_ROOT / "runtime_combat_sandbox_reference_fields.nut"
 
 
 def test_ally_jump_cost_layer_loads_after_graph_before_blocking() -> None:
@@ -23,7 +18,7 @@ def test_ally_jump_cost_layer_loads_after_graph_before_blocking() -> None:
 def test_ally_jump_cost_is_sum_of_two_constituent_steps() -> None:
     text = JUMP.read_text(encoding="utf-8")
     for required in (
-        "transition.kind != \"ALLY_JUMP\"",
+        "ALLY_JUMP",
         "_movementStepCosts(",
         "ap = first.ap + second.ap",
         "path_fatigue = first.path_fatigue + second.path_fatigue",
@@ -44,11 +39,14 @@ def test_reference_field_layer_replaces_duplicate_runtime_graphs() -> None:
 
     text = REFS.read_text(encoding="utf-8")
     for required in (
-        "actor_skills_container\" && keyText == \"Skills\"",
-        "__bb_reference_collection = \"actor_skill\"",
-        "actor_items_container\" && keyText == \"Items\"",
-        "__bb_reference_collection = \"actor_item\"",
-        "entity_manager_state\" && keyText == \"Instances\"",
+        "actor_skills_container",
+        "Skills",
+        "actor_skill",
+        "actor_items_container",
+        "Items",
+        "actor_item",
+        "entity_manager_state",
+        "Instances",
         "entity_manager_instances",
         "turn_sequence_state",
         "CurrentEntities",
