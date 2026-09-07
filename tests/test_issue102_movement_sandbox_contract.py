@@ -69,16 +69,17 @@ def test_snapshot_is_compact_player_legal_and_nonfatal() -> None:
         assert forbidden not in text
 
 
-def test_snapshot_chunks_encoded_payload_into_small_log_lines() -> None:
+def test_snapshot_chunks_encoded_payload_below_known_safe_log_line_size() -> None:
     text = _text(SANDBOX)
     for token in (
-        "ChunkPayloadChars = 2000",
+        "ChunkPayloadChars = 1200",
+        "MaxChunkLineBytes = 1400",
         "local encoded = wire.base64Url(raw);",
         "local chunkCount =",
         "local chunk = encoded.slice(offset, end);",
         'this.FramePrefix + "|"',
         '::logInfo(line);',
-        '" chunks=" + chunkCount.tostring()',
+        '" chunks=" + emitted.chunks.tostring()',
     ):
         assert token in text
     assert "::logInfo(frame);" not in text
