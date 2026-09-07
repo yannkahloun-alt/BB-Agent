@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import argparse
-import html
 import json
-import re
 import sys
 from pathlib import Path
 
@@ -12,71 +10,37 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from bb_agent.movement_sandbox import extract_latest_movement_sandbox
-
-_TEXT_RE = re.compile(r'<div class="text">(.*?)</div>', re.DOTALL)
-_TAG_RE = re.compile(r"<.*?>")
+from bb_agent.combat_sandbox import extract_latest_combat_sandbox
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
-        description="Extract the latest BB-Agent movement sandbox snapshot from log.html."
+        description="Extract the latest full BB-Agent combat sandbox from log.html."
     )
-    parser.add_argument("--log", required=True, type=Path, help="Battle Brothers log.html")
-    parser.add_argument("--out", required=True, type=Path, help="Output JSON fixture")
+    parser.add_argument("--log", required=True, type=Path)
+    parser.add_argument("--out", required=True, type=Path)
     return parser
-
-
-def _relevant_log_lines(path: Path) -> list[str]:
-    try:
-        raw = path.read_text(encoding="utf-8", errors="replace")
-    except OSError:
-        return []
-    result: list[str] = []
-    for match in _TEXT_RE.finditer(raw):
-        text = html.unescape(_TAG_RE.sub("", match.group(1))).strip()
-        if (
-            "[BB-Agent Sandbox]" in text
-            or "DEBUG_ORACLE explicitly enabled" in text
-            or "[BB-Agent Capture]" in text
-            or "BB-Agent Capture 0.2.23" in text
-        ):
-            result.append(text)
-    return result[-40:]
 
 
 def main() -> int:
     args = _parser().parse_args()
-    try:
-        snapshot = extract_latest_movement_sandbox(args.log)
-    except ValueError as exc:
-        print(f"Movement sandbox extraction failed: {exc}", file=sys.stderr)
-        lines = _relevant_log_lines(args.log)
-        if lines:
-            print("Relevant Battle Brothers log entries:", file=sys.stderr)
-            for line in lines:
-                print(f"  {line}", file=sys.stderr)
-        else:
-            print("No BB-Agent sandbox/oracle/capture diagnostics found in log.", file=sys.stderr)
-        return 2
-
+    snapshot = extract_latest_combat_sandbox(args.log)
     args.out.parent.mkdir(parents=True, exist_ok=True)
     args.out.write_text(
         json.dumps(snapshot, allow_nan=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-
-    payload = snapshot["payload"]
-    movement = payload.get("movement_context", {})
-    tiles = payload.get("tiles", [])
-    actors = payload.get("visible_actors", [])
-    print(f"Wrote movement sandbox snapshot: {args.out}")
+    records = snapshot.get("records", {})
+    sections: dict[str, int] = {}
+    for record_id in records:
+        section = record_id.split(":", 1)[0]
+        sections[section] = sections.get(section, 0) + 1
+    print(f"Wrote full combat sandbox: {args.out}")
     print(
         f"  battle={snapshot.get('battle_sequence')} "
         f"generation={snapshot.get('source_generation')}"
     )
-    print(f"  active_tile={movement.get('active_tile_id')}")
-    print(f"  tiles={len(tiles)} visible_actors={len(actors)}")
+    print(f"  records={len(records)} sections={dict(sorted(sections.items()))}")
     return 0
 
 
