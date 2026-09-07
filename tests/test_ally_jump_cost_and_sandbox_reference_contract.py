@@ -5,6 +5,7 @@ SCRIPT_ROOT = ROOT / "companion_mod/scripts/bb_agent"
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 JUMP = SCRIPT_ROOT / "runtime_movement_ally_jump_cost_compat.nut"
 REFS = SCRIPT_ROOT / "runtime_combat_sandbox_reference_fields.nut"
+NESTED = SCRIPT_ROOT / "runtime_combat_sandbox_nested_fields.nut"
 
 
 def test_ally_jump_cost_layer_loads_after_graph_before_blocking() -> None:
@@ -34,8 +35,9 @@ def test_reference_field_layer_replaces_duplicate_runtime_graphs() -> None:
     preload = PRELOAD.read_text(encoding="utf-8")
     fidelity = preload.index("scripts/bb_agent/runtime_combat_sandbox_fidelity")
     refs = preload.index("scripts/bb_agent/runtime_combat_sandbox_reference_fields")
+    nested = preload.index("scripts/bb_agent/runtime_combat_sandbox_nested_fields")
     oracle_first = preload.index("scripts/bb_agent/runtime_combat_sandbox_oracle_first")
-    assert fidelity < refs < oracle_first
+    assert fidelity < refs < nested < oracle_first
 
     text = REFS.read_text(encoding="utf-8")
     for required in (
@@ -58,6 +60,20 @@ def test_reference_field_layer_replaces_duplicate_runtime_graphs() -> None:
         "TacticalScreen",
         "MenuStack",
         "__bb_runtime_scaffolding",
+        "originalEnqueueStateField.acall",
+    ):
+        assert required in text
+
+
+def test_nested_field_layer_shards_unique_hot_structures() -> None:
+    text = NESTED.read_text(encoding="utf-8")
+    for required in (
+        "constant_actor_entry",
+        "StrategicProperties",
+        "strategic_property",
+        "Strategies",
+        "entity_strategy",
+        "__bb_nested_field_shards",
         "originalEnqueueStateField.acall",
     ):
         assert required in text
