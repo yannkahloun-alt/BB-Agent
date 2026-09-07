@@ -15,10 +15,12 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_oracle_first_capture_defers_player_legal_projection() -> None:
+def test_oracle_first_capture_runs_player_legal_projection_last() -> None:
     text = _text(ORACLE_FIRST)
-    assert 'job.kind != "player_legal_build"' in text
-    assert "delete this.State.player_legal_projection;" in text
+    assert 'if (job.kind == "player_legal_build") deferredPlayerLegal = job;' in text
+    assert "filtered.push(deferredPlayerLegal);" in text
+    assert 'job.kind != "player_legal_build"' not in text
+    assert "delete this.State.player_legal_projection;" not in text
 
 
 def test_state_field_sharding_skips_executable_runtime_scaffolding() -> None:
