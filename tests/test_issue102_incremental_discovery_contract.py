@@ -80,6 +80,12 @@ def test_discovery_emits_or_queues_full_existing_record_set() -> None:
         assert token in text
 
 
+def test_actor_discovery_uses_runtime_compatible_null_guard() -> None:
+    text = _text(DISCOVERY)
+    assert "if (actor != null)" in text
+    assert "actor.isNull()" not in text
+
+
 def test_discovery_delegates_normal_record_jobs_to_base_processor() -> None:
     text = _text(DISCOVERY)
     assert "local originalProcessJob = sandbox._processJob;" in text
