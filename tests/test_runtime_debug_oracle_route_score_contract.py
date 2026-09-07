@@ -14,10 +14,11 @@ def test_route_score_smoke_diagnostic_is_not_loaded_during_topology_tdd() -> Non
     assert "scripts/bb_agent/runtime_debug_oracle_movement_compare" not in preload
 
 
-def test_full_sandbox_replaces_native_movement_probe_before_export() -> None:
+def test_bounded_ally_jump_probe_loads_after_full_sandbox_before_export() -> None:
     preload = _text(PRELOAD)
     graph = preload.index("scripts/bb_agent/runtime_movement_graph_compat")
     sandbox = preload.index("scripts/bb_agent/runtime_combat_sandbox")
+    recovery = preload.index("scripts/bb_agent/runtime_combat_sandbox_recovery")
+    probe = preload.index("scripts/bb_agent/runtime_debug_oracle_ally_jump_probe")
     export = preload.index("scripts/bb_agent/live_export")
-    assert graph < sandbox < export
-    assert "scripts/bb_agent/runtime_debug_oracle_ally_jump_probe" not in preload
+    assert graph < sandbox < recovery < probe < export
