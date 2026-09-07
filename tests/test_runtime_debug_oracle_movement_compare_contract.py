@@ -3,8 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 COMPARE = (
-    ROOT
-    / "companion_mod/scripts/bb_agent/runtime_debug_oracle_movement_compare.nut"
+    ROOT / "companion_mod/scripts/bb_agent/runtime_debug_oracle_movement_compare.nut"
 )
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 
