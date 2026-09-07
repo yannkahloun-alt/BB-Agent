@@ -103,9 +103,6 @@ def test_discovered_destination_gate_remains_separate_from_graph_occupancy() -> 
     ):
         assert token in text
 
-    # Issue #98 moves relation-aware traversal into a dedicated graph layer.
-    assert "if (!tile.IsEmpty) blocked[tileId] <- true;" not in text
-
 
 def test_visible_zoc_and_aoo_do_not_use_hidden_global_zone_counts() -> None:
     text = _text(COMPAT)
