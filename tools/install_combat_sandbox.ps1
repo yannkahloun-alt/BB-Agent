@@ -53,6 +53,7 @@ try {
 if ($preload -notmatch 'Version = "0\.2\.25"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_combat_sandbox') { throw 'Full combat sandbox module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_bounds') { throw 'Combat sandbox bounds module missing' }
+if ($preload -notmatch 'runtime_combat_sandbox_continuity') { throw 'Combat sandbox continuity module missing' }
 foreach ($forbidden in @(
     'runtime_combat_sandbox_incremental',
     'runtime_movement_sandbox',
@@ -81,6 +82,7 @@ Write-Host ''
 Write-Host 'FULL COMBAT SANDBOX INSTALLED'
 Write-Host '  companion: 0.2.25'
 Write-Host '  capture mode: staged tactical onUpdate (1 bounded record per update)'
+Write-Host '  continuity: survives unchanged failed READY signatures'
 Write-Host '  reflection budget: 2048 nodes per top-level reflection'
 Write-Host '  logical record cap: 32768 decoded bytes'
 Write-Host '  omniscient DEBUG snapshot: enabled by separate overlay'
