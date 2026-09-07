@@ -13,7 +13,10 @@ SRC = ROOT / "src"
 if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
-from bb_agent.combat_sandbox import extract_latest_combat_sandbox  # noqa: E402
+from bb_agent.combat_sandbox import (  # noqa: E402
+    extract_latest_combat_sandbox,
+    summarize_combat_sandbox_quality,
+)
 
 _TEXT_RE = re.compile(r'<div class="text">(.*?)</div>', re.DOTALL)
 _TAG_RE = re.compile(r"<.*?>")
@@ -90,6 +93,8 @@ def main() -> int:
     for record_id in records:
         section = record_id.split(":", 1)[0]
         counts[section] = counts.get(section, 0) + 1
+    quality = summarize_combat_sandbox_quality(snapshot)
+
     print(f"Wrote full combat sandbox: {args.out}")
     print(
         f"  battle={snapshot['battle_sequence']} "
@@ -97,6 +102,18 @@ def main() -> int:
     )
     print(f"  records={len(records)}")
     print(f"  sections={dict(sorted(counts.items()))}")
+    print(
+        "  quality="
+        f"capture_errors:{quality['capture_error_count']} "
+        f"truncations:{quality['truncation_count']} "
+        f"iteration_errors:{quality['iteration_error_count']}"
+    )
+    if quality["issue_paths"]:
+        print("  quality_issue_paths:")
+        for path in quality["issue_paths"][:20]:
+            print(f"    {path}")
+        if len(quality["issue_paths"]) > 20:
+            print(f"    ... {len(quality['issue_paths']) - 20} more")
     return 0
 
 
