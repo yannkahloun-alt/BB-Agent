@@ -2,9 +2,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
-PROBE = (
-    ROOT / "companion_mod/scripts/bb_agent/runtime_debug_oracle_ally_jump_probe.nut"
-)
+PROBE = ROOT / "companion_mod/scripts/bb_agent/runtime_debug_oracle_ally_jump_probe.nut"
 GRAPH = ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
 
 
