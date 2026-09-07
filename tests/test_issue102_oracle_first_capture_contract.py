@@ -17,7 +17,9 @@ def _text(path: Path) -> str:
 
 def test_oracle_first_capture_runs_player_legal_projection_last() -> None:
     text = _text(ORACLE_FIRST)
-    assert 'if (job.kind == "player_legal_build") deferredPlayerLegal = job;' in text
+    assert (
+        'if (job.kind == "player_legal_build") deferredPlayerLegal = job;' in text
+    )
     assert "filtered.push(deferredPlayerLegal);" in text
     assert 'job.kind != "player_legal_build"' not in text
     assert "delete this.State.player_legal_projection;" not in text
