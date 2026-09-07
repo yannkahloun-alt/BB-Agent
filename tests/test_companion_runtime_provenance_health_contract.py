@@ -11,7 +11,7 @@ CONTENT_SHA = "4c4b714832d1989740a6f07dce058c11aa1e9123056966ede06ce42d1df182bd"
 def test_capture_provenance_exposes_companion_version_directly() -> None:
     text = PROVENANCE.read_text(encoding="utf-8")
     preload = PRELOAD.read_text(encoding="utf-8")
-    assert 'Version = "0.2.20"' in preload
+    assert 'Version = "0.2.21"' in preload
     assert "capture.CompanionVersion <- ::BBAGENT_Mod.Version;" in text
     assert text.count("CompanionVersion = this.CompanionVersion") >= 2
 

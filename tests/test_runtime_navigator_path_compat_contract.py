@@ -80,6 +80,15 @@ def test_movement_tree_is_player_legal_and_affordability_bounded() -> None:
         assert forbidden not in text
 
 
+def test_over_cap_fatigue_is_zero_available_budget_not_capture_failure() -> None:
+    text = _text(COMPAT)
+    assert "local fatigueBudget = ::Math.max(0, fatigueMax - fatigueStart);" in text
+    assert "fatigueBudget < 0" not in text
+    assert "active actor has invalid fatigue budget" not in text
+    assert "active actor has invalid fatigue values" in text
+    assert '" fatigue=" + fatigueStart + "/" + fatigueMax' in text
+
+
 def test_movement_tree_rejects_unsupported_or_impossible_steps() -> None:
     text = _text(COMPAT)
     for token in (

@@ -123,15 +123,17 @@ affordances._movementTree <- function(_raw, _projection)
     local apBudget = active.getActionPoints();
     local fatigueStart = active.getFatigue();
     local fatigueMax = active.getFatigueMax();
-    local fatigueBudget = fatigueMax - fatigueStart;
     if (typeof apBudget != "integer" || apBudget < 0)
         throw "active actor has invalid action points";
-    if (typeof fatigueStart != "integer"
-        || typeof fatigueMax != "integer"
-        || fatigueBudget < 0)
+    if (typeof fatigueStart != "integer" || fatigueStart < 0
+        || typeof fatigueMax != "integer" || fatigueMax < 0)
     {
-        throw "active actor has invalid fatigue budget";
+        throw "active actor has invalid fatigue values";
     }
+    // Effects can lower current fatigue capacity below fatigue already accumulated.
+    // Battle Brothers then simply allows no fatigue-costing movement until the actor
+    // is back under capacity; treat available fatigue as zero rather than faulting.
+    local fatigueBudget = ::Math.max(0, fatigueMax - fatigueStart);
 
     local nodes = {};
     nodes[originId] <- {
@@ -258,6 +260,7 @@ affordances._movementTree <- function(_raw, _projection)
         oracle._log(
             "movement_tree reachable=" + reachable
             + " native_find_path_calls=0"
+            + " fatigue=" + fatigueStart + "/" + fatigueMax
         );
     }
     return {
