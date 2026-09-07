@@ -11,10 +11,12 @@ def _text(path: Path) -> str:
 def test_route_score_smoke_diagnostic_is_not_loaded_during_topology_tdd() -> None:
     preload = _text(PRELOAD)
     assert "scripts/bb_agent/runtime_debug_oracle_route_score" not in preload
+    assert "scripts/bb_agent/runtime_debug_oracle_movement_compare" not in preload
 
 
-def test_topology_layer_precedes_any_downstream_oracle_comparison() -> None:
+def test_topology_probe_is_bounded_before_export() -> None:
     preload = _text(PRELOAD)
     graph = preload.index("scripts/bb_agent/runtime_movement_graph_compat")
-    compare = preload.index("scripts/bb_agent/runtime_debug_oracle_movement_compare")
-    assert graph < compare
+    probe = preload.index("scripts/bb_agent/runtime_debug_oracle_ally_jump_probe")
+    export = preload.index("scripts/bb_agent/live_export")
+    assert graph < probe < export
