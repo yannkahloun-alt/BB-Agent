@@ -6,6 +6,7 @@ PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 VALIDATION = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation.nut"
 FATIGUE = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_fatigue.nut"
 LEGALITY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_legality.nut"
+GEOMETRY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_geometry.nut"
 
 
 def test_native_movement_validation_loads_after_ally_probe_before_export() -> None:
@@ -14,8 +15,9 @@ def test_native_movement_validation_loads_after_ally_probe_before_export() -> No
     validation = preload.index("runtime_debug_oracle_movement_validation")
     fatigue = preload.index("runtime_debug_oracle_movement_validation_fatigue")
     legality = preload.index("runtime_debug_oracle_movement_validation_legality")
+    geometry = preload.index("runtime_debug_oracle_movement_validation_geometry")
     export = preload.index("scripts/bb_agent/live_export")
-    assert roster < validation < fatigue < legality < export
+    assert roster < validation < fatigue < legality < geometry < export
 
 
 def test_native_movement_validation_is_debug_only_and_staged() -> None:
@@ -83,6 +85,21 @@ def test_native_validation_separates_legality_from_resource_reachability() -> No
         "native_found",
         "legality_agreement",
         "model_legal_resource_unreachable",
+    ):
+        assert required in text
+    assert "findPath(" not in text
+    assert "getCostForPath(" not in text
+
+
+def test_native_validation_compares_bounded_path_geometry_summaries() -> None:
+    text = GEOMETRY.read_text(encoding="utf-8")
+    for required in (
+        "_movementValidationModelPath",
+        "model_path_tile_ids",
+        "model_first_tile_id",
+        "model_end_tile_id",
+        "tile_count_agreement",
+        "endpoint_agreement",
     ):
         assert required in text
     assert "findPath(" not in text
