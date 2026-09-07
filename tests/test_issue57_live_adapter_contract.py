@@ -26,7 +26,7 @@ def _text(path: Path) -> str:
 
 def test_preload_orders_projection_and_export_before_tactical_hook() -> None:
     source = _text(PRELOAD)
-    assert 'Version = "0.2.10"' in source
+    assert 'Version = "0.2.14"' in source
     modules = (
         "canonical_wire",
         "player_legal_projection",
@@ -34,6 +34,7 @@ def test_preload_orders_projection_and_export_before_tactical_hook() -> None:
         "canonical_identity",
         "affordance_export",
         "affordance_export_hardening",
+        "debug_oracle",
         "runtime_navigator_path_compat",
         "live_export",
         "hooks/tactical_state",

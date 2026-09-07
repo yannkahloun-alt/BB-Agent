@@ -1,5 +1,6 @@
 local affordances = ::BBAGENT_Affordances;
 local legal = ::BBAGENT_PlayerLegal;
+local oracle = ::BBAGENT_DebugOracle;
 
 // Pinned Battle Brothers scripts 162f498ac7c49b4c317bbf54718a595ecef6a65a
 // expose tactical paths through getCostForPath() summaries (Tiles/End/IsComplete),
@@ -44,7 +45,8 @@ affordances._nativeCostPrefixPath <- function(
 
     local fatigueAvailable = _active.getFatigueMax() - _active.getFatigue();
     local path = [];
-    local lastTileId = legal.tileID(_active.getTile());
+    local lastTile = _active.getTile();
+    local lastTileId = legal.tileID(lastTile);
     local seen = {};
     seen[lastTileId] <- true;
 
@@ -71,10 +73,23 @@ affordances._nativeCostPrefixPath <- function(
         if (tileId in seen)
             throw "native movement prefix revisited an earlier path tile";
         if (!this._canonicalNeighbors(_projection, lastTileId, tileId))
+        {
+            oracle.reportMovementTopologyMismatch(
+                _navigator,
+                _active,
+                _settings,
+                _costs,
+                _destination,
+                _projection,
+                lastTile,
+                prefix.End
+            );
             throw "native movement prefix endpoint is not a canonical adjacent tile";
+        }
 
         path.push(prefix.End);
         seen[tileId] <- true;
+        lastTile = prefix.End;
         lastTileId = tileId;
     }
 

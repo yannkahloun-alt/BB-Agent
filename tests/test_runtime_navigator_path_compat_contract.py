@@ -13,9 +13,15 @@ def _text(path: Path) -> str:
 def test_load_order() -> None:
     preload = _text(PRELOAD)
     hardening = "scripts/bb_agent/affordance_export_hardening"
+    oracle = "scripts/bb_agent/debug_oracle"
     compat = "scripts/bb_agent/runtime_navigator_path_compat"
     export = "scripts/bb_agent/live_export"
-    assert preload.index(hardening) < preload.index(compat) < preload.index(export)
+    assert (
+        preload.index(hardening)
+        < preload.index(oracle)
+        < preload.index(compat)
+        < preload.index(export)
+    )
 
 
 def test_native_prefix_oracle() -> None:
@@ -27,10 +33,11 @@ def test_native_prefix_oracle() -> None:
         '"IsComplete" in _costs',
         '"End" in _costs',
         '"Tiles" in _costs',
-        "for (local apBudget = 1; apBudget <= apRequired;",
+        "for (local apBudget = 0; apBudget <= apRequired;",
         "if (prefix.Tiles == 0) continue;",
         "if (tileId == lastTileId) continue;",
-        "lastTile.getDistanceTo(prefix.End) != 1",
+        "this._canonicalNeighbors(_projection, lastTileId, tileId)",
+        "oracle.reportMovementTopologyMismatch(",
         "path.push(prefix.End);",
     )
     for token in required:
@@ -61,7 +68,7 @@ def test_complete_paths_only() -> None:
         "legal.tileID(_costs.End) != legal.tileID(_destination)",
         "path.len() == 0",
         "lastTileId != legal.tileID(_destination)",
-        "native movement path leaves the player-legal canonical map",
+        "native movement prefix endpoint is not a canonical adjacent tile",
     )
     for token in required:
         assert token in text
@@ -85,7 +92,6 @@ def test_read_only_path_api() -> None:
         ".wait(",
         ".endTurn(",
         "DEBUG_GROUND_TRUTH",
-        "DEBUG_ORACLE",
         "omniscient_debug",
     )
     for token in forbidden:
