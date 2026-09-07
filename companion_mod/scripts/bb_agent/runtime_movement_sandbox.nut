@@ -110,8 +110,8 @@ local oracle = ::BBAGENT_DebugOracle;
         local raw = wire.canonicalJson(_record);
         if (raw.len() > this.MaxDecodedBytes)
             throw "movement sandbox record exceeds decoded payload bound";
-        local frame = this.FramePrefix + "|" + raw.len() + "|" + wire.sha256(raw)
-            + "|" + wire.base64Url(raw);
+        local frame = this.FramePrefix + "|" + raw.len().tostring()
+            + "|" + wire.sha256(raw) + "|" + wire.base64Url(raw);
         if (frame.len() > this.MaxEncodedBytes)
             throw "movement sandbox record exceeds encoded payload bound";
         return frame;
@@ -130,9 +130,9 @@ local oracle = ::BBAGENT_DebugOracle;
             ::logInfo(frame);
             this.LastSnapshotKey = key;
             ::logInfo(
-                "[BB-Agent Sandbox] emitted battle=" + _raw.BattleSequence
-                + " generation=" + _raw.SourceGeneration
-                + " bytes=" + frame.len()
+                "[BB-Agent Sandbox] emitted battle=" + _raw.BattleSequence.tostring()
+                + " generation=" + _raw.SourceGeneration.tostring()
+                + " bytes=" + frame.len().tostring()
             );
         }
         catch (error)
