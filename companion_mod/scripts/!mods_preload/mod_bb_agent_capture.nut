@@ -25,7 +25,6 @@ mod.queue(function()
     ::include("scripts/bb_agent/runtime_navigator_path_compat");
     ::include("scripts/bb_agent/runtime_movement_graph_compat");
     ::include("scripts/bb_agent/runtime_combat_sandbox");
-    ::include("scripts/bb_agent/runtime_combat_sandbox_incremental");
     ::include("scripts/bb_agent/live_export");
     ::include("scripts/bb_agent/runtime_join_compat");
     ::include("scripts/bb_agent/runtime_sha256_compat");
