@@ -4,9 +4,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ORACLE_FIRST = (
     ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_oracle_first.nut"
 )
-RECOVERY = (
-    ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_recovery.nut"
-)
+RECOVERY = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_recovery.nut"
 HOOK = ROOT / "companion_mod/scripts/bb_agent/hooks/tactical_state.nut"
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 
@@ -17,9 +15,7 @@ def _text(path: Path) -> str:
 
 def test_oracle_first_capture_runs_player_legal_projection_last() -> None:
     text = _text(ORACLE_FIRST)
-    assert (
-        'if (job.kind == "player_legal_build") deferredPlayerLegal = job;' in text
-    )
+    assert 'if (job.kind == "player_legal_build") deferredPlayerLegal = job;' in text
     assert "filtered.push(deferredPlayerLegal);" in text
     assert 'job.kind != "player_legal_build"' not in text
     assert "delete this.State.player_legal_projection;" not in text
