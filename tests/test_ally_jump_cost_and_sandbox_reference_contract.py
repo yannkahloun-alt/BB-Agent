@@ -52,6 +52,12 @@ def test_reference_field_layer_replaces_duplicate_runtime_graphs() -> None:
         "CurrentEntities",
         "AllEntities",
         "actor_runtime_ids",
+        "tactical_state",
+        "Factions",
+        "entity_manager_alias",
+        "TacticalScreen",
+        "MenuStack",
+        "__bb_runtime_scaffolding",
         "originalEnqueueStateField.acall",
     ):
         assert required in text
