@@ -164,9 +164,7 @@ def test_hidden_occupant_is_absent_from_player_known_graph() -> None:
 
 
 def test_zoc_penalty_attaches_to_exit_not_entry() -> None:
-    graph = build_movement_graph(
-        _line_tiles(), "a", _actor(), hostile_zoc_tiles={"b"}
-    )
+    graph = build_movement_graph(_line_tiles(), "a", _actor(), hostile_zoc_tiles={"b"})
     enter = next(edge for edge in graph.edges["a"] if edge.destination == "b")
     leave = next(edge for edge in graph.edges["b"] if edge.destination == "c")
     assert enter.zoc_path_penalty == 0
