@@ -85,9 +85,7 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
 
     roles = [sample.get("role") for sample in samples]
     errors = [
-        sample.get("error")
-        for sample in samples
-        if sample.get("error") is not None
+        sample.get("error") for sample in samples if sample.get("error") is not None
     ]
     reachability_mismatches = sum(
         1 for sample in samples if sample.get("reachability_agreement") is False
