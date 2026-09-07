@@ -39,6 +39,7 @@ mod.queue(function()
     ::include("scripts/bb_agent/runtime_combat_sandbox_recovery");
     ::include("scripts/bb_agent/runtime_debug_oracle_ally_jump_probe");
     ::include("scripts/bb_agent/runtime_debug_oracle_ally_jump_roster_probe");
+    ::include("scripts/bb_agent/runtime_debug_oracle_movement_validation");
     ::include("scripts/bb_agent/live_export");
     ::include("scripts/bb_agent/runtime_join_compat");
     ::include("scripts/bb_agent/runtime_sha256_compat");
