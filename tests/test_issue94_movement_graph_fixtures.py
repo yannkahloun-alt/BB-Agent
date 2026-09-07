@@ -3,9 +3,7 @@ from __future__ import annotations
 from bb_agent.movement_graph import ActorMovement, Tile, build_movement_graph
 
 
-def _line_tiles(
-    *, terrain: tuple[int, ...] = (1, 1, 1), levels=(0, 0, 0)
-):
+def _line_tiles(*, terrain: tuple[int, ...] = (1, 1, 1), levels=(0, 0, 0)):
     tiles = {
         "a": Tile("a", terrain[0], levels[0], ("b", None, None, None, None, None)),
         "b": Tile("b", terrain[1], levels[1], ("c", None, None, "a", None, None)),
@@ -64,9 +62,7 @@ def test_actor_modified_tables_are_authoritative() -> None:
 
 
 def test_ap_and_fatigue_limits_prune_only_unaffordable_routes() -> None:
-    assert (
-        "c" not in build_movement_graph(_line_tiles(), "a", _actor(ap=3)).reachable
-    )
+    assert "c" not in build_movement_graph(_line_tiles(), "a", _actor(ap=3)).reachable
     assert (
         "b"
         not in build_movement_graph(
