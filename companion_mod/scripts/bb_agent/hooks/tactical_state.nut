@@ -17,7 +17,7 @@ mod.hook("scripts/states/tactical_state", function(q)
         if (!::BBAGENT_Capture.isRuntimeCompatible())
         {
             ::BBAGENT_CombatSandbox.cancel("runtime_incompatible");
-            if (::BBAGENT_Capture.State.IsReady)
+            if (::BBAGENT_Capture.State.IsReady && !::BBAGENT_DebugOracle.Enabled)
                 ::BBAGENT_LiveExport.handleLifecycleEvent(
                     ::BBAGENT_Capture.invalidate("runtime_incompatible")
                 );
@@ -31,18 +31,20 @@ mod.hook("scripts/states/tactical_state", function(q)
             if (raw != null) ::BBAGENT_CombatSandbox.begin(raw);
         }
 
-        // Diagnostic forensic capture is deliberately pumped before normal live
-        // export. One bounded record job is processed per tactical update, so a
-        // later affordance/export failure cannot prevent the snapshot from making
-        // progress and cannot force the whole combat dump into one game frame.
+        // DEBUG_ORACLE is an instrumentation mode: capture readiness still starts
+        // the forensic snapshot, but normal production affordance/export work is
+        // deliberately skipped so oracle collection cannot trigger large live
+        // envelopes, movement probes, or logger overflow. Production is unchanged
+        // when DEBUG_ORACLE is disabled.
         ::BBAGENT_CombatSandbox.pump();
-        ::BBAGENT_LiveExport.handleLifecycleEvent(event);
+        if (!::BBAGENT_DebugOracle.Enabled)
+            ::BBAGENT_LiveExport.handleLifecycleEvent(event);
     }
 
     q.onBattleEnded = @(__original) function()
     {
         ::BBAGENT_CombatSandbox.cancel("battle_ended");
-        if (::BBAGENT_Capture.State.IsReady)
+        if (::BBAGENT_Capture.State.IsReady && !::BBAGENT_DebugOracle.Enabled)
             ::BBAGENT_LiveExport.handleLifecycleEvent(
                 ::BBAGENT_Capture.invalidate("battle_ended")
             );
@@ -53,7 +55,7 @@ mod.hook("scripts/states/tactical_state", function(q)
     q.onFinish = @(__original) function()
     {
         ::BBAGENT_CombatSandbox.cancel("tactical_state_finished");
-        if (::BBAGENT_Capture.State.IsReady)
+        if (::BBAGENT_Capture.State.IsReady && !::BBAGENT_DebugOracle.Enabled)
             ::BBAGENT_LiveExport.handleLifecycleEvent(
                 ::BBAGENT_Capture.invalidate("tactical_state_finished")
             );
