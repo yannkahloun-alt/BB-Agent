@@ -24,10 +24,7 @@ def _chunk_lines(
     raw = canonical_json_bytes(record)
     digest = hashlib.sha256(raw).hexdigest()
     encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
-    chunks = [
-        encoded[i : i + chunk_chars]
-        for i in range(0, len(encoded), chunk_chars)
-    ]
+    chunks = [encoded[i : i + chunk_chars] for i in range(0, len(encoded), chunk_chars)]
     return [
         (
             f"{PREFIX}|{battle}|{generation}|{section}|{key}|{i}|"
