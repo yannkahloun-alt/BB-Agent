@@ -69,16 +69,18 @@ def test_parent_records_describe_shards_instead_of_embedding_heavy_reflection() 
 def test_skill_item_and_tile_core_records_keep_nonstate_semantics() -> None:
     text = _text(FIDELITY)
     for token in (
-        "this._skillRecord(_job.target)",
-        "delete skill.state",
-        "this._itemRecord(_job.target)",
-        "delete item.state",
+        "function _skillCoreRecord(_skill)",
+        "function _itemCoreRecord(_item)",
+        "this._skillCoreRecord(_job.target)",
+        "this._itemCoreRecord(_job.target)",
         "function _tileCorePayload(_tile)",
         "neighbor_ids = neighbors",
         "occupant = occupant",
         "properties_sharded = true",
     ):
         assert token in text
+    assert "this._skillRecord(_job.target)" not in text
+    assert "this._itemRecord(_job.target)" not in text
 
 
 def test_fidelity_wraps_current_discovery_processor_and_begin() -> None:
