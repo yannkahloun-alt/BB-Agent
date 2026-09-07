@@ -64,6 +64,7 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
                     "role": "nearest_reachable",
                     "model_reachable": True,
                     "native_complete": True,
+                    "legality_agreement": True,
                     "reachability_agreement": True,
                     "cost_agreement": True,
                     "native_matches_execution_fatigue": True,
@@ -75,6 +76,7 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
                     "role": "zoc_exit",
                     "model_reachable": True,
                     "native_complete": True,
+                    "legality_agreement": True,
                     "reachability_agreement": True,
                     "cost_agreement": False,
                     "native_matches_execution_fatigue": False,
@@ -86,6 +88,7 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
                     "role": "highest_cost_reachable",
                     "model_reachable": True,
                     "native_complete": True,
+                    "legality_agreement": True,
                     "reachability_agreement": True,
                     "cost_agreement": False,
                     "native_matches_execution_fatigue": False,
@@ -94,9 +97,10 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
             },
             "debug_movement_validation:3": {
                 "payload": {
-                    "role": "model_unreachable_visible",
+                    "role": "model_legal_resource_unreachable",
                     "model_reachable": False,
                     "native_complete": True,
+                    "legality_agreement": False,
                     "reachability_agreement": False,
                     "cost_agreement": False,
                 }
@@ -110,8 +114,9 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
         "nearest_reachable",
         "zoc_exit",
         "highest_cost_reachable",
-        "model_unreachable_visible",
+        "model_legal_resource_unreachable",
     ]
+    assert summary["legality_mismatch_count"] == 1
     assert summary["reachability_mismatch_count"] == 1
     assert summary["comparable_cost_sample_count"] == 3
     assert summary["cost_mismatch_count"] == 2
