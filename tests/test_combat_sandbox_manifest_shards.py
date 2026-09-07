@@ -19,11 +19,18 @@ def _record(section: str, key: str, payload: object) -> dict[str, object]:
     }
 
 
-def _chunks(battle: int, generation: int, record: dict[str, object], size: int = 37) -> list[str]:
+def _chunks(
+    battle: int,
+    generation: int,
+    record: dict[str, object],
+    size: int = 37,
+) -> list[str]:
     raw = canonical_json_bytes(record)
     digest = hashlib.sha256(raw).hexdigest()
     encoded = base64.urlsafe_b64encode(raw).decode("ascii").rstrip("=")
-    fragments = [encoded[i : i + size] for i in range(0, len(encoded), size)] or [""]
+    fragments = [
+        encoded[index : index + size] for index in range(0, len(encoded), size)
+    ] or [""]
     return [
         f"{FRAME_PREFIX}|{battle}|{generation}|{record['section']}|{record['key']}|"
         f"{index}|{len(fragments)}|{len(raw)}|{digest}|{fragment}"
@@ -32,8 +39,9 @@ def _chunks(battle: int, generation: int, record: dict[str, object], size: int =
 
 
 def _log(path: Path, lines: list[str]) -> None:
+    content = "".join(f'<div class="text">{line}</div>' for line in lines)
     path.write_text(
-        "<html><body>" + "".join(f'<div class="text">{line}</div>' for line in lines) + "</body></html>",
+        "<html><body>" + content + "</body></html>",
         encoding="utf-8",
     )
 
@@ -65,7 +73,9 @@ def test_extract_accepts_sharded_manifest(tmp_path: Path) -> None:
     assert snapshot["records"]["actor_core:actor:7"]["payload"] == {"hp": 50}
 
 
-def test_extract_rejects_missing_expected_record_from_shard(tmp_path: Path) -> None:
+def test_extract_rejects_missing_expected_record_from_shard(
+    tmp_path: Path,
+) -> None:
     shard = _record("manifest_expected", "0", {"records": ["tile:tile:9:9"]})
     root = _record(
         "manifest",
