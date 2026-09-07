@@ -51,9 +51,7 @@ try {
 }
 
 if ($preload -notmatch 'Version = "0\.2\.31"') { throw 'Wrong BB-Agent companion version' }
-if ($preload -notmatch 'runtime_player_legal_blocking_compat') { throw 'Player-legal blocker projection missing' }
 if ($preload -notmatch 'runtime_movement_graph_compat') { throw 'Movement reachability graph missing' }
-if ($preload -notmatch 'runtime_movement_blocking_compat') { throw 'Movement blocker compatibility missing' }
 if ($preload -notmatch 'runtime_combat_sandbox') { throw 'Full combat sandbox module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_discovery') { throw 'Combat sandbox discovery module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_fidelity') { throw 'Combat sandbox fidelity module missing' }
@@ -67,7 +65,9 @@ foreach ($forbidden in @(
     'runtime_movement_sandbox',
     'runtime_debug_oracle_movement_compare',
     'runtime_debug_oracle_route_score',
-    'runtime_navigator_tiebreak_compat'
+    'runtime_navigator_tiebreak_compat',
+    'runtime_player_legal_blocking_compat',
+    'runtime_movement_blocking_compat'
 )) {
     if ($preload -match [regex]::Escape($forbidden)) {
         throw "Unexpected stale module in preload: $forbidden"
@@ -91,7 +91,7 @@ Write-Host '  companion: 0.2.31'
 Write-Host '  capture mode: phased oracle-first staged discovery + capture'
 Write-Host '  player-legal projection: captured only after omniscient oracle jobs complete'
 Write-Host '  movement reachability: player-known Pareto AP/fatigue labels, no native pathfinder'
-Write-Host '  visible blockers: projected explicitly; hidden actors do not block enumeration'
+Write-Host '  visible non-actor blockers: unresolved until a no-hidden-inspection signal is proven'
 Write-Host '  ally-jump probe: one DEBUG_ORACLE native sample per battle generation'
 Write-Host '  runtime scaffolding: summarized, not emitted as per-field jobs'
 Write-Host '  fidelity: state data split into independently bounded field records'
