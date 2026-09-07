@@ -17,9 +17,7 @@ AFFORDANCE_HARDENING = (
     ROOT / "companion_mod/scripts/bb_agent/affordance_export_hardening.nut"
 )
 MOVEMENT_GRAPH = ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
-ALLY_JUMP_PROBE = (
-    ROOT / "companion_mod/scripts/bb_agent/runtime_debug_oracle_ally_jump_probe.nut"
-)
+COMBAT_SANDBOX = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox.nut"
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 HOOK = ROOT / "companion_mod/scripts/bb_agent/hooks/tactical_state.nut"
 
@@ -28,9 +26,9 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_preload_orders_projection_graph_probe_and_export_before_tactical_hook() -> None:
+def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook() -> None:
     source = _text(PRELOAD)
-    assert 'Version = "0.2.22"' in source
+    assert 'Version = "0.2.24"' in source
     modules = (
         "canonical_wire",
         "player_legal_projection",
@@ -42,14 +40,19 @@ def test_preload_orders_projection_graph_probe_and_export_before_tactical_hook()
         "runtime_debug_oracle_path_anchors",
         "runtime_navigator_path_compat",
         "runtime_movement_graph_compat",
-        "runtime_debug_oracle_ally_jump_probe",
+        "runtime_combat_sandbox",
         "live_export",
         "hooks/tactical_state",
     )
     offsets = [source.index(f"scripts/bb_agent/{module}") for module in modules]
     assert offsets == sorted(offsets)
-    assert "runtime_debug_oracle_movement_compare" not in source
-    assert "runtime_navigator_tiebreak_compat" not in source
+    for forbidden in (
+        "runtime_debug_oracle_movement_compare",
+        "runtime_navigator_tiebreak_compat",
+        "runtime_debug_oracle_ally_jump_probe",
+        "runtime_debug_oracle_route_score",
+    ):
+        assert forbidden not in source
 
 
 def test_wire_identity_matches_closed_m1_kernel() -> None:
@@ -124,11 +127,11 @@ def test_canonical_identity_matches_existing_action_and_state_identity_boundarie
     assert '"action:" + wire.canonicalHash(this._actionIntent(_action))' in source
 
 
-def test_affordance_acquisition_keeps_native_probe_out_of_production_graph() -> None:
+def test_affordance_acquisition_keeps_native_pathfinding_out_of_loaded_production_graph() -> None:
     source = _text(AFFORDANCES)
     hardening = _text(AFFORDANCE_HARDENING)
     graph = _text(MOVEMENT_GRAPH)
-    probe = _text(ALLY_JUMP_PROBE)
+    sandbox = _text(COMBAT_SANDBOX)
 
     for required in (
         "queryActives()",
@@ -147,13 +150,10 @@ def test_affordance_acquisition_keeps_native_probe_out_of_production_graph() -> 
     ):
         assert required in source
 
-    # The historical/base affordance module can still contain native path helpers,
-    # but the loaded #98 production graph itself must not depend on them.
     assert "navigator.findPath(" not in graph
     assert "navigator.getCostForPath(" not in graph
-    assert "navigator.findPath(" in probe
-    assert "navigator.getCostForPath(" in probe
-    assert "if (!this.Enabled) return;" in probe
+    assert "navigator.findPath(" not in sandbox
+    assert "navigator.getCostForPath(" not in sandbox
 
     assert "native movement path leaves the player-legal canonical map" in hardening
     assert "this.CurrentProjection.runtime.tile_records" in hardening
