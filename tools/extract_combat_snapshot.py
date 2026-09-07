@@ -34,7 +34,10 @@ def _sandbox_diagnostics(path: Path) -> list[str]:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Extract the latest full BB-Agent combat sandbox from Battle Brothers log.html."
+        description=(
+            "Extract the latest full BB-Agent combat sandbox from "
+            "Battle Brothers log.html."
+        )
     )
     parser.add_argument("--log", required=True, type=Path)
     parser.add_argument("--out", required=True, type=Path)
@@ -69,7 +72,10 @@ def main() -> int:
                     for line in diagnostics:
                         print(f"  {line}", file=sys.stderr)
                 else:
-                    print("No combat sandbox diagnostics found in log.", file=sys.stderr)
+                    print(
+                        "No combat sandbox diagnostics found in log.",
+                        file=sys.stderr,
+                    )
                 return 2
             time.sleep(args.poll_seconds)
 
