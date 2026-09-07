@@ -10,7 +10,9 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_ally_jump_probe_loads_after_full_oracle_layers_before_live_export() -> None:
+def test_ally_jump_probe_loads_after_full_oracle_layers_before_live_export() -> (
+    None
+):
     preload = _text(PRELOAD)
     graph = preload.index("scripts/bb_agent/runtime_movement_graph_compat")
     sandbox = preload.index("scripts/bb_agent/runtime_combat_sandbox")
