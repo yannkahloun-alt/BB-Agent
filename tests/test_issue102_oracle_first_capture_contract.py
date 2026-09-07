@@ -38,8 +38,10 @@ def test_state_field_sharding_skips_executable_runtime_scaffolding() -> None:
 def test_simple_scalar_state_is_packed_without_losing_values() -> None:
     text = _text(ORACLE_FIRST)
     assert "sandbox._sandboxScalarValue <- function(_value)" in text
-    assert "inline_scalar_field_count" in text
-    assert "inline_scalar_fields" in text
+    assert "sandbox._enqueueScalarPack <- function" in text
+    assert '"state_scalar_pack"' in text
+    assert "scalar_field_count" in text
+    assert "scalar_pack_record_id" in text
     assert "value = scalar.value" in text
     assert "this._floatValue(_value)" in text
 
