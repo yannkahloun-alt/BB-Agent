@@ -32,7 +32,7 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
     None
 ):
     source = _text(PRELOAD)
-    assert 'Version = "0.2.29"' in source
+    assert 'Version = "0.2.30"' in source
     modules = (
         "canonical_wire",
         "player_legal_projection",
@@ -45,6 +45,7 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
         "runtime_navigator_path_compat",
         "runtime_movement_graph_compat",
         "runtime_combat_sandbox",
+        "runtime_debug_oracle_ally_jump_probe",
         "live_export",
         "hooks/tactical_state",
     )
@@ -54,7 +55,6 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
         "runtime_combat_sandbox_incremental",
         "runtime_debug_oracle_movement_compare",
         "runtime_navigator_tiebreak_compat",
-        "runtime_debug_oracle_ally_jump_probe",
         "runtime_debug_oracle_route_score",
         "runtime_movement_sandbox",
     ):
