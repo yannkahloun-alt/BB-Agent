@@ -10,12 +10,13 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_ally_jump_probe_loads_after_graph_before_general_comparator() -> None:
+def test_ally_jump_probe_is_the_only_loaded_native_movement_probe() -> None:
     preload = _text(PRELOAD)
     graph = preload.index("scripts/bb_agent/runtime_movement_graph_compat")
     probe = preload.index("scripts/bb_agent/runtime_debug_oracle_ally_jump_probe")
-    compare = preload.index("scripts/bb_agent/runtime_debug_oracle_movement_compare")
-    assert graph < probe < compare
+    export = preload.index("scripts/bb_agent/live_export")
+    assert graph < probe < export
+    assert "scripts/bb_agent/runtime_debug_oracle_movement_compare" not in preload
 
 
 def test_probe_is_single_sample_debug_only_and_never_supplies_values() -> None:
