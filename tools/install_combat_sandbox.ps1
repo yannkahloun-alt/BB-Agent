@@ -53,6 +53,7 @@ try {
 if ($preload -notmatch 'Version = "0\.2\.25"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_combat_sandbox') { throw 'Full combat sandbox module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_discovery') { throw 'Combat sandbox discovery module missing' }
+if ($preload -notmatch 'runtime_combat_sandbox_fidelity') { throw 'Combat sandbox fidelity module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_bounds') { throw 'Combat sandbox bounds module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_continuity') { throw 'Combat sandbox continuity module missing' }
 foreach ($forbidden in @(
@@ -83,8 +84,9 @@ Write-Host ''
 Write-Host 'FULL COMBAT SANDBOX INSTALLED'
 Write-Host '  companion: 0.2.25'
 Write-Host '  capture mode: staged discovery + capture (1 bounded job per update)'
+Write-Host '  fidelity: large state split into independently bounded field records'
 Write-Host '  continuity: survives unchanged failed READY signatures'
-Write-Host '  reflection budget: 2048 nodes per top-level reflection'
+Write-Host '  reflection budget: 2048 nodes per field reflection'
 Write-Host '  logical record cap: 32768 decoded bytes'
 Write-Host '  omniscient DEBUG snapshot: enabled by separate overlay'
 Write-Host '  old path-comparison probes: absent'
