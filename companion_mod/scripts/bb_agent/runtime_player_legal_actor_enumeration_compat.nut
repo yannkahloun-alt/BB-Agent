@@ -4,9 +4,8 @@ local capture = ::BBAGENT_Capture;
 
 // Some Battle Brothers actor instances expose inherited methods as callable
 // members without making those methods discoverable through the Squirrel `in`
-// operator. If the EntityManager-based compatibility build therefore yields no
-// combatants for a command-ready state, rebuild only the actor-facing portion
-// from the tactical turn list. Visibility and hidden-state filtering remain
+// operator. Detect a missing/partial owned roster and rebuild only the actor-facing
+// portion from the tactical turn list. Visibility and hidden-state filtering remain
 // delegated to the existing PLAYER_LEGAL helpers.
 local originalBuild = legal.build;
 legal.build = function(_raw)
@@ -14,20 +13,36 @@ legal.build = function(_raw)
     local projection = originalBuild.acall([this, _raw]);
     if (projection == null
         || !("state" in projection)
-        || !("combatants" in projection.state)
-        || projection.state.combatants.len() != 0)
+        || !("combatants" in projection.state))
     {
         return projection;
     }
 
     local active = _raw.ActiveActor;
     if (active == null) return projection;
+    local current = _raw.TurnSequenceBar.getCurrentEntities();
+
+    local callableOwned = 0;
+    foreach (actor in current)
+    {
+        if (actor == null) continue;
+        try
+        {
+            if (actor.isPlayerControlled()) ++callableOwned;
+        }
+        catch (_error) {}
+    }
+
+    local projectedOwned = 0;
+    foreach (actor in projection.state.combatants)
+        if (actor.is_player_controlled) ++projectedOwned;
+    if (projectedOwned == callableOwned && projectedOwned != 0)
+        return projection;
 
     local actors = [];
     local actorByRuntimeID = {};
     local visibleActorIds = {};
     local actorByTile = {};
-    local current = _raw.TurnSequenceBar.getCurrentEntities();
 
     foreach (actor in current)
     {
