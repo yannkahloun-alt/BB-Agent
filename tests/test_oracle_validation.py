@@ -111,16 +111,25 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
                     "cost_agreement": False,
                 }
             },
+            "debug_movement_validation:remembered_0": {
+                "payload": {
+                    "role": "remembered_nearest",
+                    "player_legal_visibility": "REMEMBERED",
+                    "native_found": True,
+                    "native_complete": True,
+                }
+            },
         }
     }
 
     summary = summarize_movement_validation(snapshot)
-    assert summary["sample_count"] == 4
+    assert summary["sample_count"] == 5
     assert summary["roles"] == [
         "nearest_reachable",
         "zoc_exit",
         "highest_cost_reachable",
         "model_legal_resource_unreachable",
+        "remembered_nearest",
     ]
     assert summary["legality_mismatch_count"] == 1
     assert summary["reachability_mismatch_count"] == 1
@@ -131,6 +140,10 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
     assert summary["fatigue_semantics_neither_count"] == 1
     assert summary["tile_count_mismatch_count"] == 1
     assert summary["endpoint_mismatch_count"] == 1
+    assert summary["remembered_sample_count"] == 1
+    assert summary["remembered_roles"] == ["remembered_nearest"]
+    assert summary["remembered_native_found_count"] == 1
+    assert summary["remembered_native_complete_count"] == 1
     assert summary["error_count"] == 0
 
 
@@ -145,5 +158,6 @@ def test_movement_validation_reports_sample_errors() -> None:
         }
     )
     assert summary["sample_count"] == 1
+    assert summary["remembered_sample_count"] == 0
     assert summary["error_count"] == 1
     assert summary["errors"] == ["boom"]
