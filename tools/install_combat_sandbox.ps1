@@ -62,6 +62,7 @@ if ($preload -notmatch 'runtime_combat_sandbox_fidelity') { throw 'Combat sandbo
 if ($preload -notmatch 'runtime_combat_sandbox_reference_fields') { throw 'Combat sandbox reference-field layer missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_nested_fields') { throw 'Combat sandbox nested-field layer missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_oracle_first') { throw 'Oracle-first sandbox module missing' }
+if ($preload -notmatch 'runtime_combat_sandbox_player_legal_phase') { throw 'True post-oracle PLAYER_LEGAL phase missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_bounds') { throw 'Combat sandbox bounds module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_continuity') { throw 'Combat sandbox continuity module missing' }
 if ($preload -notmatch 'runtime_combat_sandbox_recovery') { throw 'Combat sandbox recovery module missing' }
@@ -98,8 +99,8 @@ if ($installed.Count -ne 2) {
 Write-Host ''
 Write-Host 'FULL COMBAT SANDBOX INSTALLED'
 Write-Host '  companion: 0.2.32'
-Write-Host '  capture mode: phased oracle-first staged discovery + capture'
-Write-Host '  player-legal projection: captured only after omniscient oracle jobs complete'
+Write-Host '  capture mode: true two-phase oracle-first staged discovery + capture'
+Write-Host '  player-legal projection: released only after the omniscient sandbox queue drains'
 Write-Host '  player-legal actors: turn-list fallback repairs missing/partial owned roster enumeration'
 Write-Host '  movement reachability: player-known Pareto AP/fatigue labels, no native pathfinder'
 Write-Host '  ally-jump movement cost: sum of both constituent movement steps'
