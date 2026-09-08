@@ -1,3 +1,4 @@
+# fmt: off
 import json
 import subprocess
 import sys
@@ -86,3 +87,4 @@ def test_validator_preserves_incomplete_pair_diagnostic_json() -> None:
     assert "Diagnostic JSON preserved: $Out" in text
     assert "companion_version -NotePropertyValue '0.2.38'" in text
     assert "source_commit -NotePropertyValue $head" in text
+# fmt: on
