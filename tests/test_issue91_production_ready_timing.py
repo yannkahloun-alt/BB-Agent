@@ -8,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 TIMING = ROOT / "companion_mod/scripts/bb_agent/runtime_live_ready_timing.nut"
 INSTALLER = ROOT / "tools/install_live_production.ps1"
+EXTRACTOR = ROOT / "tools/extract_live_ready_timing.py"
 
 
 def _log(*rows: tuple[str, str]) -> bytes:
@@ -34,6 +35,7 @@ def test_timing_wrapper_is_production_only_and_rethrows() -> None:
     assert "ready_end" in text
     assert "success=true" in text
     assert "success=false" in text
+    assert '" stage=" + this.LastExportStage' in text
     assert "throw error;" in text
     for forbidden in ("payload", "getAllInstances", "findPath(", "getCostForPath("):
         assert forbidden not in text
@@ -51,7 +53,8 @@ def test_timing_parser_reports_latest_complete_pair(tmp_path: Path) -> None:
             ("10:05:00", "[BB-Agent Live Timing] ready_begin battle=1 generation=3"),
             (
                 "10:05:01",
-                "[BB-Agent Live Timing] ready_end battle=1 generation=3 success=false",
+                "[BB-Agent Live Timing] ready_end battle=1 generation=3 "
+                "success=false stage=affordance_acquisition",
             ),
         )
     )
@@ -61,6 +64,7 @@ def test_timing_parser_reports_latest_complete_pair(tmp_path: Path) -> None:
         "begin_time": "10:05:00",
         "end_time": "10:05:01",
         "success": False,
+        "failure_stage": "affordance_acquisition",
         "timestamp_span_seconds": 1,
         "same_timestamp_bucket": False,
     }
@@ -77,7 +81,9 @@ def test_timing_parser_handles_midnight_rollover(tmp_path: Path) -> None:
             ),
         )
     )
-    assert summarize_latest_ready_timing(path)["timestamp_span_seconds"] == 2
+    summary = summarize_latest_ready_timing(path)
+    assert summary["timestamp_span_seconds"] == 2
+    assert summary["failure_stage"] is None
 
 
 def test_timing_parser_requires_complete_pair(tmp_path: Path) -> None:
@@ -87,6 +93,13 @@ def test_timing_parser_requires_complete_pair(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="no complete production READY timing pair"):
         summarize_latest_ready_timing(path)
+
+
+def test_extractor_fails_unsuccessful_ready_pair() -> None:
+    text = EXTRACTOR.read_text(encoding="utf-8")
+    assert 'if summary["success"] is not True:' in text
+    assert "return 3" in text
+    assert "failure_stage" in text
 
 
 def test_production_installer_excludes_debug_overlay() -> None:
