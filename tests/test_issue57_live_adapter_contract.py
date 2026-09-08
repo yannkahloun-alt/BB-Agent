@@ -32,7 +32,7 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
     None
 ):
     source = _text(PRELOAD)
-    assert 'Version = "0.2.36"' in source
+    assert 'Version = "0.2.37"' in source
     modules = (
         "canonical_wire",
         "player_legal_projection",
@@ -50,6 +50,8 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
         "runtime_combat_sandbox",
         "runtime_debug_oracle_ally_jump_probe",
         "live_export",
+        "runtime_ready_failure_latch",
+        "runtime_live_ready_timing",
         "hooks/tactical_state",
     )
     offsets = [source.index(f"scripts/bb_agent/{module}") for module in modules]
