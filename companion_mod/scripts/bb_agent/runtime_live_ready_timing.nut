@@ -33,6 +33,7 @@ liveExport._emitReady = function(_event)
             + " battle=" + _event.BattleSequence.tostring()
             + " generation=" + _event.SourceGeneration.tostring()
             + " success=false"
+            + " stage=" + this.LastExportStage
         );
         throw error;
     }
