@@ -68,6 +68,10 @@ def test_reference_field_layer_replaces_duplicate_runtime_graphs() -> None:
 def test_nested_field_layer_shards_unique_hot_structures() -> None:
     text = NESTED.read_text(encoding="utf-8")
     for required in (
+        "_nestedOwnerKey",
+        "nested_owner_key",
+        "nested_owner_key_pattern",
+        "childOwnerKey",
         "constant_actor_entry",
         "StrategicProperties",
         "strategic_property",
