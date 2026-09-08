@@ -50,7 +50,7 @@ try {
     $zip.Dispose()
 }
 
-if ($preload -notmatch 'Version = "0\.2\.33"') { throw 'Wrong BB-Agent companion version' }
+if ($preload -notmatch 'Version = "0\.2\.36"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_player_legal_blocking_compat') { throw 'Player-legal blocker projection missing' }
 if ($preload -notmatch 'runtime_player_legal_actor_enumeration_compat') { throw 'Player-legal actor enumeration compatibility missing' }
 if ($preload -notmatch 'runtime_player_legal_turn_list_fastpath') { throw 'Player-legal turn-list fast path missing' }
@@ -101,7 +101,7 @@ if ($installed.Count -ne 2) {
 
 Write-Host ''
 Write-Host 'FULL COMBAT SANDBOX INSTALLED'
-Write-Host '  companion: 0.2.33'
+Write-Host '  companion: 0.2.36'
 Write-Host '  capture mode: true two-phase oracle-first staged discovery + capture'
 Write-Host '  player-legal projection: released only after the omniscient sandbox queue drains'
 Write-Host '  player-legal actors: tactical turn-list source; no native EntityManager.getAllInstances scan'
@@ -116,6 +116,7 @@ Write-Host '  native geometry summary: model/native tile-count plus first/end en
 Write-Host '  remembered scope: reuses incremental tile discovery; no extra full-map scan'
 Write-Host '  native fatigue semantics: compare path-search fatigue and execution fatigue independently'
 Write-Host '  duplicate runtime collections: summarized as bounded actor/skill/item references'
+Write-Host '  duplicate/error-prone runtime backrefs: summarized as actor/skill/tile/value references'
 Write-Host '  unique large fields: recursively sharded with deterministic nested owner identities'
 Write-Host '  AI known-opponents: actor/tile/TTL references instead of duplicate actor graphs'
 Write-Host '  runtime scaffolding: summarized, not emitted as per-field jobs'
