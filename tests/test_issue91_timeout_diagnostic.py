@@ -8,9 +8,7 @@ EXTRACTOR = ROOT / "tools/extract_live_ready_timing.py"
 VALIDATOR = ROOT / "tools/validate_live_production.ps1"
 
 
-def _run_extractor(
-    log: Path, out: Path
-) -> tuple[subprocess.CompletedProcess[str], dict]:
+def _run_extractor(log: Path, out: Path) -> tuple[subprocess.CompletedProcess[str], dict]:
     result = subprocess.run(
         [
             sys.executable,
