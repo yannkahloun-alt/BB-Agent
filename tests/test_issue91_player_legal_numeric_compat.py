@@ -2,7 +2,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
-NUMERIC = ROOT / "companion_mod/scripts/bb_agent/runtime_player_legal_numeric_compat.nut"
+NUMERIC = (
+    ROOT / "companion_mod/scripts/bb_agent/runtime_player_legal_numeric_compat.nut"
+)
 PROJECTION = ROOT / "companion_mod/scripts/bb_agent/player_legal_projection.nut"
 
 
@@ -34,10 +36,15 @@ def test_numeric_compat_normalizes_live_whole_number_getters_fail_closed() -> No
     assert "tactical_stats." in text
 
 
-def test_projection_still_uses_source_getters_and_wire_rejects_generic_floats() -> None:
+def test_projection_still_uses_source_getters_and_wire_rejects_generic_floats() -> (
+    None
+):
     projection = PROJECTION.read_text(encoding="utf-8")
     assert "condition = wire.exactObserved(_item.getCondition())" in projection
-    assert "maximum_hit_points = wire.exactObserved(_actor.getHitpointsMax())" in projection
+    assert (
+        "maximum_hit_points = wire.exactObserved(_actor.getHitpointsMax())"
+        in projection
+    )
     assert "initiative = wire.exactObserved(_actor.getInitiative())" in projection
     assert "getMeleeSkill()" in projection
     assert "getRangedSkill()" in projection
