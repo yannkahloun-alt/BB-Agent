@@ -31,6 +31,15 @@ def test_player_legal_phase_releases_only_after_oracle_queue_drains() -> None:
     assert "return originalEnqueueManifestJobs.acall([this]);" in text
 
 
+def test_player_legal_build_has_coarse_responsiveness_markers() -> None:
+    text = _text(PLAYER_LEGAL_PHASE)
+    begin = text.index("player_legal_build_begin")
+    call = text.index("originalProcessJob.acall([this, _job])")
+    end = text.index("player_legal_build_end")
+    assert begin < call < end
+    assert 'local wasPlayerLegalBuild = _job.kind == "player_legal_build";' in text
+
+
 def test_state_field_sharding_skips_executable_runtime_scaffolding() -> None:
     text = _text(ORACLE_FIRST)
     assert "sandbox._sandboxStateFieldKind <- function(_value)" in text
