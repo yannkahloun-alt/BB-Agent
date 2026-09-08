@@ -3,8 +3,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 FASTPATH = (
-    ROOT
-    / "companion_mod/scripts/bb_agent/runtime_player_legal_turn_list_fastpath.nut"
+    ROOT / "companion_mod/scripts/bb_agent/runtime_player_legal_turn_list_fastpath.nut"
 )
 
 
