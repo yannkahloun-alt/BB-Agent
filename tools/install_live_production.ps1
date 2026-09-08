@@ -45,6 +45,9 @@ try {
 }
 
 if ($preload -notmatch 'Version = "0\.2\.37"') { throw 'Wrong BB-Agent companion version' }
+if ($preload -notmatch 'runtime_player_legal_numeric_compat') {
+    throw 'PLAYER_LEGAL numeric compatibility layer missing'
+}
 if ($preload -notmatch 'runtime_live_ready_timing') { throw 'Production READY timing layer missing' }
 if ($preload -notmatch '(?s)runtime_ready_failure_latch.*runtime_live_ready_timing') {
     throw 'READY timing layer must load after failure latch'
@@ -62,5 +65,6 @@ Write-Host ''
 Write-Host 'BB-AGENT PRODUCTION LIVE VALIDATION INSTALLED'
 Write-Host '  companion: 0.2.37'
 Write-Host '  DEBUG_ORACLE overlay: NOT installed'
+Write-Host '  PLAYER_LEGAL numeric normalization: source-proven whole numbers only'
 Write-Host '  READY timing: production DECISION_READY path only'
 Write-Host '  source commit:' $head
