@@ -18,8 +18,8 @@ _TEXT_DIV_RE = re.compile(rb'<div class="text">(.*?)</div>', re.DOTALL)
 _TIMED_SANDBOX_RE = re.compile(
     rb'<div class="time">([0-9]{2}:[0-9]{2}:[0-9]{2})</div>.*?'
     rb'<div class="text">\[BB-Agent Combat Sandbox\] '
-    rb'(player_legal_build_begin|player_legal_build_end) battle=([0-9]+) '
-    rb'generation=([0-9]+)</div>',
+    rb"(player_legal_build_begin|player_legal_build_end) battle=([0-9]+) "
+    rb"generation=([0-9]+)</div>",
     re.DOTALL,
 )
 _CHUNK_RE = re.compile(
