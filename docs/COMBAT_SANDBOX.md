@@ -115,7 +115,7 @@ The generic reflective dumper captures primitive, table and array data up to dep
 
 Heavy script-readable objects are not reflected as one monolithic value. The fidelity layer creates a small parent record and emits each top-level field as its own `state_field` record. Each field therefore receives an independent 2048-node reflection budget, 32768-byte record cap, SHA-256 digest and chunk stream. The field record carries its owner section/key, original field-key type/text and ordinal so the structure can be reconstructed offline.
 
-Duplicate actor/skill/item/turn collections that are already represented by dedicated records are emitted as explicit bounded references rather than recursively expanded a second time. Runtime/UI scaffolding fields may be summarized explicitly instead of being treated as missing state. Genuinely unique large structures such as strategic properties, actor constants and EntityManager strategies can be second-level sharded so nested entries receive independent reflection budgets.
+Duplicate actor/skill/item/turn collections that are already represented by dedicated records are emitted as explicit bounded references rather than recursively expanded a second time. Runtime/UI scaffolding fields may be summarized explicitly instead of being treated as missing state. Genuinely unique large structures such as strategic properties, actor constants and EntityManager strategies can be second-level sharded so nested entries receive independent reflection budgets. Large `StrategicProperties.Parties` entries are themselves sharded by party field, and AI `KnownOpponents` uses actor/tile/TTL references rather than recursively duplicating full actor graphs already present elsewhere in the artifact.
 
 This sharding is used for tactical state, turn-bar state, entity-manager state/runtime fields, `::Tactical`, navigator state, configured constants, actor `m`, current/base actor properties, skills/items containers, AI state, individual skill/item `m`, tile properties and readable tile-occupant state.
 
@@ -149,6 +149,8 @@ After a complete snapshot is assembled, the extractor reports transport/fidelity
 
 A manifest-complete snapshot can therefore be distinguished from a high-fidelity snapshot. Intentional reference/scaffolding/nested summaries are not silently counted as missing state, while actual truncation and semantic errors remain visible and inspectable.
 
+The extracted JSON also carries top-level `extraction_metrics` derived from the Battle Brothers log. The current metric records the `player_legal_build_begin` and `player_legal_build_end` wall-clock timestamp buckets plus their coarse span in seconds. This is diagnostic timing evidence only; it is not part of the forensic manifest and does not affect player-legal state or movement values.
+
 When movement validation records are present, the extractor also prints separate counters for:
 
 - legality mismatches;
@@ -172,6 +174,6 @@ The installer independently rebuilds with the user's BBBuilder and refuses to in
 1. Install the exact full-combat sandbox build.
 2. Enter one fresh combat and stop at the first active player brother.
 3. Run `tools/extract_combat_snapshot.ps1`; it waits for a completed manifest and writes `combat-sandbox-latest.json`.
-4. Read the printed quality and movement-validation summaries. Preserve/upload the resulting JSON artifact even if quality markers or comparison mismatches are nonzero so the exact gaps can be inspected.
+4. Read the printed quality and movement-validation summaries. Preserve/upload the resulting JSON artifact even if quality markers or comparison mismatches are nonzero so the exact gaps can be inspected. The JSON itself carries coarse PLAYER_LEGAL build timing metadata; preserve `log.html` only if extraction fails or finer log inspection is needed.
 5. Build mechanics tests from the captured state and synthetic mutations offline.
 6. Return to the live game only for mechanics that remain native-only after source and snapshot analysis.
