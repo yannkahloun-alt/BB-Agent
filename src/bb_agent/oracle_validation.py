@@ -87,36 +87,44 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
     errors = [
         sample.get("error") for sample in samples if sample.get("error") is not None
     ]
+    exact_samples = [
+        sample for sample in samples if sample.get("player_legal_visibility") != "REMEMBERED"
+    ]
+    remembered_samples = [
+        sample for sample in samples if sample.get("player_legal_visibility") == "REMEMBERED"
+    ]
     legality_mismatches = sum(
-        1 for sample in samples if sample.get("legality_agreement") is False
+        1 for sample in exact_samples if sample.get("legality_agreement") is False
     )
     reachability_mismatches = sum(
-        1 for sample in samples if sample.get("reachability_agreement") is False
+        1 for sample in exact_samples if sample.get("reachability_agreement") is False
     )
     comparable_cost_samples = sum(
         1
-        for sample in samples
+        for sample in exact_samples
         if sample.get("model_reachable") is True
         and sample.get("native_complete") is True
     )
     cost_mismatches = sum(
         1
-        for sample in samples
+        for sample in exact_samples
         if sample.get("model_reachable") is True
         and sample.get("native_complete") is True
         and sample.get("cost_agreement") is False
     )
     execution_fatigue_matches = sum(
         1
-        for sample in samples
+        for sample in exact_samples
         if sample.get("native_matches_execution_fatigue") is True
     )
     path_fatigue_matches = sum(
-        1 for sample in samples if sample.get("native_matches_path_fatigue") is True
+        1
+        for sample in exact_samples
+        if sample.get("native_matches_path_fatigue") is True
     )
     fatigue_semantics_neither = sum(
         1
-        for sample in samples
+        for sample in exact_samples
         if sample.get("model_reachable") is True
         and sample.get("native_complete") is True
         and sample.get("native_matches_execution_fatigue") is False
@@ -124,14 +132,14 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
     )
     tile_count_mismatches = sum(
         1
-        for sample in samples
+        for sample in exact_samples
         if sample.get("model_reachable") is True
         and sample.get("native_complete") is True
         and sample.get("tile_count_agreement") is False
     )
     endpoint_mismatches = sum(
         1
-        for sample in samples
+        for sample in exact_samples
         if sample.get("model_reachable") is True
         and sample.get("native_complete") is True
         and sample.get("endpoint_agreement") is False
@@ -151,4 +159,12 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
         "fatigue_semantics_neither_count": fatigue_semantics_neither,
         "tile_count_mismatch_count": tile_count_mismatches,
         "endpoint_mismatch_count": endpoint_mismatches,
+        "remembered_sample_count": len(remembered_samples),
+        "remembered_roles": [sample.get("role") for sample in remembered_samples],
+        "remembered_native_found_count": sum(
+            1 for sample in remembered_samples if sample.get("native_found") is True
+        ),
+        "remembered_native_complete_count": sum(
+            1 for sample in remembered_samples if sample.get("native_complete") is True
+        ),
     }
