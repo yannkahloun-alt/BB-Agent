@@ -37,6 +37,50 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
     )
 
 
+def _incomplete_diagnostic(log: Path, error: str) -> dict[str, object]:
+    try:
+        data = log.read_bytes()
+    except FileNotFoundError:
+        return {
+            "success": None,
+            "diagnostic_status": "log_not_found",
+            "diagnostic_error": error,
+            "log_found": False,
+        }
+
+    begin_count = data.count(b"[BB-Agent Live Timing] ready_begin")
+    end_count = data.count(b"[BB-Agent Live Timing] ready_end")
+    capture_ready_count = data.count(b"[BB-Agent Capture] READY")
+    export_error_count = data.count(b"[BB-Agent Capture] live_export_error")
+    timing_loaded = b"[BB-Agent Live Timing] loaded production_only=true" in data
+    bb_agent_present = b"BB-Agent" in data
+
+    if not bb_agent_present:
+        status = "no_bb_agent_log_entries"
+    elif not timing_loaded:
+        status = "timing_layer_not_loaded"
+    elif begin_count == 0:
+        status = "ready_never_began"
+    elif end_count < begin_count:
+        status = "ready_began_without_end"
+    else:
+        status = "no_complete_ready_timing_pair"
+
+    return {
+        "success": None,
+        "diagnostic_status": status,
+        "diagnostic_error": error,
+        "log_found": True,
+        "log_size_bytes": len(data),
+        "bb_agent_log_present": bb_agent_present,
+        "timing_layer_loaded": timing_loaded,
+        "ready_begin_count": begin_count,
+        "ready_end_count": end_count,
+        "capture_ready_count": capture_ready_count,
+        "live_export_error_count": export_error_count,
+    }
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Extract production DECISION_READY timing."
@@ -52,11 +96,7 @@ def main() -> int:
     try:
         summary = _wait_for_summary(args.log, args.wait_seconds, args.poll_seconds)
     except ValueError as exc:
-        diagnostic: dict[str, object] = {
-            "success": None,
-            "diagnostic_status": "no_complete_ready_timing_pair",
-            "diagnostic_error": str(exc),
-        }
+        diagnostic = _incomplete_diagnostic(args.log, str(exc))
         if args.out is not None:
             _write_json(args.out, diagnostic)
         print(str(exc), file=sys.stderr)
