@@ -28,13 +28,17 @@ legal._ownedResources = function(_actor)
 {
     local resources = originalOwnedResources.acall([this, _actor]);
     foreach (field in [
+        "hit_points",
         "maximum_hit_points",
+        "action_points",
         "maximum_action_points",
+        "fatigue",
         "fatigue_capacity",
         "head_armor",
         "maximum_head_armor",
         "body_armor",
         "maximum_body_armor",
+        "morale",
         "initiative"
     ])
     {
@@ -51,6 +55,7 @@ legal._itemState = function(_actor, _item, _slot, _position)
 {
     local item = originalItemState.acall([this, _actor, _item, _slot, _position]);
     item.condition = this._exactWholeNumber(item.condition, "equipment.condition");
+    item.ammunition = this._exactWholeNumber(item.ammunition, "equipment.ammunition");
     return item;
 };
 
