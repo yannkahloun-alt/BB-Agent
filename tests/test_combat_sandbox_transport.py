@@ -51,6 +51,16 @@ def _log(lines: list[str]) -> str:
     )
 
 
+def _timed_row(timestamp: str, message: str) -> str:
+    return (
+        '<div class="row info"><div class="entry-container">'
+        f'<div class="time">{timestamp}</div>'
+        '<div class="tag">SQ</div>'
+        f'<div class="text">{message}</div>'
+        "</div></div>"
+    )
+
+
 def test_extract_reassembles_full_generation_by_section_and_key(
     tmp_path: Path,
 ) -> None:
@@ -81,6 +91,46 @@ def test_extract_reassembles_full_generation_by_section_and_key(
     assert snapshot["source_generation"] == 2
     assert snapshot["records"]["actor:actor:1"] == actor
     assert snapshot["records"]["tile:tile:1:1"] == tile
+    assert snapshot["extraction_metrics"] == {
+        "player_legal_build_begin_time": None,
+        "player_legal_build_end_time": None,
+        "player_legal_build_timestamp_span_seconds": None,
+        "player_legal_build_same_timestamp_bucket": False,
+    }
+
+
+def test_extract_preserves_player_legal_build_timestamp_span(tmp_path: Path) -> None:
+    manifest = {
+        "section": "manifest",
+        "key": "root",
+        "schema_version": "bb-agent-combat-sandbox.v1",
+        "payload": {"expected_records": ["manifest:root"]},
+    }
+    frame_log = _log(_chunk_lines("manifest", "root", manifest))
+    path = tmp_path / "log.html"
+    path.write_text(
+        "<html><body>"
+        + _timed_row(
+            "23:59:59",
+            "[BB-Agent Combat Sandbox] player_legal_build_begin "
+            "battle=1 generation=2",
+        )
+        + _timed_row(
+            "00:00:00",
+            "[BB-Agent Combat Sandbox] player_legal_build_end battle=1 generation=2",
+        )
+        + frame_log.removeprefix("<html><body>").removesuffix("</body></html>")
+        + "</body></html>",
+        encoding="utf-8",
+    )
+
+    snapshot = extract_latest_combat_sandbox(path)
+    assert snapshot["extraction_metrics"] == {
+        "player_legal_build_begin_time": "23:59:59",
+        "player_legal_build_end_time": "00:00:00",
+        "player_legal_build_timestamp_span_seconds": 1,
+        "player_legal_build_same_timestamp_bucket": False,
+    }
 
 
 def test_extract_rejects_missing_expected_record(tmp_path: Path) -> None:
