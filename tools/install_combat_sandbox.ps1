@@ -78,7 +78,9 @@ foreach ($forbidden in @(
     'runtime_movement_sandbox',
     'runtime_debug_oracle_movement_compare',
     'runtime_debug_oracle_route_score',
-    'runtime_navigator_tiebreak_compat'
+    'runtime_navigator_tiebreak_compat',
+    'runtime_debug_oracle_tiebreak_samples',
+    'runtime_debug_oracle_path_anchors'
 )) {
     if ($preload -match [regex]::Escape($forbidden)) {
         throw "Unexpected stale module in preload: $forbidden"
