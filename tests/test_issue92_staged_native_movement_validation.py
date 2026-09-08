@@ -7,6 +7,7 @@ VALIDATION = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation.nut"
 FATIGUE = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_fatigue.nut"
 LEGALITY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_legality.nut"
 GEOMETRY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_geometry.nut"
+REMEMBERED = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_remembered.nut"
 
 
 def test_native_movement_validation_loads_after_ally_probe_before_export() -> None:
@@ -16,8 +17,9 @@ def test_native_movement_validation_loads_after_ally_probe_before_export() -> No
     fatigue = preload.index("runtime_debug_oracle_movement_validation_fatigue")
     legality = preload.index("runtime_debug_oracle_movement_validation_legality")
     geometry = preload.index("runtime_debug_oracle_movement_validation_geometry")
+    remembered = preload.index("runtime_debug_oracle_movement_validation_remembered")
     export = preload.index("scripts/bb_agent/live_export")
-    assert roster < validation < fatigue < legality < geometry < export
+    assert roster < validation < fatigue < legality < geometry < remembered < export
 
 
 def test_native_movement_validation_is_debug_only_and_staged() -> None:
@@ -104,3 +106,37 @@ def test_native_validation_compares_bounded_path_geometry_summaries() -> None:
         assert required in text
     assert "findPath(" not in text
     assert "getCostForPath(" not in text
+
+
+def test_remembered_validation_reuses_incremental_tile_discovery() -> None:
+    text = REMEMBERED.read_text(encoding="utf-8")
+    for required in (
+        "RememberedMovementValidationSampleCap <- 2",
+        'tile.visibility != "REMEMBERED"',
+        'role = "remembered_nearest"',
+        'role = "remembered_farthest"',
+        "native_tile_by_id",
+        "tile_discovery_complete",
+        "remembered_validation_requested",
+        "remembered_validation_plan_scheduled",
+        "originalProcessDiscovery",
+        'isTile = _job.kind == "discover_tile"',
+        "_scheduleRememberedMovementValidationPlan",
+    ):
+        assert required in text
+    assert "getMapSize()" not in text
+    assert "for (local x" not in text
+    assert "for (local y" not in text
+
+
+def test_remembered_validation_is_debug_only_and_native_calls_are_sample_scoped() -> None:
+    text = REMEMBERED.read_text(encoding="utf-8")
+    assert "if (!oracle.Enabled || this.State == null) return;" in text
+    sample_start = text.index("oracle._rememberedMovementValidationSample <- function")
+    schedule_start = text.index("sandbox._scheduleRememberedMovementValidationPlan")
+    sample = text[sample_start:schedule_start]
+    assert "navigator.findPath(" in sample
+    assert "navigator.getCostForPath(" in sample
+    rest = text[:sample_start] + text[schedule_start:]
+    assert "navigator.findPath(" not in rest
+    assert "navigator.getCostForPath(" not in rest
