@@ -1,4 +1,5 @@
 local sandbox = ::BBAGENT_CombatSandbox;
+local legal = ::BBAGENT_PlayerLegal;
 
 // Selected forensic fields are genuinely unique state, not duplicate runtime
 // scaffolding. Give each nested entry its own state_field record/reflection
@@ -26,14 +27,13 @@ sandbox._enqueueNestedFieldTable <- function(
                 truncated = true;
                 break;
             }
-            originalEnqueueStateField.acall([
-                this,
+            this._enqueueStateField(
                 _nestedOwnerSection,
                 _ownerKey,
                 key,
                 count,
                 child
-            ]);
+            );
             ++count;
         }
     }
@@ -72,14 +72,13 @@ sandbox._enqueueNestedFieldArray <- function(
     local limit = ::Math.min(_value.len(), this.MaxReflectEntries);
     for (local i = 0; i < limit; i = ++i)
     {
-        originalEnqueueStateField.acall([
-            this,
+        this._enqueueStateField(
             _nestedOwnerSection,
             _ownerKey,
             i,
             i,
             _value[i]
-        ]);
+        );
     }
     return originalEnqueueStateField.acall([
         this,
@@ -96,6 +95,62 @@ sandbox._enqueueNestedFieldArray <- function(
             truncated = _value.len() > limit
         }
     ]);
+};
+
+sandbox._knownOpponentReferences <- function(_value)
+{
+    local references = [];
+    if (typeof _value != "array")
+    {
+        return {
+            __bb_reference_collection = "known_opponents",
+            runtime_type = typeof _value,
+            entry_count = 0,
+            references = references
+        };
+    }
+
+    local limit = ::Math.min(_value.len(), this.MaxReflectEntries);
+    for (local i = 0; i < limit; i = ++i)
+    {
+        local entry = _value[i];
+        local actorRuntimeId = null;
+        local tileId = null;
+        local ttl = null;
+        if (entry != null)
+        {
+            try
+            {
+                if (entry.Actor != null)
+                    actorRuntimeId = entry.Actor.getID().tostring();
+            }
+            catch (_error)
+            {
+            }
+            try
+            {
+                if (entry.Tile != null) tileId = legal.tileID(entry.Tile);
+            }
+            catch (_error)
+            {
+            }
+            try { ttl = entry.TTL; } catch (_error) {}
+        }
+        references.push({
+            actor_runtime_id = actorRuntimeId,
+            tile_id = tileId,
+            ttl = ttl
+        });
+    }
+
+    return {
+        __bb_reference_collection = "known_opponents",
+        runtime_type = "array",
+        original_length = _value.len(),
+        entry_count = limit,
+        truncated = _value.len() > limit,
+        references = references
+    };
 };
 
 sandbox._enqueueStateField = function(
@@ -135,6 +190,32 @@ sandbox._enqueueStateField = function(
         );
     }
 
+    if (_ownerSection == "strategic_property" && keyText == "Parties"
+        && typeof _value == "array")
+    {
+        return this._enqueueNestedFieldArray(
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            _value,
+            "strategic_party"
+        );
+    }
+
+    if (_ownerSection == "strategic_party"
+        && (typeof _value == "table" || typeof _value == "instance"))
+    {
+        return this._enqueueNestedFieldTable(
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            _value,
+            "strategic_party_field"
+        );
+    }
+
     if (_ownerSection == "entity_manager_state" && keyText == "Strategies"
         && typeof _value == "array")
     {
@@ -146,6 +227,44 @@ sandbox._enqueueStateField = function(
             _value,
             "entity_strategy"
         );
+    }
+
+    if (_ownerSection == "entity_strategy"
+        && (typeof _value == "table" || typeof _value == "instance"))
+    {
+        return this._enqueueNestedFieldTable(
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            _value,
+            "entity_strategy_field"
+        );
+    }
+
+    if (_ownerSection == "entity_strategy_field" && keyText == "m"
+        && (typeof _value == "table" || typeof _value == "instance"))
+    {
+        return this._enqueueNestedFieldTable(
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            _value,
+            "entity_strategy_state"
+        );
+    }
+
+    if (_ownerSection == "entity_strategy_state" && keyText == "KnownOpponents")
+    {
+        return originalEnqueueStateField.acall([
+            this,
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            this._knownOpponentReferences(_value)
+        ]);
     }
 
     return originalEnqueueStateField.acall([
