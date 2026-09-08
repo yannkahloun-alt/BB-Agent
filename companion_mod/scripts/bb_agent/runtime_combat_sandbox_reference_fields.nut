@@ -1,4 +1,5 @@
 local sandbox = ::BBAGENT_CombatSandbox;
+local legal = ::BBAGENT_PlayerLegal;
 
 // Large container fields can duplicate information already emitted as dedicated
 // actor / actor_skill / actor_item / turn records. Preserve field existence,
@@ -73,6 +74,42 @@ sandbox._runtimeScaffoldingSummary <- function(_role, _value)
     return summary;
 };
 
+sandbox._runtimeValueSummary <- function(_role, _value)
+{
+    local summary = {
+        __bb_runtime_value_summary = true,
+        role = _role,
+        runtime_type = typeof _value,
+        recursively_expanded = false
+    };
+    try { summary.value_text <- _value.tostring(); } catch (_error) {}
+    return summary;
+};
+
+sandbox._actorBackReference <- function(_ownerKey, _role, _value)
+{
+    local summary = {
+        __bb_reference_collection = "actor_core",
+        collection_role = _role,
+        owner_actor_id = _ownerKey,
+        runtime_type = typeof _value
+    };
+    try { summary.actor_runtime_id <- _value.getID().tostring(); } catch (_error) {}
+    return summary;
+};
+
+sandbox._backgroundReference <- function(_ownerKey, _value)
+{
+    local summary = {
+        __bb_reference_collection = "actor_skill",
+        collection_role = "background",
+        owner_actor_id = _ownerKey,
+        runtime_type = typeof _value
+    };
+    try { summary.skill_id <- _value.getID(); } catch (_error) {}
+    return summary;
+};
+
 sandbox._enqueueStateField = function(
     _ownerSection,
     _ownerKey,
@@ -119,6 +156,34 @@ sandbox._enqueueStateField = function(
                 runtime_type = typeof _value,
                 slot_count = slotCount
             }
+        ]);
+    }
+
+    if ((_ownerSection == "actor_skills_container"
+            || _ownerSection == "actor_items_container")
+        && keyText == "Actor")
+    {
+        return originalEnqueueStateField.acall([
+            this,
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            this._actorBackReference(_ownerKey, _ownerSection, _value)
+        ]);
+    }
+
+    if ((_ownerSection == "actor_state"
+            || _ownerSection == "tile_occupant_state")
+        && keyText == "Background")
+    {
+        return originalEnqueueStateField.acall([
+            this,
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            this._backgroundReference(_ownerKey, _value)
         ]);
     }
 
@@ -180,6 +245,66 @@ sandbox._enqueueStateField = function(
             _fieldKey,
             _ordinal,
             this._runtimeScaffoldingSummary(keyText, _value)
+        ]);
+    }
+
+    if (_ownerSection == "tactical_global"
+        && (keyText == "TopbarRoundInformation"
+            || keyText == "TurnSequenceBar"
+            || keyText == "CameraDirector"
+            || keyText == "CombatResultLoot"
+            || keyText == "Entities"
+            || keyText == "EventLog"
+            || keyText == "TopbarOptions"
+            || keyText == "OrientationOverlay"
+            || keyText == "State"))
+    {
+        return originalEnqueueStateField.acall([
+            this,
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            this._runtimeScaffoldingSummary(keyText, _value)
+        ]);
+    }
+
+    if (_ownerSection == "strategic_property" && keyText == "Tile")
+    {
+        local tileId = null;
+        try { tileId = legal.tileID(_value); } catch (_error) {}
+        return originalEnqueueStateField.acall([
+            this,
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            {
+                __bb_reference_collection = "tile",
+                collection_role = "strategic_property_tile",
+                tile_id = tileId,
+                runtime_type = typeof _value
+            }
+        ]);
+    }
+
+    if (_ownerSection == "constant"
+        && (keyText == "EnemySelectionColor"
+            || keyText == "ShakeEffectArmorHitHighlight"
+            || keyText == "ShakeEffectSplitShieldColor"
+            || keyText == "ShakeEffectArmorHitColor"
+            || keyText == "ShakeEffectHitpointsHitHighlight"
+            || keyText == "ShakeEffectHitpointsHitColor"
+            || keyText == "HumanCorpseOffset"
+            || keyText == "ShakeEffectSplitShieldHighlight"))
+    {
+        return originalEnqueueStateField.acall([
+            this,
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            this._runtimeValueSummary(keyText, _value)
         ]);
     }
 
