@@ -129,7 +129,9 @@ def test_remembered_validation_reuses_incremental_tile_discovery() -> None:
     assert "for (local y" not in text
 
 
-def test_remembered_validation_is_debug_only_and_native_calls_are_sample_scoped() -> None:
+def test_remembered_validation_is_debug_only_and_native_calls_are_sample_scoped() -> (
+    None
+):
     text = REMEMBERED.read_text(encoding="utf-8")
     assert "if (!oracle.Enabled || this.State == null) return;" in text
     sample_start = text.index("oracle._rememberedMovementValidationSample <- function")
