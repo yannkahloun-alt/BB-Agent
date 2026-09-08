@@ -91,7 +91,7 @@ def test_timing_parser_requires_complete_pair(tmp_path: Path) -> None:
 
 def test_production_installer_excludes_debug_overlay() -> None:
     text = INSTALLER.read_text(encoding="utf-8")
-    assert 'Version = \\"0\\.2\\.37\\"' in text
+    assert 'Version = "0\\.2\\.37"' in text
     assert "runtime_live_ready_timing" in text
     assert "exactly one BB-Agent production zip" in text
     assert "zz_bb_agent_debug_oracle.zip" not in text
