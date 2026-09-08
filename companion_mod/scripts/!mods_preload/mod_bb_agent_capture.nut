@@ -23,7 +23,6 @@ mod.queue(function()
     ::include("scripts/bb_agent/affordance_export");
     ::include("scripts/bb_agent/affordance_export_hardening");
     ::include("scripts/bb_agent/debug_oracle");
-    ::include("scripts/bb_agent/runtime_debug_oracle_path_anchors");
     ::include("scripts/bb_agent/runtime_navigator_path_compat");
     ::include("scripts/bb_agent/runtime_movement_graph_compat");
     ::include("scripts/bb_agent/runtime_movement_ally_jump_cost_compat");
