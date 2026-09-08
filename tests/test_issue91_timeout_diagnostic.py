@@ -47,8 +47,8 @@ def test_extractor_classifies_loaded_timing_without_ready_begin(tmp_path: Path) 
     log = tmp_path / "log.html"
     out = tmp_path / "production-ready-timing.json"
     log.write_text(
-        '<div class="text">[BB-Agent Live Timing] loaded production_only=true '
-        'wraps=DECISION_READY</div>',
+        "<div class=\"text\">[BB-Agent Live Timing] loaded production_only=true "
+        "wraps=DECISION_READY</div>",
         encoding="utf-8",
     )
 
@@ -64,10 +64,10 @@ def test_extractor_classifies_ready_begin_without_end(tmp_path: Path) -> None:
     log = tmp_path / "log.html"
     out = tmp_path / "production-ready-timing.json"
     log.write_text(
-        '<div class="text">[BB-Agent Live Timing] loaded production_only=true '
-        'wraps=DECISION_READY</div>\n'
-        '<div class="time">10:00:00</div><div class="text">'
-        '[BB-Agent Live Timing] ready_begin battle=1 generation=0</div>',
+        "<div class=\"text\">[BB-Agent Live Timing] loaded production_only=true "
+        "wraps=DECISION_READY</div>\n"
+        "<div class=\"time\">10:00:00</div><div class=\"text\">"
+        "[BB-Agent Live Timing] ready_begin battle=1 generation=0</div>",
         encoding="utf-8",
     )
 
