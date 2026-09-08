@@ -7,7 +7,9 @@ from bb_agent.live_ready_timing import summarize_latest_ready_timing
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 TIMING = ROOT / "companion_mod/scripts/bb_agent/runtime_live_ready_timing.nut"
-NUMERIC = ROOT / "companion_mod/scripts/bb_agent/runtime_player_legal_numeric_compat.nut"
+NUMERIC = (
+    ROOT / "companion_mod/scripts/bb_agent/runtime_player_legal_numeric_compat.nut"
+)
 CANONICAL = ROOT / "companion_mod/scripts/bb_agent/canonical_wire.nut"
 INSTALLER = ROOT / "tools/install_live_production.ps1"
 EXTRACTOR = ROOT / "tools/extract_live_ready_timing.py"
@@ -154,7 +156,9 @@ def test_numeric_layer_converts_whole_float_and_rejects_fractional_float() -> No
     float_guard = text.index('if (kind != "float") return _wrapper;')
     conversion = text.index("local integerValue = value.tointeger();", float_guard)
     fractional_guard = text.index("if (value != integerValue)", conversion)
-    failure = text.index('throw "player-legal whole-number field is fractional:', fractional_guard)
+    failure = text.index(
+        'throw "player-legal whole-number field is fractional:', fractional_guard
+    )
     assignment = text.index("_wrapper.value = integerValue;", failure)
     assert float_guard < conversion < fractional_guard < failure < assignment
     assert "item.condition = this._exactWholeNumber" in text
@@ -162,4 +166,7 @@ def test_numeric_layer_converts_whole_float_and_rejects_fractional_float() -> No
 
 def test_canonical_wire_still_rejects_generic_floats() -> None:
     text = CANONICAL.read_text(encoding="utf-8")
-    assert 'if (kind == "float") throw "canonical live JSON does not accept floats";' in text
+    assert (
+        'if (kind == "float") throw "canonical live JSON does not accept floats";'
+        in text
+    )
