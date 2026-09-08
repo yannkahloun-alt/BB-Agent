@@ -15,6 +15,13 @@ from bb_agent.serialization import canonical_json_bytes
 FRAME_PREFIX = "BBCOMBAT1"
 SCHEMA_VERSION = "bb-agent-combat-sandbox.v1"
 _TEXT_DIV_RE = re.compile(rb'<div class="text">(.*?)</div>', re.DOTALL)
+_TIMED_SANDBOX_RE = re.compile(
+    rb'<div class="time">([0-9]{2}:[0-9]{2}:[0-9]{2})</div>.*?'
+    rb'<div class="text">\[BB-Agent Combat Sandbox\] '
+    rb'(player_legal_build_begin|player_legal_build_end) battle=([0-9]+) '
+    rb'generation=([0-9]+)</div>',
+    re.DOTALL,
+)
 _CHUNK_RE = re.compile(
     rb"BBCOMBAT1\|([0-9]+)\|([0-9]+)\|([^|]+)\|([^|]+)\|"
     rb"([0-9]+)\|([0-9]+)\|([0-9]+)\|([0-9a-f]{64})\|"
@@ -119,6 +126,42 @@ def _player_legal_semantic_issue_paths(
     if f"player_legal_actor:{active_actor_id}" not in records:
         issues.add("player_legal_meta:root.payload.decision.active_actor_id")
     return issues
+
+
+def _clock_seconds(value: str) -> int:
+    hour, minute, second = (int(part) for part in value.split(":"))
+    return hour * 3600 + minute * 60 + second
+
+
+def _player_legal_build_metrics(
+    data: bytes, battle: int, generation: int
+) -> dict[str, Any]:
+    begin: str | None = None
+    end: str | None = None
+    for match in _TIMED_SANDBOX_RE.finditer(data):
+        if int(match.group(3)) != battle or int(match.group(4)) != generation:
+            continue
+        timestamp = match.group(1).decode("ascii")
+        marker = match.group(2)
+        if marker == b"player_legal_build_begin":
+            begin = timestamp
+        elif marker == b"player_legal_build_end":
+            end = timestamp
+
+    span: int | None = None
+    if begin is not None and end is not None:
+        span = _clock_seconds(end) - _clock_seconds(begin)
+        if span < 0:
+            span += 24 * 60 * 60
+
+    return {
+        "player_legal_build_begin_time": begin,
+        "player_legal_build_end_time": end,
+        "player_legal_build_timestamp_span_seconds": span,
+        "player_legal_build_same_timestamp_bucket": (
+            begin is not None and end is not None and begin == end
+        ),
+    }
 
 
 def summarize_combat_sandbox_quality(snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -273,6 +316,9 @@ def extract_latest_combat_sandbox(log_path: str | Path) -> dict[str, Any]:
                 "schema_version": SCHEMA_VERSION,
                 "battle_sequence": battle,
                 "source_generation": generation,
+                "extraction_metrics": _player_legal_build_metrics(
+                    data, battle, generation
+                ),
                 "records": records,
             }
         except ValueError as exc:
