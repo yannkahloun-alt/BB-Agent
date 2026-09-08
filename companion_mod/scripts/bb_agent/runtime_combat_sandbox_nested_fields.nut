@@ -216,6 +216,32 @@ sandbox._enqueueStateField = function(
         );
     }
 
+    if (_ownerSection == "strategic_party_field" && keyText == "location"
+        && (typeof _value == "table" || typeof _value == "instance"))
+    {
+        return this._enqueueNestedFieldTable(
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            _value,
+            "strategic_party_location_field"
+        );
+    }
+
+    if (_ownerSection == "strategic_party_location_field" && keyText == "m"
+        && (typeof _value == "table" || typeof _value == "instance"))
+    {
+        return this._enqueueNestedFieldTable(
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            _value,
+            "strategic_party_location_state"
+        );
+    }
+
     if (_ownerSection == "entity_manager_state" && keyText == "Strategies"
         && typeof _value == "array")
     {
