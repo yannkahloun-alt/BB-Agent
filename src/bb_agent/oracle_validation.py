@@ -88,10 +88,14 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
         sample.get("error") for sample in samples if sample.get("error") is not None
     ]
     exact_samples = [
-        sample for sample in samples if sample.get("player_legal_visibility") != "REMEMBERED"
+        sample
+        for sample in samples
+        if sample.get("player_legal_visibility") != "REMEMBERED"
     ]
     remembered_samples = [
-        sample for sample in samples if sample.get("player_legal_visibility") == "REMEMBERED"
+        sample
+        for sample in samples
+        if sample.get("player_legal_visibility") == "REMEMBERED"
     ]
     legality_mismatches = sum(
         1 for sample in exact_samples if sample.get("legality_agreement") is False
