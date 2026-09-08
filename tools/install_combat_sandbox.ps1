@@ -71,6 +71,7 @@ if ($preload -notmatch 'runtime_debug_oracle_movement_validation') { throw 'Stag
 if ($preload -notmatch 'runtime_debug_oracle_movement_validation_fatigue') { throw 'Native movement fatigue-semantics validation missing' }
 if ($preload -notmatch 'runtime_debug_oracle_movement_validation_legality') { throw 'Native movement legality validation missing' }
 if ($preload -notmatch 'runtime_debug_oracle_movement_validation_geometry') { throw 'Native movement geometry validation missing' }
+if ($preload -notmatch 'runtime_debug_oracle_movement_validation_remembered') { throw 'Remembered-terrain movement validation missing' }
 foreach ($forbidden in @(
     'runtime_combat_sandbox_incremental',
     'runtime_movement_sandbox',
@@ -105,9 +106,10 @@ Write-Host '  ally-jump movement cost: sum of both constituent movement steps'
 Write-Host '  visible blockers: exact only on currently visible tiles; remembered occupancy unknown'
 Write-Host '  hidden occupancy: never inspected by production blocker/movement graph layers'
 Write-Host '  ally-jump probe: one DEBUG_ORACLE native sample, roster-scanned when active has no candidate'
-Write-Host '  native movement validation: <=6 deterministic DEBUG samples, one native call per update'
+Write-Host '  native movement validation: <=6 exact-visible + <=2 remembered DEBUG samples, one native call per update'
 Write-Host '  native validation split: legality, resource reachability, preview cost, fatigue semantics'
 Write-Host '  native geometry summary: model/native tile-count plus first/end endpoint comparison'
+Write-Host '  remembered scope: reuses incremental tile discovery; no extra full-map scan'
 Write-Host '  native fatigue semantics: compare path-search fatigue and execution fatigue independently'
 Write-Host '  duplicate runtime collections: summarized as bounded actor/skill/item references'
 Write-Host '  unique large fields: second-level sharded with independent reflection budgets'
