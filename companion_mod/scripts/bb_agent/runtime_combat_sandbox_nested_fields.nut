@@ -6,6 +6,17 @@ local legal = ::BBAGENT_PlayerLegal;
 // budget rather than truncating the entire structure behind one field record.
 local originalEnqueueStateField = sandbox._enqueueStateField;
 
+sandbox._nestedOwnerKey <- function(_ownerKey, _fieldKey, _childKey)
+{
+    local ownerText = "owner";
+    local fieldText = "field";
+    local childText = "child";
+    try { ownerText = _ownerKey.tostring(); } catch (_error) {}
+    try { fieldText = _fieldKey.tostring(); } catch (_error) {}
+    try { childText = _childKey.tostring(); } catch (_error) {}
+    return ownerText + "/" + fieldText + "[" + childText + "]";
+};
+
 sandbox._enqueueNestedFieldTable <- function(
     _ownerSection,
     _ownerKey,
@@ -46,6 +57,7 @@ sandbox._enqueueNestedFieldTable <- function(
         __bb_nested_field_shards = true,
         runtime_type = typeof _value,
         nested_owner_section = _nestedOwnerSection,
+        nested_owner_key = _ownerKey,
         entry_count = count,
         truncated = truncated
     };
@@ -72,9 +84,10 @@ sandbox._enqueueNestedFieldArray <- function(
     local limit = ::Math.min(_value.len(), this.MaxReflectEntries);
     for (local i = 0; i < limit; i = ++i)
     {
+        local childOwnerKey = this._nestedOwnerKey(_ownerKey, _fieldKey, i);
         this._enqueueStateField(
             _nestedOwnerSection,
-            _ownerKey,
+            childOwnerKey,
             i,
             i,
             _value[i]
@@ -90,6 +103,11 @@ sandbox._enqueueNestedFieldArray <- function(
             __bb_nested_field_shards = true,
             runtime_type = "array",
             nested_owner_section = _nestedOwnerSection,
+            nested_owner_key_pattern = this._nestedOwnerKey(
+                _ownerKey,
+                _fieldKey,
+                "{index}"
+            ),
             original_length = _value.len(),
             entry_count = limit,
             truncated = _value.len() > limit
