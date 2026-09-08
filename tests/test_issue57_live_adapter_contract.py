@@ -42,7 +42,6 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
         "affordance_export",
         "affordance_export_hardening",
         "debug_oracle",
-        "runtime_debug_oracle_path_anchors",
         "runtime_navigator_path_compat",
         "runtime_movement_graph_compat",
         "runtime_movement_blocking_compat",
@@ -59,6 +58,7 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
         "runtime_navigator_tiebreak_compat",
         "runtime_debug_oracle_route_score",
         "runtime_movement_sandbox",
+        "runtime_debug_oracle_path_anchors",
     ):
         assert forbidden not in source
 
