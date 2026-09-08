@@ -34,6 +34,7 @@ mod.queue(function()
     ::include("scripts/bb_agent/runtime_combat_sandbox_reference_fields");
     ::include("scripts/bb_agent/runtime_combat_sandbox_nested_fields");
     ::include("scripts/bb_agent/runtime_combat_sandbox_oracle_first");
+    ::include("scripts/bb_agent/runtime_combat_sandbox_player_legal_phase");
     ::include("scripts/bb_agent/runtime_combat_sandbox_bounds");
     ::include("scripts/bb_agent/runtime_combat_sandbox_continuity");
     ::include("scripts/bb_agent/runtime_combat_sandbox_recovery");
