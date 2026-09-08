@@ -46,7 +46,7 @@ try {
 
 if ($preload -notmatch 'Version = "0\.2\.37"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_live_ready_timing') { throw 'Production READY timing layer missing' }
-if ($preload -notmatch 'runtime_ready_failure_latch.*runtime_live_ready_timing') {
+if ($preload -notmatch '(?s)runtime_ready_failure_latch.*runtime_live_ready_timing') {
     throw 'READY timing layer must load after failure latch'
 }
 
