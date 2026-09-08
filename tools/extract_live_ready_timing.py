@@ -55,7 +55,8 @@ def main() -> int:
         )
     print(
         "PRODUCTION READY TIMING "
-        f"battle={summary['battle_sequence']} generation={summary['source_generation']} "
+        f"battle={summary['battle_sequence']} "
+        f"generation={summary['source_generation']} "
         f"begin={summary['begin_time']} end={summary['end_time']} "
         f"span_seconds={summary['timestamp_span_seconds']} "
         f"same_timestamp_bucket={summary['same_timestamp_bucket']} "
