@@ -110,3 +110,13 @@ def test_production_installer_excludes_debug_overlay() -> None:
     assert "exactly one BB-Agent production zip" in text
     assert "zz_bb_agent_debug_oracle.zip" not in text
     assert "Copy-Item (Join-Path $RepoRoot 'companion_mod\\debug_oracle" not in text
+
+
+def test_numeric_layer_contract() -> None:
+    root = ROOT / "companion_mod/scripts/bb_agent"
+    text = (root / "runtime_player_legal_numeric_compat.nut").read_text()
+    assert "value.tointeger()" in text
+    assert "if (value != integerValue)" in text
+    assert "equipment.condition" in text
+    assert "equipment.ammunition" in text
+    assert "tactical_stats." in text
