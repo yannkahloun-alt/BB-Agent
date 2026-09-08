@@ -112,8 +112,7 @@ def test_extract_preserves_player_legal_build_timestamp_span(tmp_path: Path) -> 
         "<html><body>"
         + _timed_row(
             "23:59:59",
-            "[BB-Agent Combat Sandbox] player_legal_build_begin "
-            "battle=1 generation=2",
+            "[BB-Agent Combat Sandbox] player_legal_build_begin battle=1 generation=2",
         )
         + _timed_row(
             "00:00:00",
