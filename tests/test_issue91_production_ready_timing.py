@@ -7,6 +7,8 @@ from bb_agent.live_ready_timing import summarize_latest_ready_timing
 ROOT = Path(__file__).resolve().parents[1]
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 TIMING = ROOT / "companion_mod/scripts/bb_agent/runtime_live_ready_timing.nut"
+NUMERIC = ROOT / "companion_mod/scripts/bb_agent/runtime_player_legal_numeric_compat.nut"
+CANONICAL = ROOT / "companion_mod/scripts/bb_agent/canonical_wire.nut"
 INSTALLER = ROOT / "tools/install_live_production.ps1"
 EXTRACTOR = ROOT / "tools/extract_live_ready_timing.py"
 
@@ -20,7 +22,7 @@ def _log(*rows: tuple[str, str]) -> bytes:
 
 def test_timing_wrapper_loads_after_failure_latch_before_tactical_hook() -> None:
     preload = PRELOAD.read_text(encoding="utf-8")
-    assert 'Version = "0.2.37"' in preload
+    assert 'Version = "0.2.38"' in preload
     latch = preload.index("runtime_ready_failure_latch")
     timing = preload.index("runtime_live_ready_timing")
     hook = preload.index("hooks/tactical_state")
@@ -104,7 +106,7 @@ def test_extractor_fails_unsuccessful_ready_pair() -> None:
 
 def test_production_installer_excludes_debug_overlay() -> None:
     text = INSTALLER.read_text(encoding="utf-8")
-    assert 'Version = "0\\.2\\.37"' in text
+    assert 'Version = "0\\.2\\.38"' in text
     assert "runtime_player_legal_numeric_compat" in text
     assert "runtime_live_ready_timing" in text
     assert "exactly one BB-Agent production zip" in text
@@ -112,11 +114,52 @@ def test_production_installer_excludes_debug_overlay() -> None:
     assert "Copy-Item (Join-Path $RepoRoot 'companion_mod\\debug_oracle" not in text
 
 
-def test_numeric_layer_contract() -> None:
-    root = ROOT / "companion_mod/scripts/bb_agent"
-    text = (root / "runtime_player_legal_numeric_compat.nut").read_text()
-    assert "value.tointeger()" in text
-    assert "if (value != integerValue)" in text
+def test_numeric_layer_loads_after_projection_hardening_before_identity() -> None:
+    preload = PRELOAD.read_text(encoding="utf-8")
+    projection = preload.index("player_legal_projection")
+    hardening = preload.index("player_legal_hardening")
+    numeric = preload.index("runtime_player_legal_numeric_compat")
+    identity = preload.index("canonical_identity")
+    live_export = preload.index("live_export")
+    assert projection < hardening < numeric < identity < live_export
+
+
+def test_numeric_layer_normalizes_source_proven_whole_number_fields() -> None:
+    text = NUMERIC.read_text(encoding="utf-8")
+    assert "local originalOwnedResources = legal._ownedResources;" in text
+    assert "local originalItemState = legal._itemState;" in text
+    assert "local originalOwnedStats = legal._ownedStats;" in text
+    for field in (
+        "hit_points",
+        "maximum_hit_points",
+        "action_points",
+        "maximum_action_points",
+        "fatigue",
+        "fatigue_capacity",
+        "head_armor",
+        "maximum_head_armor",
+        "body_armor",
+        "maximum_body_armor",
+        "morale",
+        "initiative",
+    ):
+        assert f'"{field}"' in text
     assert "equipment.condition" in text
     assert "equipment.ammunition" in text
     assert "tactical_stats." in text
+
+
+def test_numeric_layer_converts_whole_float_and_rejects_fractional_float() -> None:
+    text = NUMERIC.read_text(encoding="utf-8")
+    float_guard = text.index('if (kind != "float") return _wrapper;')
+    conversion = text.index("local integerValue = value.tointeger();", float_guard)
+    fractional_guard = text.index("if (value != integerValue)", conversion)
+    failure = text.index('throw "player-legal whole-number field is fractional:', fractional_guard)
+    assignment = text.index("_wrapper.value = integerValue;", failure)
+    assert float_guard < conversion < fractional_guard < failure < assignment
+    assert "item.condition = this._exactWholeNumber" in text
+
+
+def test_canonical_wire_still_rejects_generic_floats() -> None:
+    text = CANONICAL.read_text(encoding="utf-8")
+    assert 'if (kind == "float") throw "canonical live JSON does not accept floats";' in text
