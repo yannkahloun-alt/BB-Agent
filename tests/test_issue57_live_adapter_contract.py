@@ -16,6 +16,10 @@ AFFORDANCES = ROOT / "companion_mod/scripts/bb_agent/affordance_export.nut"
 AFFORDANCE_HARDENING = (
     ROOT / "companion_mod/scripts/bb_agent/affordance_export_hardening.nut"
 )
+MOVEMENT_GRAPH = (
+    ROOT / "companion_mod/scripts/bb_agent/runtime_movement_graph_compat.nut"
+)
+COMBAT_SANDBOX = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox.nut"
 EXPORT = ROOT / "companion_mod/scripts/bb_agent/live_export.nut"
 HOOK = ROOT / "companion_mod/scripts/bb_agent/hooks/tactical_state.nut"
 
@@ -24,22 +28,41 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_preload_orders_projection_and_export_before_tactical_hook() -> None:
+def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook() -> (
+    None
+):
     source = _text(PRELOAD)
-    assert 'Version = "0.2.9"' in source
+    assert 'Version = "0.2.36"' in source
     modules = (
         "canonical_wire",
         "player_legal_projection",
         "player_legal_hardening",
+        "runtime_player_legal_blocking_compat",
+        "runtime_player_legal_actor_enumeration_compat",
+        "runtime_player_legal_turn_list_fastpath",
         "canonical_identity",
         "affordance_export",
         "affordance_export_hardening",
+        "debug_oracle",
         "runtime_navigator_path_compat",
+        "runtime_movement_graph_compat",
+        "runtime_movement_blocking_compat",
+        "runtime_combat_sandbox",
+        "runtime_debug_oracle_ally_jump_probe",
         "live_export",
         "hooks/tactical_state",
     )
     offsets = [source.index(f"scripts/bb_agent/{module}") for module in modules]
     assert offsets == sorted(offsets)
+    for forbidden in (
+        "runtime_combat_sandbox_incremental",
+        "runtime_debug_oracle_movement_compare",
+        "runtime_navigator_tiebreak_compat",
+        "runtime_debug_oracle_route_score",
+        "runtime_movement_sandbox",
+        "runtime_debug_oracle_path_anchors",
+    ):
+        assert forbidden not in source
 
 
 def test_wire_identity_matches_closed_m1_kernel() -> None:
@@ -114,11 +137,11 @@ def test_canonical_identity_matches_existing_action_and_state_identity_boundarie
     assert '"action:" + wire.canonicalHash(this._actionIntent(_action))' in source
 
 
-def test_affordance_acquisition_uses_game_authority_and_never_executes_commands() -> (
-    None
-):
+def test_affordance_acquisition_keeps_native_probe_out_of_production_graph() -> None:
     source = _text(AFFORDANCES)
     hardening = _text(AFFORDANCE_HARDENING)
+    graph = _text(MOVEMENT_GRAPH)
+
     for required in (
         "queryActives()",
         "skill.isUsable()",
@@ -127,11 +150,6 @@ def test_affordance_acquisition_uses_game_authority_and_never_executes_commands(
         "skill.getActionPointCost()",
         "skill.getFatigueCost()",
         "source.getAmmoCost()",
-        "navigator.findPath(",
-        "navigator.getCostForPath(",
-        'this._movementCost(costs, "ActionPointsRequired", "ActionPoints")',
-        'this._movementCost(costs, "FatigueRequired", "Fatigue")',
-        "navigator.clearPath()",
         "canEntityWait(active)",
         "helper_queryEquipmentTargetItems",
         "helper_isActionAllowed",
@@ -140,6 +158,10 @@ def test_affordance_acquisition_uses_game_authority_and_never_executes_commands(
         'unsupported_mechanic_id = "live.player_legal.aoo_probability_unavailable"',
     ):
         assert required in source
+
+    assert "navigator.findPath(" not in graph
+    assert "navigator.getCostForPath(" not in graph
+
     assert "native movement path leaves the player-legal canonical map" in hardening
     assert "this.CurrentProjection.runtime.tile_records" in hardening
     for cost in (
@@ -165,6 +187,22 @@ def test_affordance_acquisition_uses_game_authority_and_never_executes_commands(
     ):
         assert forbidden not in source
         assert forbidden not in hardening
+
+
+def test_full_combat_sandbox_is_diagnostic_only_and_nonblocking() -> None:
+    sandbox = _text(COMBAT_SANDBOX)
+    export = _text(EXPORT)
+    hook = _text(HOOK)
+
+    assert 'FramePrefix = "BBCOMBAT1"' in sandbox
+    assert 'information_scope = "omniscient_debug"' in sandbox
+    assert "RecordsPerPump = 1" in sandbox
+    assert "function begin(_raw)" in sandbox
+    assert "function pump()" in sandbox
+    assert "BBAGENT_CombatSandbox.capture" not in export
+    assert "::BBAGENT_CombatSandbox.begin(raw);" in hook
+    assert "::BBAGENT_CombatSandbox.pump();" in hook
+    assert 'record.information_profile <- "player_legal"' in export
 
 
 def test_live_export_is_transactional_strict_and_player_legal_only() -> None:
