@@ -203,6 +203,9 @@ def summarize_combat_sandbox_quality(snapshot: dict[str, Any]) -> dict[str, Any]
             if value.get("iteration_error") is not None:
                 iteration_error_count += 1
                 issue_paths.add(f"{path}.iteration_error")
+            if value.get("__bb_iteration_error") is not None:
+                iteration_error_count += 1
+                issue_paths.add(f"{path}.__bb_iteration_error")
             if "__bb_reference_collection" in value:
                 reference_summary_count += 1
             if value.get("__bb_runtime_scaffolding") is True:
