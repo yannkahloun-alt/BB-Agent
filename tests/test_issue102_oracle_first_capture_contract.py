@@ -5,7 +5,8 @@ ORACLE_FIRST = (
     ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_oracle_first.nut"
 )
 PLAYER_LEGAL_PHASE = (
-    ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_player_legal_phase.nut"
+    ROOT
+    / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_player_legal_phase.nut"
 )
 RECOVERY = ROOT / "companion_mod/scripts/bb_agent/runtime_combat_sandbox_recovery.nut"
 HOOK = ROOT / "companion_mod/scripts/bb_agent/hooks/tactical_state.nut"
@@ -16,7 +17,9 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_oracle_first_capture_releases_player_legal_only_after_oracle_queue_drains() -> None:
+def test_oracle_first_capture_releases_player_legal_only_after_oracle_queue_drains() -> (
+    None
+):
     text = _text(PLAYER_LEGAL_PHASE)
     assert 'if (job.kind == "player_legal_build") continue;' in text
     assert "player_legal_phase_scheduled <- false" in text
@@ -89,14 +92,7 @@ def test_recovery_layer_loads_after_true_player_legal_phase_and_continuity() -> 
     bounds = text.index("runtime_combat_sandbox_bounds")
     continuity = text.index("runtime_combat_sandbox_continuity")
     recovery = text.index("runtime_combat_sandbox_recovery")
-    assert (
-        fidelity
-        < oracle_first
-        < player_legal_phase
-        < bounds
-        < continuity
-        < recovery
-    )
+    assert fidelity < oracle_first < player_legal_phase < bounds < continuity < recovery
 
 
 def test_debug_oracle_suppresses_normal_live_export_work() -> None:
