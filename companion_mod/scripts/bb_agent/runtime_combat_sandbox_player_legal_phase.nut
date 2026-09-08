@@ -27,9 +27,25 @@ local originalProcessJob = sandbox._processJob;
 sandbox._processJob = function(_job)
 {
     local wasPlayerLegalBuild = _job.kind == "player_legal_build";
+    if (wasPlayerLegalBuild && this.State != null)
+    {
+        ::logInfo(
+            "[BB-Agent Combat Sandbox] player_legal_build_begin"
+            + " battle=" + this.State.battle_sequence.tostring()
+            + " generation=" + this.State.source_generation.tostring()
+        );
+    }
+
     local ret = originalProcessJob.acall([this, _job]);
     if (wasPlayerLegalBuild && this.State != null)
+    {
         this.State.player_legal_phase_complete = true;
+        ::logInfo(
+            "[BB-Agent Combat Sandbox] player_legal_build_end"
+            + " battle=" + this.State.battle_sequence.tostring()
+            + " generation=" + this.State.source_generation.tostring()
+        );
+    }
     return ret;
 };
 
