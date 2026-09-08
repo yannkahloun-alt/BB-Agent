@@ -260,6 +260,20 @@ sandbox._enqueueStateField = function(
         );
     }
 
+    if (_ownerSection == "strategic_party_location_state"
+        && keyText == "DefenderSpawnList"
+        && typeof _value == "array")
+    {
+        return this._enqueueNestedFieldArray(
+            _ownerSection,
+            _ownerKey,
+            _fieldKey,
+            _ordinal,
+            _value,
+            "strategic_party_defender_spawn"
+        );
+    }
+
     if (_ownerSection == "entity_manager_state" && keyText == "Strategies"
         && typeof _value == "array")
     {
