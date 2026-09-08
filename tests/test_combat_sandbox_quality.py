@@ -54,6 +54,7 @@ def test_quality_summary_finds_nested_errors_and_truncations() -> None:
                         "value": {
                             "__bb_type": "table",
                             "__bb_truncated": True,
+                            "__bb_iteration_error": "_nexti failed",
                             "reason": "max_nodes",
                         }
                     },
@@ -68,11 +69,12 @@ def test_quality_summary_finds_nested_errors_and_truncations() -> None:
     )
     assert summary["capture_error_count"] == 1
     assert summary["truncation_count"] == 2
-    assert summary["iteration_error_count"] == 1
+    assert summary["iteration_error_count"] == 2
     assert summary["semantic_error_count"] == 0
     assert summary["issue_paths"] == sorted(summary["issue_paths"])
     assert any("actor_ai:actor:1" in path for path in summary["issue_paths"])
     assert any("state_field:7" in path for path in summary["issue_paths"])
+    assert any("__bb_iteration_error" in path for path in summary["issue_paths"])
 
 
 def test_quality_summary_counts_intentional_forensic_summaries() -> None:
