@@ -32,12 +32,14 @@ def test_preload_orders_projection_graph_sandbox_and_export_before_tactical_hook
     None
 ):
     source = _text(PRELOAD)
-    assert 'Version = "0.2.32"' in source
+    assert 'Version = "0.2.33"' in source
     modules = (
         "canonical_wire",
         "player_legal_projection",
         "player_legal_hardening",
         "runtime_player_legal_blocking_compat",
+        "runtime_player_legal_actor_enumeration_compat",
+        "runtime_player_legal_turn_list_fastpath",
         "canonical_identity",
         "affordance_export",
         "affordance_export_hardening",
