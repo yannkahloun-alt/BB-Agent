@@ -17,9 +17,7 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_oracle_first_capture_releases_player_legal_only_after_oracle_queue_drains() -> (
-    None
-):
+def test_player_legal_phase_releases_only_after_oracle_queue_drains() -> None:
     text = _text(PLAYER_LEGAL_PHASE)
     assert 'if (job.kind == "player_legal_build") continue;' in text
     assert "player_legal_phase_scheduled <- false" in text
