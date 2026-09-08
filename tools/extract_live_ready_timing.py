@@ -60,8 +60,16 @@ def main() -> int:
         f"begin={summary['begin_time']} end={summary['end_time']} "
         f"span_seconds={summary['timestamp_span_seconds']} "
         f"same_timestamp_bucket={summary['same_timestamp_bucket']} "
-        f"success={summary['success']}"
+        f"success={summary['success']} "
+        f"failure_stage={summary.get('failure_stage')}"
     )
+    if summary["success"] is not True:
+        print(
+            "Production DECISION_READY export failed"
+            f" at stage={summary.get('failure_stage')}",
+            file=sys.stderr,
+        )
+        return 3
     return 0
 
 
