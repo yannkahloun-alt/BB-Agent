@@ -8,7 +8,9 @@ NUMERIC = (
 PROJECTION = ROOT / "companion_mod/scripts/bb_agent/player_legal_projection.nut"
 
 
-def test_numeric_compat_loads_after_projection_before_projection_consumers() -> None:
+def test_numeric_compat_loads_after_projection_before_projection_consumers() -> (
+    None
+):
     preload = PRELOAD.read_text(encoding="utf-8")
     projection = preload.index("player_legal_hardening")
     numeric = preload.index("runtime_player_legal_numeric_compat")
@@ -16,7 +18,9 @@ def test_numeric_compat_loads_after_projection_before_projection_consumers() -> 
     assert projection < numeric < blocker
 
 
-def test_numeric_compat_normalizes_live_whole_number_getters_fail_closed() -> None:
+def test_numeric_compat_normalizes_live_whole_number_getters_fail_closed() -> (
+    None
+):
     text = NUMERIC.read_text(encoding="utf-8")
     assert "value.tointeger()" in text
     assert "if (value != integerValue)" in text
