@@ -43,6 +43,9 @@ The `BBCOMBAT1` stream contains independently hashed/chunked records for:
 - `observation_memory`: each current player-legal observation-memory fact;
 - `actor_core`, `actor_state`, `actor_properties`, `actor_skills_container`, `actor_items_container`, `actor_ai`, `actor_skill`, and `actor_item`: full actor truth split into bounded records for every tactical actor returned by `Tactical.Entities.getAllInstances()`, including hidden enemies;
 - `state_field`: independently bounded top-level fields belonging to heavy actor/global/container/tile/constant parent records;
+- `state_scalar_pack`: bounded primitive fields grouped by owner so simple values do not consume one sandbox update each;
+- `debug_probe`: single-purpose native-only observations such as the one-ally jump charging probe;
+- `debug_movement_validation`: bounded DEBUG_ORACLE/native movement comparisons for exact-visible and remembered tiles;
 - one `tile` parent record for every valid tactical map square, with properties and occupant internals sharded separately;
 - `manifest_expected` shards plus `manifest`: provenance, counts, reflection limits, staging settings, and the complete expected-record set used by the extractor to reject incomplete captures.
 
@@ -76,11 +79,43 @@ Each valid tactical tile parent record includes:
 - a reference summary for sharded tile `Properties`, including script-readable effects;
 - current occupant identity where `getEntity()` exposes one, including hidden occupancy in this debug artifact, plus sharded occupant `m` state when readable.
 
+## PLAYER_LEGAL and native movement validation
+
+The sandbox is oracle-first: omniscient forensic jobs are captured first, then the independent `PLAYER_LEGAL` projection is built after the oracle work has completed. Oracle values never feed the production projection.
+
+After the deferred projection is available, DEBUG_ORACLE may enqueue a bounded validation plan. Production still uses zero native per-destination pathfinder calls. Native comparisons are diagnostic-only and are processed as ordinary sandbox jobs, so at most one native comparison runs in one tactical update.
+
+The exact-visible validation plan is capped at six deterministic samples and may include:
+
+- nearest reachable;
+- farthest reachable;
+- highest-cost reachable;
+- ZOC entry;
+- ZOC exit;
+- a model-legal but resource-unreachable visible tile when present.
+
+For each exact-visible sample, the artifact separates:
+
+- graph legality (`model_legal`) from native `findPath` success;
+- resource reachability (`model_reachable`) from native cost completion;
+- modeled AP from native AP;
+- modeled execution fatigue from independently reconstructed path-search fatigue, so native fatigue semantics are measured rather than assumed;
+- modeled path tile count from the native cost object's tile count;
+- modeled first/end endpoints from the native cost object's first/end endpoints.
+
+The full ordered native path is not claimed when the script API does not expose it. Tile-count and endpoint comparisons are bounded geometry evidence for ZOC/AoO-relevant discrepancies, not a reconstruction of native A* internals.
+
+Remembered-terrain validation reuses the sandbox's existing incremental `discover_tile` cursor. The cursor stores a DEBUG-only native-tile index as it already visits the map; no second synchronous full-map traversal is introduced. Once both tile discovery and PLAYER_LEGAL projection are complete, at most two remembered samples (`remembered_nearest` and `remembered_farthest`) are scheduled. They record native path/cost behavior while explicitly marking that production remembered-scope movement enumeration is not being inferred from oracle truth.
+
+The single ally-jump `debug_probe` is also DEBUG-only. The observed live sample established that passing over one ally charges both constituent movement steps; production implements that rule from player-legal topology and owned-actor cost tables rather than reading the probe record.
+
 ## Reflective fidelity and bounds
 
 The generic reflective dumper captures primitive, table and array data up to depth 6 and 512 entries per container, with a global 2048-node budget per top-level reflection. Any one logical record is capped at 32768 decoded bytes. Floats are preserved as explicit typed string values because the canonical live JSON encoder intentionally rejects raw floats. Nested native/script instances are represented with bounded state markers, and unsupported runtime values are represented by type markers, preventing object cycles and function graphs from making the snapshot unbounded.
 
 Heavy script-readable objects are not reflected as one monolithic value. The fidelity layer creates a small parent record and emits each top-level field as its own `state_field` record. Each field therefore receives an independent 2048-node reflection budget, 32768-byte record cap, SHA-256 digest and chunk stream. The field record carries its owner section/key, original field-key type/text and ordinal so the structure can be reconstructed offline.
+
+Duplicate actor/skill/item/turn collections that are already represented by dedicated records are emitted as explicit bounded references rather than recursively expanded a second time. Runtime/UI scaffolding fields may be summarized explicitly instead of being treated as missing state. Genuinely unique large structures such as strategic properties, actor constants and EntityManager strategies can be second-level sharded so nested entries receive independent reflection budgets.
 
 This sharding is used for tactical state, turn-bar state, entity-manager state/runtime fields, `::Tactical`, navigator state, configured constants, actor `m`, current/base actor properties, skills/items containers, AI state, individual skill/item `m`, tile properties and readable tile-occupant state.
 
@@ -102,26 +137,41 @@ Each chunk payload is at most 1200 characters. The Python extractor reassembles 
 
 The user-facing extraction helper polls for a completed manifest instead of requiring the user to guess when staged capture has finished. On timeout it prints the latest sandbox progress/cancellation/error diagnostics.
 
-After a complete snapshot is assembled, the extractor also reports capture-quality counts and paths for:
+After a complete snapshot is assembled, the extractor reports transport/fidelity defects separately from intentional compression:
 
 - explicit `__capture_error` records;
 - recursive `__bb_truncated` reflection markers;
-- parent field-shard truncation;
-- field-container iteration errors.
+- field-container iteration errors;
+- PLAYER_LEGAL semantic inconsistencies, such as an active actor ID with no matching projected actor record;
+- explicit reference-summary counts;
+- explicit runtime-scaffolding-summary counts;
+- nested-shard summary counts.
 
-A manifest-complete snapshot can therefore be distinguished from a high-fidelity snapshot. Any nonzero quality count is visible immediately and remains inspectable in the JSON artifact.
+A manifest-complete snapshot can therefore be distinguished from a high-fidelity snapshot. Intentional reference/scaffolding/nested summaries are not silently counted as missing state, while actual truncation and semantic errors remain visible and inspectable.
+
+When movement validation records are present, the extractor also prints separate counters for:
+
+- legality mismatches;
+- resource-reachability mismatches;
+- AP/FAT preview mismatches;
+- execution-fatigue matches;
+- path-search-fatigue matches;
+- samples matching neither modeled fatigue semantic;
+- modeled/native tile-count mismatches;
+- modeled/native endpoint mismatches;
+- remembered sample count and remembered native-found/native-complete counts.
 
 ## Validation
 
 PR CI runs the normal `tests`, `ruff`, and `pyflakes` gates plus a Windows `squirrel-sourcecheck`. The sourcecheck downloads the exact `sq_taro.exe` compiler tracked by pinned BBBuilder commit `c71840e45801cce21da647a29945feabe4d0041e`, verifies the compiler binary size, and compiles every companion `.nut` file. This catches Battle Brothers Squirrel grammar errors without requiring a user-side BBBuilder run.
 
-The installer independently rebuilds with the user's BBBuilder and refuses to install unless the preload contains the staged discovery, fidelity, bounds and continuity layers and excludes the old movement-comparison/probe overrides.
+The installer independently rebuilds with the user's BBBuilder and refuses to install unless the preload contains the required projection, movement, sandbox discovery/fidelity/reference/nested/bounds/continuity, ally-jump probe, exact-visible movement-validation, fatigue-semantics, legality, geometry and remembered-validation layers. It also rejects stale superseded movement comparison/tie-break modules from the preload.
 
 ## Offline workflow
 
 1. Install the exact full-combat sandbox build.
 2. Enter one fresh combat and stop at the first active player brother.
 3. Run `tools/extract_combat_snapshot.ps1`; it waits for a completed manifest and writes `combat-sandbox-latest.json`.
-4. Read the printed quality summary. Preserve/upload the resulting JSON artifact even if quality markers are nonzero so the exact gaps can be inspected.
+4. Read the printed quality and movement-validation summaries. Preserve/upload the resulting JSON artifact even if quality markers or comparison mismatches are nonzero so the exact gaps can be inspected.
 5. Build mechanics tests from the captured state and synthetic mutations offline.
 6. Return to the live game only for mechanics that remain native-only after source and snapshot analysis.
