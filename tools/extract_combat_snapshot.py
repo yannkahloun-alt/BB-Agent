@@ -156,11 +156,12 @@ def main() -> int:
     print(f"  records={len(records)}")
     print(f"  sections={dict(sorted(counts.items()))}")
     metrics = snapshot.get("extraction_metrics", {})
+    build_span = metrics.get("player_legal_build_timestamp_span_seconds")
     print(
         "  player_legal_build="
         f"begin:{metrics.get('player_legal_build_begin_time')} "
         f"end:{metrics.get('player_legal_build_end_time')} "
-        f"timestamp_span_seconds:{metrics.get('player_legal_build_timestamp_span_seconds')} "
+        f"timestamp_span_seconds:{build_span} "
         f"same_timestamp_bucket:{metrics.get('player_legal_build_same_timestamp_bucket')}"
     )
     print(
