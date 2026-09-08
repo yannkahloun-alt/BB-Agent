@@ -40,6 +40,9 @@ if ($extractExit -ne 0) {
     if ($null -ne $timing -and $timing.success -eq $false) {
         throw "Production DECISION_READY failed at stage=$($timing.failure_stage). Timing JSON preserved: $Out"
     }
+    if ($null -ne $timing) {
+        throw "No complete production DECISION_READY timing pair was captured. Diagnostic JSON preserved: $Out"
+    }
     throw 'No complete production DECISION_READY timing pair was captured. Preserve log.html.'
 }
 
