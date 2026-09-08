@@ -12,6 +12,7 @@ NUMERIC = (
 )
 CANONICAL = ROOT / "companion_mod/scripts/bb_agent/canonical_wire.nut"
 INSTALLER = ROOT / "tools/install_live_production.ps1"
+VALIDATOR = ROOT / "tools/validate_live_production.ps1"
 EXTRACTOR = ROOT / "tools/extract_live_ready_timing.py"
 
 
@@ -104,6 +105,18 @@ def test_extractor_fails_unsuccessful_ready_pair() -> None:
     assert 'if summary["success"] is not True:' in text
     assert "return 3" in text
     assert "failure_stage" in text
+
+
+def test_validator_preserves_failed_ready_json_and_surfaces_stage() -> None:
+    text = VALIDATOR.read_text(encoding="utf-8")
+    assert "$extractExit = $LASTEXITCODE" in text
+    assert "if (Test-Path $Out)" in text
+    assert "companion_version -NotePropertyValue '0.2.38'" in text
+    assert "$timing.failure_stage" in text
+    assert "Timing JSON preserved: $Out" in text
+    failure = text.index("if ($extractExit -ne 0)")
+    complete = text.index("PRODUCTION VALIDATION COMPLETE")
+    assert failure < complete
 
 
 def test_production_installer_excludes_debug_overlay() -> None:
