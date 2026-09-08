@@ -81,6 +81,8 @@ def test_nested_field_layer_shards_unique_hot_structures() -> None:
         'keyText == "location"',
         "strategic_party_location_field",
         "strategic_party_location_state",
+        "DefenderSpawnList",
+        "strategic_party_defender_spawn",
         "Strategies",
         "entity_strategy",
         "entity_strategy_field",
