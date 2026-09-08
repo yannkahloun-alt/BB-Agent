@@ -35,12 +35,20 @@ def test_debug_oracle_requires_explicit_separate_overlay() -> None:
     assert "DEBUG_ORACLE explicitly enabled" in enable
 
 
-def test_oracle_is_diagnostic_only_and_not_a_wire_profile() -> None:
+def test_oracle_substrate_is_bounded_and_not_a_wire_profile() -> None:
     oracle = _text(ORACLE)
     export = _text(EXPORT)
     projection = _text(PROJECTION)
 
-    assert '::logInfo("[BB-Agent Oracle] " + _message);' in oracle
+    for required in (
+        "MaxLogLines = 96",
+        "LogLines = 0",
+        "if (this.LogLines >= this.MaxLogLines) return;",
+        '::logInfo("[BB-Agent Oracle] " + _message);',
+        "substrate_loaded enabled=",
+    ):
+        assert required in oracle
+
     for forbidden in (
         "BBAGENT1|",
         "encodeFrame(",
@@ -57,51 +65,31 @@ def test_oracle_is_diagnostic_only_and_not_a_wire_profile() -> None:
     assert "BBAGENT_DebugOracle" not in projection
 
 
-def test_movement_oracle_remains_bounded_for_native_comparison() -> None:
+def test_retired_native_path_introspection_is_absent_from_shared_substrate() -> None:
     oracle = _text(ORACLE)
-    for token in (
-        "MaxLogLines = 96",
-        "MaxBudget = 32",
-        "MaxPathEntries = 24",
-        "MovementMismatchCaptured = false",
-        "mode=DEBUG_ORACLE event=movement_topology_mismatch",
-        "full_native ",
-        "cost_field label=",
-        "budget=",
-        "native_neighbor direction=",
-        "native_two_step_bridge_count=",
-        "navigator_path_slots_found=",
+    for forbidden in (
+        "MaxBudget",
+        "MaxPathEntries",
+        "MovementMismatchCaptured",
+        "NavigatorPathSlots",
+        "reportMovementTopologyMismatch",
+        "_probeNavigatorInternals",
+        "_dumpCostFields",
+        "_dumpPathValue",
+        "_dumpNativeNeighbors",
+        "_dumpTwoStepBridges",
+        "getCostForPath(",
+        "getPath()",
+        "getCurrentPath()",
+        "getPathTiles()",
+        "getPathNodes()",
     ):
-        assert token in oracle
+        assert forbidden not in oracle
 
 
-def test_private_native_path_introspection_is_confined_to_oracle_module() -> None:
-    oracle = _text(ORACLE)
+def test_production_movement_still_has_zero_native_pathfinder_calls() -> None:
     compat = _text(COMPAT)
-
-    for token in (
-        "_navigator.getPath()",
-        "_navigator.Path",
-        "_navigator.m.Path",
-        "_navigator.m.PathTiles",
-        "_navigator.m.CurrentPath",
-        "_navigator.m.PathResult",
-        "_navigator.m.Nodes",
-        "_navigator.getCurrentPath()",
-        "_navigator.getPathTiles()",
-        "_navigator.getPathNodes()",
-    ):
-        assert token in oracle
-
     assert "navigator.findPath(" not in compat
     assert "navigator.getCostForPath(" not in compat
     assert "native_find_path_calls=0" in compat
     assert "movement_tree reachable=" in compat
-
-
-def test_oracle_reads_native_tiles_without_instance_membership_assumptions() -> None:
-    oracle = _text(ORACLE)
-    assert "runtimeId = _tile.ID.tostring();" in oracle
-    assert 'square = _tile.SquareCoords.X + ":" + _tile.SquareCoords.Y;' in oracle
-    assert 'if ("ID" in _tile)' not in oracle
-    assert 'if ("SquareCoords" in _tile)' not in oracle
