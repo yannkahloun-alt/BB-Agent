@@ -30,6 +30,13 @@ def _wait_for_summary(
         time.sleep(poll_seconds)
 
 
+def _write_json(path: Path, payload: dict[str, object]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+    )
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Extract production DECISION_READY timing."
@@ -45,14 +52,18 @@ def main() -> int:
     try:
         summary = _wait_for_summary(args.log, args.wait_seconds, args.poll_seconds)
     except ValueError as exc:
+        diagnostic: dict[str, object] = {
+            "success": None,
+            "diagnostic_status": "no_complete_ready_timing_pair",
+            "diagnostic_error": str(exc),
+        }
+        if args.out is not None:
+            _write_json(args.out, diagnostic)
         print(str(exc), file=sys.stderr)
         return 2
 
     if args.out is not None:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(
-            json.dumps(summary, indent=2, sort_keys=True) + "\n", encoding="utf-8"
-        )
+        _write_json(args.out, summary)
     print(
         "PRODUCTION READY TIMING "
         f"battle={summary['battle_sequence']} "
