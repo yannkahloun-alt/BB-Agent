@@ -14,7 +14,9 @@ if str(SRC) not in sys.path:
 from bb_agent.live_ready_timing import summarize_latest_ready_timing  # noqa: E402
 
 
-def _wait_for_summary(log: Path, wait_seconds: float, poll_seconds: float) -> dict[str, object]:
+def _wait_for_summary(
+    log: Path, wait_seconds: float, poll_seconds: float
+) -> dict[str, object]:
     deadline = time.monotonic() + wait_seconds
     last_error: ValueError | None = None
     while True:
@@ -29,7 +31,9 @@ def _wait_for_summary(log: Path, wait_seconds: float, poll_seconds: float) -> di
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Extract production DECISION_READY timing.")
+    parser = argparse.ArgumentParser(
+        description="Extract production DECISION_READY timing."
+    )
     parser.add_argument("--log", required=True, type=Path)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--wait-seconds", type=float, default=0.0)
