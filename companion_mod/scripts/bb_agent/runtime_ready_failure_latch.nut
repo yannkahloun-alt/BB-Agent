@@ -9,6 +9,7 @@ local originalBeginBattle = capture.beginBattle;
 capture.beginBattle = function()
 {
     this.FailedReadySignature = null;
+    this.LastLoggedReadinessReason = null;
     return originalBeginBattle.acall([this]);
 };
 
@@ -29,10 +30,18 @@ capture.observe = function(_state)
         local readiness = this._commandReadiness(_state);
         if (!readiness.Ready)
         {
+            if (readiness.Reason != this.LastLoggedReadinessReason)
+            {
+                this.LastLoggedReadinessReason = readiness.Reason;
+                ::logInfo(
+                    "[BB-Agent Capture] readiness_blocked reason=" + readiness.Reason
+                );
+            }
             if (!this.State.IsReady) return null;
             return this.invalidate(readiness.Reason);
         }
 
+        this.LastLoggedReadinessReason = null;
         local wasReady = this.State.IsReady;
         local active = readiness.Active;
 

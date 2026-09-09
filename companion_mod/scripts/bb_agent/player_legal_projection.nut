@@ -98,7 +98,9 @@ local capture = ::BBAGENT_Capture;
         if ("getAmmo" in _item)
         {
             local ammo = _item.getAmmo();
-            if (typeof ammo == "integer") ammunition = wire.exactObserved(ammo);
+            local ammoKind = typeof ammo;
+            if (ammoKind == "integer" || ammoKind == "float")
+                ammunition = wire.exactObserved(ammo);
         }
         return {
             item_id = this.itemID(_actor, _item),

@@ -14,6 +14,20 @@ local compat = ::BBAGENT_RuntimeJoinCompat <- {
             out += _values[i];
         }
         return out;
+    },
+
+    function joinBalanced(_values)
+    {
+        if (_values.len() == 0) return "";
+        local level = clone _values;
+        while (level.len() > 1)
+        {
+            local next = [];
+            for (local i = 0; i < level.len(); i += 2)
+                next.push(i + 1 < level.len() ? level[i] + level[i + 1] : level[i]);
+            level = next;
+        }
+        return level[0];
     }
 };
 
@@ -104,6 +118,44 @@ wire.canonicalJson = function(_value)
         return "{" + compat.joinStrings(parts, ",") + "}";
     }
     throw "unsupported canonical live JSON type: " + kind;
+};
+
+// The original encoder appended every output character to one growing string.
+// Large READY payloads make that quadratic in Battle Brothers' Squirrel runtime.
+// Keep the exact unpadded base64url bytes while bounding each growing chunk.
+wire.base64Url = function(_raw)
+{
+    local chunks = [];
+    local chunk = "";
+    for (local i = 0; i < _raw.len(); i += 3)
+    {
+        local a = _raw[i];
+        local hasB = i + 1 < _raw.len();
+        local hasC = i + 2 < _raw.len();
+        local b = hasB ? _raw[i + 1] : 0;
+        local c = hasC ? _raw[i + 2] : 0;
+        local v0 = (a >> 2) & 63;
+        local v1 = ((a & 3) << 4) | ((b >> 4) & 15);
+        chunk += this.Base64Url.slice(v0, v0 + 1);
+        chunk += this.Base64Url.slice(v1, v1 + 1);
+        if (hasB)
+        {
+            local v2 = ((b & 15) << 2) | ((c >> 6) & 3);
+            chunk += this.Base64Url.slice(v2, v2 + 1);
+        }
+        if (hasC)
+        {
+            local v3 = c & 63;
+            chunk += this.Base64Url.slice(v3, v3 + 1);
+        }
+        if (chunk.len() >= 4096)
+        {
+            chunks.push(chunk);
+            chunk = "";
+        }
+    }
+    if (chunk.len() != 0) chunks.push(chunk);
+    return compat.joinBalanced(chunks);
 };
 
 liveExport._sanitizeExportError = function(_error)

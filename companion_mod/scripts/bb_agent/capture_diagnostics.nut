@@ -5,6 +5,7 @@ local capture = ::BBAGENT_Capture;
 // tactical state, raw runtime objects, canonical payloads, or hidden truth.
 capture.DiagnosticMaxErrorChars <- 240;
 capture.LastLoggedDiagnostic <- null;
+capture.LastLoggedReadinessReason <- null;
 
 capture._sanitizeDiagnosticError <- function(_error)
 {
@@ -26,10 +27,18 @@ capture.observe = function(_state)
         local readiness = this._commandReadiness(_state);
         if (!readiness.Ready)
         {
+            if (readiness.Reason != this.LastLoggedReadinessReason)
+            {
+                this.LastLoggedReadinessReason = readiness.Reason;
+                ::logInfo(
+                    "[BB-Agent Capture] readiness_blocked reason=" + readiness.Reason
+                );
+            }
             this.invalidate(readiness.Reason);
             return this.State.LastEvent;
         }
 
+        this.LastLoggedReadinessReason = null;
         local wasReady = this.State.IsReady;
         local active = readiness.Active;
 
