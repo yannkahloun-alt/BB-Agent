@@ -28,6 +28,9 @@ def test_failed_signature_is_latched_and_same_signature_stays_quiet() -> None:
 
 def test_invalidation_delivery_is_one_shot_and_new_signature_can_advance() -> None:
     text = LATCH.read_text(encoding="utf-8")
+    assert "readiness.Reason != this.LastLoggedReadinessReason" in text
+    assert '"[BB-Agent Capture] readiness_blocked reason="' in text
+    assert "this.LastLoggedReadinessReason = null;" in text
     assert "if (!this.State.IsReady) return null;" in text
     assert "return this.invalidate(readiness.Reason);" in text
     assert "local invalidated = this.State.IsReady ?" in text

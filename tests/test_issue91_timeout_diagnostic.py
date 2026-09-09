@@ -129,6 +129,12 @@ def test_capture_readiness_diagnostic_is_bounded_and_deduplicated() -> None:
     assert "this.LastLoggedReadinessReason = null;" in text
     assert "capture.DiagnosticMaxErrorChars <- 240;" in text
 
+    final_wrapper = (
+        ROOT / "companion_mod/scripts/bb_agent/runtime_ready_failure_latch.nut"
+    ).read_text(encoding="utf-8")
+    assert "readiness.Reason != this.LastLoggedReadinessReason" in final_wrapper
+    assert '"[BB-Agent Capture] readiness_blocked reason="' in final_wrapper
+
 
 def test_validator_verifies_diagnostic_json_on_disk() -> None:
     text = VALIDATOR.read_text(encoding="utf-8")

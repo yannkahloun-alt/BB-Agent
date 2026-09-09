@@ -105,6 +105,7 @@ def test_timing_parser_reports_coarse_stage_spans(tmp_path: Path) -> None:
                 "[BB-Agent Live Timing] stage_begin stage=player_legal_projection "
                 "battle=1 generation=2",
             ),
+            ("10:00:05", "unrelated timestamped log row"),
             (
                 "10:00:11",
                 "[BB-Agent Live Timing] stage_end stage=player_legal_projection "
@@ -206,6 +207,11 @@ def test_numeric_layer_normalizes_source_proven_whole_number_fields() -> None:
     assert "equipment.condition" in text
     assert "equipment.ammunition" in text
     assert "tactical_stats." in text
+
+    projection = (
+        ROOT / "companion_mod/scripts/bb_agent/player_legal_projection.nut"
+    ).read_text(encoding="utf-8")
+    assert 'ammoKind == "integer" || ammoKind == "float"' in projection
 
 
 def test_numeric_layer_converts_whole_float_and_rejects_fractional_float() -> None:
