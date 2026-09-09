@@ -40,6 +40,26 @@ def test_join_compat_overrides_all_active_join_paths() -> None:
     assert 'compat.joinStrings(split(errorText, "\\r\\n\\t"), " ")' in text
 
 
+def test_live_base64_uses_bounded_chunks_without_changing_alphabet() -> None:
+    text = COMPAT.read_text(encoding="utf-8")
+    start = text.index("wire.base64Url = function")
+    end = text.index("liveExport._sanitizeExportError", start)
+    encoder = text[start:end]
+    for required in (
+        "for (local i = 0; i < _raw.len(); i += 3)",
+        "this.Base64Url.slice(v0, v0 + 1)",
+        "this.Base64Url.slice(v1, v1 + 1)",
+        "this.Base64Url.slice(v2, v2 + 1)",
+        "this.Base64Url.slice(v3, v3 + 1)",
+        "if (chunk.len() >= 4096)",
+        "return compat.joinBalanced(chunks);",
+    ):
+        assert required in encoder
+    assert 'chunk += "="' not in encoder
+    assert "while (level.len() > 1)" in text
+    assert "level[i] + level[i + 1]" in text
+
+
 def test_join_compat_preserves_safety_boundary() -> None:
     text = COMPAT.read_text(encoding="utf-8")
     for forbidden in (
