@@ -28,20 +28,28 @@ python (Join-Path $PSScriptRoot 'extract_live_ready_timing.py') `
 $extractExit = $LASTEXITCODE
 
 $timing = $null
-if (Test-Path $Out) {
-    $timing = Get-Content $Out -Raw | ConvertFrom-Json
+$artifact = $null
+if (Test-Path -LiteralPath $Out) {
+    $timing = Get-Content -LiteralPath $Out -Raw | ConvertFrom-Json
     $timing | Add-Member -NotePropertyName source_commit -NotePropertyValue $head
     $timing | Add-Member -NotePropertyName companion_version -NotePropertyValue '0.2.38'
     $timing | Add-Member -NotePropertyName debug_oracle_enabled -NotePropertyValue $false
-    $timing | ConvertTo-Json -Depth 8 | Set-Content $Out -Encoding UTF8
+    $timing | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Out -Encoding UTF8
+    $artifact = Get-Item -LiteralPath $Out -ErrorAction Stop
+    if ($artifact.Length -le 0) {
+        throw "Production validation artifact is empty after final write: $($artifact.FullName)"
+    }
+    Write-Host ''
+    Write-Host "PRODUCTION VALIDATION ARTIFACT: $($artifact.FullName)"
+    Write-Host "  bytes: $($artifact.Length)"
 }
 
 if ($extractExit -ne 0) {
     if ($null -ne $timing -and $timing.success -eq $false) {
-        throw "Production DECISION_READY failed at stage=$($timing.failure_stage). Timing JSON preserved: $Out"
+        throw "Production DECISION_READY failed at stage=$($timing.failure_stage). Timing JSON verified on disk: $($artifact.FullName)"
     }
     if ($null -ne $timing) {
-        throw "No complete production DECISION_READY timing pair was captured. Diagnostic JSON preserved: $Out"
+        throw "No complete production DECISION_READY timing pair was captured. Diagnostic JSON verified on disk: $($artifact.FullName)"
     }
     throw 'No complete production DECISION_READY timing pair was captured. Preserve log.html.'
 }
@@ -49,4 +57,4 @@ if ($extractExit -ne 0) {
 Write-Host ''
 Write-Host 'PRODUCTION VALIDATION COMPLETE'
 Write-Host 'Upload:'
-Write-Host "  $Out"
+Write-Host "  $($artifact.FullName)"
