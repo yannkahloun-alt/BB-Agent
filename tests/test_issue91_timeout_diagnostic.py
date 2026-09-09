@@ -81,10 +81,13 @@ def test_extractor_classifies_ready_begin_without_end(tmp_path: Path) -> None:
     assert payload["ready_end_count"] == 0
 
 
-def test_validator_preserves_incomplete_pair_diagnostic_json() -> None:
+def test_validator_verifies_diagnostic_json_on_disk() -> None:
     text = VALIDATOR.read_text(encoding="utf-8")
-    assert "if ($null -ne $timing)" in text
-    assert "Diagnostic JSON preserved: $Out" in text
+    assert "Test-Path -LiteralPath $Out" in text
+    assert "Get-Item -LiteralPath $Out -ErrorAction Stop" in text
+    assert "if ($artifact.Length -le 0)" in text
+    assert "PRODUCTION VALIDATION ARTIFACT:" in text
+    assert "Diagnostic JSON verified on disk:" in text
     assert "companion_version -NotePropertyValue '0.2.38'" in text
     assert "source_commit -NotePropertyValue $head" in text
 # fmt: on
