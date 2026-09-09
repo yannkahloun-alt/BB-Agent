@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 import time
 from pathlib import Path
@@ -12,6 +13,11 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from bb_agent.live_ready_timing import summarize_latest_ready_timing  # noqa: E402
+
+_CAPTURE_ERROR_RE = re.compile(
+    rb"\[BB-Agent Capture\] capture_error stage=([^ <]+) error=([^<]*?); advice invalidated"
+)
+_READINESS_RE = re.compile(rb"\[BB-Agent Capture\] readiness_blocked reason=([^< ]+)")
 
 
 def _wait_for_summary(
@@ -37,6 +43,10 @@ def _write_json(path: Path, payload: dict[str, object]) -> None:
     )
 
 
+def _decode_ascii(value: bytes | None) -> str | None:
+    return value.decode("utf-8", errors="replace") if value is not None else None
+
+
 def _incomplete_diagnostic(log: Path, error: str) -> dict[str, object]:
     try:
         data = log.read_bytes()
@@ -52,13 +62,22 @@ def _incomplete_diagnostic(log: Path, error: str) -> dict[str, object]:
     end_count = data.count(b"[BB-Agent Live Timing] ready_end")
     capture_ready_count = data.count(b"[BB-Agent Capture] READY")
     export_error_count = data.count(b"[BB-Agent Capture] live_export_error")
+    capture_errors = list(_CAPTURE_ERROR_RE.finditer(data))
+    readiness_blocks = list(_READINESS_RE.finditer(data))
     timing_loaded = b"[BB-Agent Live Timing] loaded production_only=true" in data
     bb_agent_present = b"BB-Agent" in data
+
+    latest_capture_error = capture_errors[-1] if capture_errors else None
+    latest_readiness = readiness_blocks[-1] if readiness_blocks else None
 
     if not bb_agent_present:
         status = "no_bb_agent_log_entries"
     elif not timing_loaded:
         status = "timing_layer_not_loaded"
+    elif begin_count == 0 and capture_errors:
+        status = "capture_error_before_ready"
+    elif begin_count == 0 and readiness_blocks:
+        status = "readiness_blocked"
     elif begin_count == 0:
         status = "ready_never_began"
     elif end_count < begin_count:
@@ -77,6 +96,23 @@ def _incomplete_diagnostic(log: Path, error: str) -> dict[str, object]:
         "ready_begin_count": begin_count,
         "ready_end_count": end_count,
         "capture_ready_count": capture_ready_count,
+        "capture_error_count": len(capture_errors),
+        "latest_capture_error_stage": (
+            _decode_ascii(latest_capture_error.group(1))
+            if latest_capture_error is not None
+            else None
+        ),
+        "latest_capture_error": (
+            _decode_ascii(latest_capture_error.group(2))
+            if latest_capture_error is not None
+            else None
+        ),
+        "readiness_block_count": len(readiness_blocks),
+        "latest_readiness_block_reason": (
+            _decode_ascii(latest_readiness.group(1))
+            if latest_readiness is not None
+            else None
+        ),
         "live_export_error_count": export_error_count,
     }
 
