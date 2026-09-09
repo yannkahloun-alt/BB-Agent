@@ -110,10 +110,11 @@ def test_extractor_fails_unsuccessful_ready_pair() -> None:
 def test_validator_preserves_failed_ready_json_and_surfaces_stage() -> None:
     text = VALIDATOR.read_text(encoding="utf-8")
     assert "$extractExit = $LASTEXITCODE" in text
-    assert "if (Test-Path $Out)" in text
+    assert "if (Test-Path -LiteralPath $Out)" in text
+    assert "Get-Item -LiteralPath $Out -ErrorAction Stop" in text
     assert "companion_version -NotePropertyValue '0.2.38'" in text
     assert "$timing.failure_stage" in text
-    assert "Timing JSON preserved: $Out" in text
+    assert "Timing JSON verified on disk:" in text
     failure = text.index("if ($extractExit -ne 0)")
     complete = text.index("PRODUCTION VALIDATION COMPLETE")
     assert failure < complete
