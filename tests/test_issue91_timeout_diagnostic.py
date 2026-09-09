@@ -127,7 +127,7 @@ def test_capture_readiness_diagnostic_is_bounded_and_deduplicated() -> None:
     assert "readiness.Reason != this.LastLoggedReadinessReason" in text
     assert '"[BB-Agent Capture] readiness_blocked reason=" + readiness.Reason' in text
     assert "this.LastLoggedReadinessReason = null;" in text
-    assert "DiagnosticMaxErrorChars = 240" in text
+    assert "capture.DiagnosticMaxErrorChars <- 240;" in text
 
 
 def test_validator_verifies_diagnostic_json_on_disk() -> None:
