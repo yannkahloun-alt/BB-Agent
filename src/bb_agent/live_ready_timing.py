@@ -7,14 +7,16 @@ from pathlib import Path
 from typing import Any
 
 _MARKER_RE = re.compile(
-    rb'<div class="time">([0-9]{2}:[0-9]{2}:[0-9]{2})</div>.*?'
+    rb'<div class="time">([0-9]{2}:[0-9]{2}:[0-9]{2})</div>'
+    rb'(?:(?!<div class="time">).)*?'
     rb'<div class="text">\[BB-Agent Live Timing\] '
     rb"(ready_begin|ready_end) battle=([0-9]+) generation=([0-9]+)"
     rb"(?: success=(true|false))?(?: stage=([^< ]+))?</div>",
     re.DOTALL,
 )
 _STAGE_RE = re.compile(
-    rb'<div class="time">([0-9]{2}:[0-9]{2}:[0-9]{2})</div>.*?'
+    rb'<div class="time">([0-9]{2}:[0-9]{2}:[0-9]{2})</div>'
+    rb'(?:(?!<div class="time">).)*?'
     rb'<div class="text">\[BB-Agent Live Timing\] '
     rb"stage_(begin|end) stage=([^< ]+) battle=([0-9]+) "
     rb"generation=([0-9]+)</div>",

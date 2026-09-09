@@ -127,6 +127,7 @@ def test_timing_parser_reports_coarse_stage_spans(tmp_path: Path) -> None:
         )
     )
     summary = summarize_latest_ready_timing(path)
+    assert summary["timestamp_span_seconds"] == 15
     assert summary["stage_span_seconds"] == {
         "player_legal_projection": 10,
         "affordance_acquisition": 3,
