@@ -15,7 +15,8 @@ if str(SRC) not in sys.path:
 from bb_agent.live_ready_timing import summarize_latest_ready_timing  # noqa: E402
 
 _CAPTURE_ERROR_RE = re.compile(
-    rb"\[BB-Agent Capture\] capture_error stage=([^ <]+) error=([^<]*?); advice invalidated"
+    rb"\[BB-Agent Capture\] capture_error stage=([^ <]+) "
+    rb"error=([^<]*?); advice invalidated"
 )
 _READINESS_RE = re.compile(rb"\[BB-Agent Capture\] readiness_blocked reason=([^< ]+)")
 
