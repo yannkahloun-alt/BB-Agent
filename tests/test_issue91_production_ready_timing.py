@@ -25,7 +25,7 @@ def _log(*rows: tuple[str, str]) -> bytes:
 
 def test_timing_wrapper_loads_after_failure_latch_before_tactical_hook() -> None:
     preload = PRELOAD.read_text(encoding="utf-8")
-    assert 'Version = "0.2.39"' in preload
+    assert 'Version = "0.2.40"' in preload
     latch = preload.index("runtime_ready_failure_latch")
     timing = preload.index("runtime_live_ready_timing")
     hook = preload.index("hooks/tactical_state")
@@ -42,6 +42,8 @@ def test_timing_wrapper_is_production_only_and_rethrows() -> None:
     assert "success=false" in text
     assert '" stage=" + this.LastExportStage' in text
     assert "throw error;" in text
+    assert "TimingStageObserver" in text
+    assert '"[BB-Agent Live Timing] stage_" + _boundary' in text
     for forbidden in ("payload", "getAllInstances", "findPath(", "getCostForPath("):
         assert forbidden not in text
 
@@ -72,6 +74,7 @@ def test_timing_parser_reports_latest_complete_pair(tmp_path: Path) -> None:
         "failure_stage": "affordance_acquisition",
         "timestamp_span_seconds": 1,
         "same_timestamp_bucket": False,
+        "stage_span_seconds": {},
     }
 
 
@@ -89,6 +92,45 @@ def test_timing_parser_handles_midnight_rollover(tmp_path: Path) -> None:
     summary = summarize_latest_ready_timing(path)
     assert summary["timestamp_span_seconds"] == 2
     assert summary["failure_stage"] is None
+    assert summary["stage_span_seconds"] == {}
+
+
+def test_timing_parser_reports_coarse_stage_spans(tmp_path: Path) -> None:
+    path = tmp_path / "log.html"
+    path.write_bytes(
+        _log(
+            ("10:00:00", "[BB-Agent Live Timing] ready_begin battle=1 generation=2"),
+            (
+                "10:00:01",
+                "[BB-Agent Live Timing] stage_begin stage=player_legal_projection "
+                "battle=1 generation=2",
+            ),
+            (
+                "10:00:11",
+                "[BB-Agent Live Timing] stage_end stage=player_legal_projection "
+                "battle=1 generation=2",
+            ),
+            (
+                "10:00:11",
+                "[BB-Agent Live Timing] stage_begin stage=affordance_acquisition "
+                "battle=1 generation=2",
+            ),
+            (
+                "10:00:14",
+                "[BB-Agent Live Timing] stage_end stage=affordance_acquisition "
+                "battle=1 generation=2",
+            ),
+            (
+                "10:00:15",
+                "[BB-Agent Live Timing] ready_end battle=1 generation=2 success=true",
+            ),
+        )
+    )
+    summary = summarize_latest_ready_timing(path)
+    assert summary["stage_span_seconds"] == {
+        "player_legal_projection": 10,
+        "affordance_acquisition": 3,
+    }
 
 
 def test_timing_parser_requires_complete_pair(tmp_path: Path) -> None:
@@ -112,7 +154,7 @@ def test_validator_preserves_failed_ready_json_and_surfaces_stage() -> None:
     assert "$extractExit = $LASTEXITCODE" in text
     assert "if (Test-Path -LiteralPath $Out)" in text
     assert "Get-Item -LiteralPath $Out -ErrorAction Stop" in text
-    assert "companion_version -NotePropertyValue '0.2.39'" in text
+    assert "companion_version -NotePropertyValue '0.2.40'" in text
     assert "$timing.failure_stage" in text
     assert "Timing JSON verified on disk:" in text
     failure = text.index("if ($extractExit -ne 0)")
@@ -122,7 +164,7 @@ def test_validator_preserves_failed_ready_json_and_surfaces_stage() -> None:
 
 def test_production_installer_excludes_debug_overlay() -> None:
     text = INSTALLER.read_text(encoding="utf-8")
-    assert 'Version = "0\\.2\\.39"' in text
+    assert 'Version = "0\\.2\\.40"' in text
     assert "runtime_player_legal_numeric_compat" in text
     assert "runtime_live_ready_timing" in text
     assert "exactly one BB-Agent production zip" in text

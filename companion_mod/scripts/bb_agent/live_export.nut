@@ -9,6 +9,13 @@ local identity = ::BBAGENT_CanonicalIdentity;
     StreamStarted = false,
     LastExportStage = "idle",
     LastLoggedExportDiagnostic = null,
+    TimingStageObserver = null,
+
+    function _markTimingStage(_boundary, _stage)
+    {
+        if (this.TimingStageObserver != null)
+            this.TimingStageObserver(_boundary, _stage);
+    },
 
     function _sanitizeExportError(_error)
     {
@@ -57,17 +64,23 @@ local identity = ::BBAGENT_CanonicalIdentity;
     function _emit(_record)
     {
         this.LastExportStage = "canonical_json";
+        this._markTimingStage("begin", this.LastExportStage);
         local raw = wire.canonicalJson(_record);
+        this._markTimingStage("end", this.LastExportStage);
         if (raw.len() > this.MaxDecodedRecordBytes)
             throw "live record exceeds decoded payload bound";
 
         this.LastExportStage = "frame_encoding";
+        this._markTimingStage("begin", this.LastExportStage);
         local frame = wire.encodeFrame(_record);
+        this._markTimingStage("end", this.LastExportStage);
         if (frame.len() > this.MaxEncodedFrameBytes)
             throw "live record exceeds encoded frame bound";
 
         this.LastExportStage = "log_emission";
+        this._markTimingStage("begin", this.LastExportStage);
         ::logInfo(frame);
+        this._markTimingStage("end", this.LastExportStage);
         this.LastExportStage = "idle";
         this.LastLoggedExportDiagnostic = null;
     },
@@ -113,16 +126,22 @@ local identity = ::BBAGENT_CanonicalIdentity;
     function _readyState(_raw)
     {
         this.LastExportStage = "player_legal_projection";
+        this._markTimingStage("begin", this.LastExportStage);
         local projection = ::BBAGENT_PlayerLegal.build(_raw);
+        this._markTimingStage("end", this.LastExportStage);
         this.LastExportStage = "affordance_acquisition";
+        this._markTimingStage("begin", this.LastExportStage);
         local actions = ::BBAGENT_Affordances.acquire(_raw, projection);
+        this._markTimingStage("end", this.LastExportStage);
         this.LastExportStage = "state_finalization";
+        this._markTimingStage("begin", this.LastExportStage);
         local state = identity.finalizeState(
             projection.state,
             actions,
             _raw.BattleSequence,
             _raw.SourceGeneration
         );
+        this._markTimingStage("end", this.LastExportStage);
 
         this.LastExportStage = "capture_revalidation";
         local current = capture.getCurrentRawAcquisition();
@@ -133,8 +152,10 @@ local identity = ::BBAGENT_CanonicalIdentity;
             throw "capture generation changed during canonical acquisition";
         }
         this.LastExportStage = "fingerprint_hash";
+        this._markTimingStage("begin", this.LastExportStage);
         local before = wire.canonicalHash(_raw.RawSourceFingerprintInputs);
         local after = wire.canonicalHash(current.RawSourceFingerprintInputs);
+        this._markTimingStage("end", this.LastExportStage);
         if (before != after) throw "raw source changed during canonical acquisition";
         return { state = state, raw_source_fingerprint = before };
     },

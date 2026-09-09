@@ -5,6 +5,21 @@ local oracle = ::BBAGENT_DebugOracle;
 // behavior. DEBUG_ORACLE deliberately skips normal production export, so timing
 // markers are suppressed there to avoid conflating forensic runtime with #91.
 local originalEmitReady = liveExport._emitReady;
+local timingActive = false;
+local timingBattle = null;
+local timingGeneration = null;
+
+liveExport.TimingStageObserver = function(_boundary, _stage)
+{
+    if (!timingActive || oracle.Enabled) return;
+    ::logInfo(
+        "[BB-Agent Live Timing] stage_" + _boundary
+        + " stage=" + _stage
+        + " battle=" + timingBattle.tostring()
+        + " generation=" + timingGeneration.tostring()
+    );
+};
+
 liveExport._emitReady = function(_event)
 {
     if (oracle.Enabled)
@@ -15,9 +30,13 @@ liveExport._emitReady = function(_event)
         + " battle=" + _event.BattleSequence.tostring()
         + " generation=" + _event.SourceGeneration.tostring()
     );
+    timingBattle = _event.BattleSequence;
+    timingGeneration = _event.SourceGeneration;
+    timingActive = true;
     try
     {
         local ret = originalEmitReady.acall([this, _event]);
+        timingActive = false;
         ::logInfo(
             "[BB-Agent Live Timing] ready_end"
             + " battle=" + _event.BattleSequence.tostring()
@@ -28,6 +47,7 @@ liveExport._emitReady = function(_event)
     }
     catch (error)
     {
+        timingActive = false;
         ::logInfo(
             "[BB-Agent Live Timing] ready_end"
             + " battle=" + _event.BattleSequence.tostring()
