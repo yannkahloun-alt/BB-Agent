@@ -22,11 +22,23 @@ def test_stream_start_diagnostics_distinguish_export_stages() -> None:
     canonical = text.index('this.LastExportStage = "canonical_json";')
     canonical_call = text.index("wire.canonicalJson(_record);", canonical)
     frame = text.index('this.LastExportStage = "frame_encoding";')
-    frame_call = text.index("wire.encodeFrame(_record);", frame)
+    digest_call = text.index("wire.sha256(raw);", frame)
+    base64_call = text.index("wire.base64Url(raw);", digest_call)
+    assembly = text.index("local frame = wire.FramePrefix", base64_call)
     emission = text.index('this.LastExportStage = "log_emission";')
     log_call = text.index("::logInfo(frame);", emission)
     assert common < record
-    assert canonical < canonical_call < frame < frame_call < emission < log_call
+    assert (
+        canonical
+        < canonical_call
+        < frame
+        < digest_call
+        < base64_call
+        < assembly
+        < emission
+        < log_call
+    )
+    assert "wire.encodeFrame(_record)" not in text
 
 
 def test_live_export_failure_log_contains_only_bounded_technical_metadata() -> None:

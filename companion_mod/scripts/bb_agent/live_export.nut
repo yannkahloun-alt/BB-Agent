@@ -71,9 +71,16 @@ local identity = ::BBAGENT_CanonicalIdentity;
             throw "live record exceeds decoded payload bound";
 
         this.LastExportStage = "frame_encoding";
-        this._markTimingStage("begin", this.LastExportStage);
-        local frame = wire.encodeFrame(_record);
-        this._markTimingStage("end", this.LastExportStage);
+        this._markTimingStage("begin", "frame_sha256");
+        local digest = wire.sha256(raw);
+        this._markTimingStage("end", "frame_sha256");
+        this._markTimingStage("begin", "frame_base64");
+        local encoded = wire.base64Url(raw);
+        this._markTimingStage("end", "frame_base64");
+        this._markTimingStage("begin", "frame_assembly");
+        local frame = wire.FramePrefix + "|" + raw.len() + "|" + digest
+            + "|" + encoded;
+        this._markTimingStage("end", "frame_assembly");
         if (frame.len() > this.MaxEncodedFrameBytes)
             throw "live record exceeds encoded frame bound";
 
