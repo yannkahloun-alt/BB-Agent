@@ -1,5 +1,5 @@
-from pathlib import Path
 import re
+from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_ROOT = ROOT / "companion_mod/scripts/bb_agent"
