@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 
 ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_ROOT = ROOT / "companion_mod/scripts/bb_agent"
@@ -8,6 +9,18 @@ FATIGUE = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_fatigue.nut"
 LEGALITY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_legality.nut"
 GEOMETRY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_geometry.nut"
 REMEMBERED = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_remembered.nut"
+INSTALLER = ROOT / "tools/install_combat_sandbox.ps1"
+
+
+def test_combat_sandbox_installer_tracks_companion_version() -> None:
+    preload = PRELOAD.read_text(encoding="utf-8")
+    installer = INSTALLER.read_text(encoding="utf-8")
+    version = re.search(r'Version = "([0-9.]+)"', preload)
+    assert version is not None
+    version_text = version.group(1)
+    escaped_version = version_text.replace(".", r"\.")
+    assert f'Version = "{escaped_version}"' in installer
+    assert f"companion: {version_text}" in installer
 
 
 def test_native_movement_validation_loads_after_ally_probe_before_export() -> None:
