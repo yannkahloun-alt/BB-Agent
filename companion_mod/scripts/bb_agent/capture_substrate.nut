@@ -410,7 +410,6 @@
             PlayerVisibleNonOwnedActors = this._copyArray(
                 this.State.PendingPlayerVisibleNonOwnedActors
             ),
-            PlayerLegalObservationMemory = this.getObservationMemory(),
             ActiveActor = _active,
             TacticalState = _state,
             TurnSequenceBar = ::Tactical.TurnSequenceBar,

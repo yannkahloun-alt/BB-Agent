@@ -13,6 +13,8 @@ sandbox.begin = function(_raw)
     local priorState = this.State;
     originalBegin.acall([this, _raw]);
     if (this.State == null || this.State == priorState) return;
+    this.State.player_legal_boundary_memory <-
+        ::BBAGENT_Capture.getObservationMemory();
 
     local filtered = [];
     foreach (job in this.State.jobs)
@@ -25,16 +27,16 @@ sandbox.begin = function(_raw)
     this.State.player_legal_phase_complete <- false;
 };
 
-sandbox._reconcileBoundaryActors <- function(_projection, _raw)
+sandbox._reconcileBoundaryActors <- function(_projection, _raw, _boundaryMemory)
 {
     if (!("PlayerVisibleNonOwnedActors" in _raw)) return _projection;
 
     // The deferred legacy builder may have observed a later frame. Discard any
     // memory writes it made and resume from the decision-boundary memory copy.
-    if ("PlayerLegalObservationMemory" in _raw)
+    if (_boundaryMemory != null)
         ::BBAGENT_Capture.State.ObservationMemory =
             ::BBAGENT_Capture._copyPlayerLegalMemoryValue(
-                _raw.PlayerLegalObservationMemory
+                _boundaryMemory
             );
 
     local actors = [];
@@ -115,7 +117,11 @@ sandbox._processJob = function(_job)
         try
         {
             local projection = ::BBAGENT_PlayerLegal.build(this.State.raw);
-            projection = this._reconcileBoundaryActors(projection, this.State.raw);
+            projection = this._reconcileBoundaryActors(
+                projection,
+                this.State.raw,
+                this.State.player_legal_boundary_memory
+            );
             this.State.player_legal_projection = projection;
             this._enqueueProjectionRecords(projection);
         }

@@ -24,18 +24,19 @@ def _text(path: Path) -> str:
 def test_player_legal_visibility_is_captured_without_a_second_begin_traversal() -> None:
     text = _text(PLAYER_LEGAL_PHASE)
     begin = text.index("sandbox.begin = function(_raw)")
-    release = text.index("local originalEnqueueManifestJobs")
+    release = text.index("sandbox._reconcileBoundaryActors", begin)
     begin_body = text[begin:release]
     assert "::BBAGENT_PlayerLegal.build" not in begin_body
     assert "PlayerVisibleNonOwnedActors" in text
     assert "_reconcileBoundaryActors" in text
     capture = _text(CAPTURE)
     assert "PendingPlayerVisibleNonOwnedActors" in capture
-    assert "PlayerLegalObservationMemory = this.getObservationMemory()" in capture
     assert "foreach (actor in group)" in capture
     assert "this.State.PendingPlayerVisibleNonOwnedActors = visibleNonOwned" in capture
     compat = _text(ENTITY_COMPAT)
     assert "this.State.PendingPlayerVisibleNonOwnedActors = visibleNonOwned" in compat
+    assert "player_legal_boundary_memory" in begin_body
+    assert "::BBAGENT_Capture.getObservationMemory()" in begin_body
     assert "player_legal_publication_deferred=last" in _text(ORACLE_FIRST)
 
 
