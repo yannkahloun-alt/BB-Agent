@@ -183,6 +183,25 @@ def test_native_prefix_staging_registers_cleanup_before_queue_insertion() -> Non
     assert 'sample.native_path_reconstruction_status <- "error";' in validation
 
 
+def test_native_prefix_continuation_queue_failure_finishes_with_error() -> None:
+    text = PREFIX_PATH.read_text(encoding="utf-8")
+    process_start = text.index("oracle._processMovementValidationNativePrefix")
+    cancel_start = text.index("sandbox.NativePrefixContext <- null")
+    process = text[process_start:cancel_start]
+    continuation = process[process.index("++_context.ap_budget;") :]
+    assert "try" in continuation
+    assert "this._insertNativePrefixJob(_sandbox, _context);" in continuation
+    assert "catch (error)" in continuation
+    assert '"native prefix continuation could not be queued: "' in continuation
+    assert "this._finishNativePrefixPath(" in continuation
+
+    validation = VALIDATION.read_text(encoding="utf-8")
+    initial_clear = validation.index("navigator.clearPath();")
+    sample_try = validation.index("try", validation.index("local nativePathTileIds"))
+    sample_catch = validation.index("catch (error)", sample_try)
+    assert sample_try < initial_clear < sample_catch
+
+
 def test_remembered_validation_reuses_incremental_tile_discovery() -> None:
     text = REMEMBERED.read_text(encoding="utf-8")
     for required in (

@@ -149,10 +149,10 @@ oracle._movementValidationSample <- function(_raw, _projection, _sample)
     local found = false;
     local costs = null;
 
-    navigator.clearPath();
-    navigator.clearVisualisation();
     try
     {
+        navigator.clearPath();
+        navigator.clearVisualisation();
         found = navigator.findPath(origin, destination, settings, 0);
         if (found)
         {

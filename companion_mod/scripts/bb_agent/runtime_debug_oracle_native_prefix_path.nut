@@ -250,7 +250,18 @@ oracle._processMovementValidationNativePrefix <- function(_sandbox, _context)
     }
 
     ++_context.ap_budget;
-    this._insertNativePrefixJob(_sandbox, _context);
+    try
+    {
+        this._insertNativePrefixJob(_sandbox, _context);
+    }
+    catch (error)
+    {
+        this._finishNativePrefixPath(
+            _sandbox,
+            _context,
+            "native prefix continuation could not be queued: " + error.tostring()
+        );
+    }
 };
 
 sandbox.NativePrefixContext <- null;
