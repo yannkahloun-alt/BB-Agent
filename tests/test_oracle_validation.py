@@ -168,19 +168,27 @@ def test_movement_validation_reports_sample_errors() -> None:
 
 def test_reconstructs_captured_native_path_from_cost_prefix_anchors() -> None:
     prefixes = [
-        {"tiles": 0, "end_tile_id": "tile:12:18", "anchor_tile_ids": []},
+        {
+            "tiles": 0,
+            "is_complete": False,
+            "end_tile_id": "tile:12:18",
+            "anchor_tile_ids": [],
+        },
         {
             "tiles": 1,
+            "is_complete": False,
             "end_tile_id": "tile:11:17",
             "anchor_tile_ids": ["tile:11:17"],
         },
         {
             "tiles": 2,
+            "is_complete": False,
             "end_tile_id": "tile:10:17",
             "anchor_tile_ids": ["tile:11:17", "tile:10:17"],
         },
         {
             "tiles": 3,
+            "is_complete": False,
             "end_tile_id": "tile:10:16",
             "anchor_tile_ids": [
                 "tile:11:17",
@@ -190,6 +198,7 @@ def test_reconstructs_captured_native_path_from_cost_prefix_anchors() -> None:
         },
         {
             "tiles": 4,
+            "is_complete": True,
             "end_tile_id": "tile:10:15",
             "anchor_tile_ids": [
                 "tile:11:17",
@@ -219,23 +228,43 @@ def test_reconstructs_captured_native_path_from_cost_prefix_anchors() -> None:
     ("prefixes", "match"),
     [
         (
-            [{"tiles": 1, "end_tile_id": "tile:c", "anchor_tile_ids": ["tile:c"]}],
+            [
+                {
+                    "tiles": 1,
+                    "is_complete": True,
+                    "end_tile_id": "tile:c",
+                    "anchor_tile_ids": ["tile:c"],
+                }
+            ],
             "canonical path gap",
         ),
         (
             [
                 {
                     "tiles": 1,
+                    "is_complete": False,
                     "end_tile_id": "tile:b",
                     "anchor_tile_ids": ["tile:b"],
                 },
                 {
                     "tiles": 2,
-                    "end_tile_id": "tile:a",
-                    "anchor_tile_ids": ["tile:a"],
+                    "is_complete": True,
+                    "end_tile_id": "tile:c",
+                    "anchor_tile_ids": ["tile:b", "tile:c", "tile:b"],
                 },
             ],
-            "revisited an earlier path endpoint",
+            "anchor order revisited an earlier tile",
+        ),
+        (
+            [
+                {
+                    "tiles": 1,
+                    "is_complete": False,
+                    "end_tile_id": "tile:b",
+                    "anchor_tile_ids": ["tile:b"],
+                }
+            ],
+            "terminal native movement prefix is not complete",
         ),
     ],
 )

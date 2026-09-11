@@ -145,6 +145,11 @@ def test_native_prefix_path_reconstruction_is_staged_and_debug_only() -> None:
         "native_path_tile_ids",
         "_canonicalNeighbors(",
         "native movement prefix revisited an earlier path endpoint",
+        "native movement prefix anchor order revisited an earlier tile",
+        "terminal native movement prefix is not complete",
+        "originalSandboxCancel",
+        "NativePrefixContext.navigator.clearPath()",
+        "NativePrefixContext.navigator.clearVisualisation()",
         "one_prefix_query_per_update=true",
     ):
         assert required in text

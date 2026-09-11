@@ -15,7 +15,7 @@ def reconstruct_native_prefix_path(
     """Validate and merge ordered native cost-prefix path anchors."""
 
     path: list[str] = []
-    seen = {origin_tile_id}
+    seen_positions = {origin_tile_id: 0}
     last = origin_tile_id
     for prefix in prefixes:
         tiles = prefix.get("tiles")
@@ -26,19 +26,26 @@ def reconstruct_native_prefix_path(
         end = prefix.get("end_tile_id")
         if not isinstance(end, str):
             raise ValueError("native movement prefix advanced without an endpoint")
-        if end in seen and end != last:
+        if end in seen_positions and end != last:
             raise ValueError(
                 "native movement prefix revisited an earlier path endpoint"
             )
         anchors = prefix.get("anchor_tile_ids")
         if not isinstance(anchors, list) or not anchors:
             raise ValueError("native movement prefix exposed no path anchors")
+        last_anchor_position = 0
         for tile_id in anchors:
             if not isinstance(tile_id, str):
                 raise ValueError(
                     "native movement prefix exposed an invalid path anchor"
                 )
-            if tile_id in seen:
+            if tile_id in seen_positions:
+                position = seen_positions[tile_id]
+                if position < last_anchor_position:
+                    raise ValueError(
+                        "native movement prefix anchor order revisited an earlier tile"
+                    )
+                last_anchor_position = position
                 continue
             if tile_id not in neighbor_ids:
                 raise ValueError("native movement path leaves the player-legal map")
@@ -47,8 +54,15 @@ def reconstruct_native_prefix_path(
                     "native movement cost anchors left a canonical path gap"
                 )
             path.append(tile_id)
-            seen.add(tile_id)
+            position = len(path)
+            seen_positions[tile_id] = position
+            last_anchor_position = position
             last = tile_id
+
+    if prefixes:
+        terminal_complete = prefixes[-1].get("is_complete")
+        if terminal_complete is not True:
+            raise ValueError("terminal native movement prefix is not complete")
 
     if not path:
         raise ValueError("native movement prefixes produced no ordered path steps")

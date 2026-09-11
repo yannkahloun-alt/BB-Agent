@@ -87,3 +87,28 @@ def test_waiter_uses_tail_status_without_full_snapshot_decode(
     monkeypatch.setattr(TOOL, "extract_latest_combat_sandbox", forbidden_decode)
     assert TOOL._wait_for_completion(path, wait_seconds=1.0, poll_seconds=0.01) is True
     assert called is False
+
+
+def test_movement_summary_prints_native_prefix_path_counters() -> None:
+    validation = {
+        "sample_count": 2,
+        "error_count": 1,
+        "legality_mismatch_count": 0,
+        "reachability_mismatch_count": 0,
+        "comparable_cost_sample_count": 2,
+        "cost_mismatch_count": 1,
+        "execution_fatigue_match_count": 1,
+        "path_fatigue_match_count": 1,
+        "fatigue_semantics_neither_count": 0,
+        "tile_count_mismatch_count": 1,
+        "endpoint_mismatch_count": 1,
+        "native_path_reconstructed_count": 1,
+        "native_path_reconstruction_error_count": 1,
+        "remembered_sample_count": 0,
+        "remembered_native_found_count": 0,
+        "remembered_native_complete_count": 0,
+    }
+
+    text = TOOL._format_movement_validation(validation)
+    assert "native_paths_reconstructed:1" in text
+    assert "native_path_errors:1" in text

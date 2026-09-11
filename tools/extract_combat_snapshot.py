@@ -69,6 +69,30 @@ def _print_incomplete(path: Path, problem: Exception | str) -> None:
         print("No combat sandbox diagnostics found in log.", file=sys.stderr)
 
 
+def _format_movement_validation(validation: dict[str, Any]) -> str:
+    return (
+        "  movement_oracle="
+        f"samples:{validation['sample_count']} "
+        f"errors:{validation['error_count']} "
+        f"legality_mismatches:{validation['legality_mismatch_count']} "
+        f"reachability_mismatches:{validation['reachability_mismatch_count']} "
+        f"comparable_costs:{validation['comparable_cost_sample_count']} "
+        f"cost_mismatches:{validation['cost_mismatch_count']} "
+        f"execution_fatigue_matches:{validation['execution_fatigue_match_count']} "
+        f"path_fatigue_matches:{validation['path_fatigue_match_count']} "
+        f"fatigue_neither:{validation['fatigue_semantics_neither_count']} "
+        f"tile_count_mismatches:{validation['tile_count_mismatch_count']} "
+        f"endpoint_mismatches:{validation['endpoint_mismatch_count']} "
+        "native_paths_reconstructed:"
+        f"{validation['native_path_reconstructed_count']} "
+        "native_path_errors:"
+        f"{validation['native_path_reconstruction_error_count']} "
+        f"remembered_samples:{validation['remembered_sample_count']} "
+        f"remembered_found:{validation['remembered_native_found_count']} "
+        f"remembered_complete:{validation['remembered_native_complete_count']}"
+    )
+
+
 def _wait_for_completion(
     log_path: Path,
     *,
@@ -186,27 +210,7 @@ def main() -> int:
         )
     if any(record_id.startswith("debug_movement_validation:") for record_id in records):
         validation = summarize_movement_validation(snapshot)
-        print(
-            "  movement_oracle="
-            f"samples:{validation['sample_count']} "
-            f"errors:{validation['error_count']} "
-            f"legality_mismatches:{validation['legality_mismatch_count']} "
-            f"reachability_mismatches:{validation['reachability_mismatch_count']} "
-            f"comparable_costs:{validation['comparable_cost_sample_count']} "
-            f"cost_mismatches:{validation['cost_mismatch_count']} "
-            f"execution_fatigue_matches:{validation['execution_fatigue_match_count']} "
-            f"path_fatigue_matches:{validation['path_fatigue_match_count']} "
-            f"fatigue_neither:{validation['fatigue_semantics_neither_count']} "
-            f"tile_count_mismatches:{validation['tile_count_mismatch_count']} "
-            f"endpoint_mismatches:{validation['endpoint_mismatch_count']} "
-            "native_paths_reconstructed:"
-            f"{validation['native_path_reconstructed_count']} "
-            "native_path_errors:"
-            f"{validation['native_path_reconstruction_error_count']} "
-            f"remembered_samples:{validation['remembered_sample_count']} "
-            f"remembered_found:{validation['remembered_native_found_count']} "
-            f"remembered_complete:{validation['remembered_native_complete_count']}"
-        )
+        print(_format_movement_validation(validation))
     if quality["issue_paths"]:
         print("  quality_issue_paths:")
         for path in quality["issue_paths"][:20]:

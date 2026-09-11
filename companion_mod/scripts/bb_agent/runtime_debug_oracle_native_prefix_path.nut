@@ -14,18 +14,7 @@ oracle._nativePrefixAnchorTiles <- function(_costs)
     foreach (name in ["First", "SecondLastBeforeEnd", "LastBeforeEnd", "End"])
     {
         if (!(_costs != null && name in _costs && _costs[name] != null)) continue;
-        local tile = _costs[name];
-        local tileId = legal.tileID(tile);
-        local duplicate = false;
-        foreach (existing in ret)
-        {
-            if (legal.tileID(existing) == tileId)
-            {
-                duplicate = true;
-                break;
-            }
-        }
-        if (!duplicate) ret.push(tile);
+        ret.push(_costs[name]);
     }
     return ret;
 };
@@ -60,6 +49,7 @@ oracle._finishNativePrefixPath <- function(_sandbox, _context, _error = null)
     sample.native_prefix_observations <- clone _context.observations;
     _context.navigator.clearPath();
     _context.navigator.clearVisualisation();
+    _sandbox.NativePrefixContext = null;
     _sandbox._emitRecord(
         _sandbox.State.raw,
         _context.section,
@@ -118,11 +108,12 @@ oracle._stageMovementValidationNativePath <- function(
         fatigue_available = _raw.ActiveActor.getFatigueMax()
             - _raw.ActiveActor.getFatigue(),
         last_tile_id = originId,
-        seen = { [originId] = true },
+        seen_positions = { [originId] = 0 },
         path_tile_ids = [],
         observations = []
     };
     this._insertNativePrefixJob(_sandbox, context);
+    _sandbox.NativePrefixContext = context;
     return true;
 };
 
@@ -147,6 +138,7 @@ oracle._processMovementValidationNativePrefix <- function(_sandbox, _context)
         local observation = {
             ap_budget = _context.ap_budget,
             tiles = prefix.Tiles,
+            is_complete = "IsComplete" in prefix ? prefix.IsComplete : null,
             end_tile_id = null,
             anchor_tile_ids = []
         };
@@ -157,7 +149,7 @@ oracle._processMovementValidationNativePrefix <- function(_sandbox, _context)
         {
             if (observation.end_tile_id == null)
                 throw "native movement prefix advanced without an endpoint";
-            if (observation.end_tile_id in _context.seen
+            if (observation.end_tile_id in _context.seen_positions
                 && observation.end_tile_id != _context.last_tile_id)
             {
                 throw "native movement prefix revisited an earlier path endpoint";
@@ -165,11 +157,19 @@ oracle._processMovementValidationNativePrefix <- function(_sandbox, _context)
             local anchors = this._nativePrefixAnchorTiles(prefix);
             if (anchors.len() == 0)
                 throw "native movement prefix exposed no path anchors";
+            local lastAnchorPosition = 0;
             foreach (tile in anchors)
             {
                 local tileId = legal.tileID(tile);
                 observation.anchor_tile_ids.push(tileId);
-                if (tileId in _context.seen) continue;
+                if (tileId in _context.seen_positions)
+                {
+                    local position = _context.seen_positions[tileId];
+                    if (position < lastAnchorPosition)
+                        throw "native movement prefix anchor order revisited an earlier tile";
+                    lastAnchorPosition = position;
+                    continue;
+                }
                 if (!(tileId in _context.projection.runtime.tile_records))
                     throw "native movement path leaves the player-legal canonical map";
                 if (!affordances._canonicalNeighbors(
@@ -181,7 +181,9 @@ oracle._processMovementValidationNativePrefix <- function(_sandbox, _context)
                     throw "native movement cost anchors left a canonical path gap";
                 }
                 _context.path_tile_ids.push(tileId);
-                _context.seen[tileId] <- true;
+                local position = _context.path_tile_ids.len();
+                _context.seen_positions[tileId] <- position;
+                lastAnchorPosition = position;
                 _context.last_tile_id = tileId;
             }
         }
@@ -195,6 +197,17 @@ oracle._processMovementValidationNativePrefix <- function(_sandbox, _context)
 
     if (_context.ap_budget >= _context.ap_required)
     {
+        if (!("IsComplete" in prefix)
+            || typeof prefix.IsComplete != "bool"
+            || !prefix.IsComplete)
+        {
+            this._finishNativePrefixPath(
+                _sandbox,
+                _context,
+                "terminal native movement prefix is not complete"
+            );
+            return;
+        }
         if (_context.path_tile_ids.len() == 0)
         {
             this._finishNativePrefixPath(
@@ -219,6 +232,19 @@ oracle._processMovementValidationNativePrefix <- function(_sandbox, _context)
 
     ++_context.ap_budget;
     this._insertNativePrefixJob(_sandbox, _context);
+};
+
+sandbox.NativePrefixContext <- null;
+local originalSandboxCancel = sandbox.cancel;
+sandbox.cancel = function(_reason)
+{
+    if (this.NativePrefixContext != null)
+    {
+        this.NativePrefixContext.navigator.clearPath();
+        this.NativePrefixContext.navigator.clearVisualisation();
+        this.NativePrefixContext = null;
+    }
+    return originalSandboxCancel.acall([this, _reason]);
 };
 
 local originalSandboxProcessJob = sandbox._processJob;
