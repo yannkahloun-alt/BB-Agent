@@ -66,7 +66,7 @@ if ($installed.Count -ne 1 -or $installed[0].Name -ne 'mod_bb_agent_capture.zip'
 
 Write-Host ''
 Write-Host 'BB-AGENT PRODUCTION LIVE VALIDATION INSTALLED'
-Write-Host '  companion: 0.2.42'
+Write-Host '  companion: 0.2.43'
 Write-Host '  DEBUG_ORACLE overlay: NOT installed'
 Write-Host '  PLAYER_LEGAL numeric normalization: source-proven whole numbers only'
 Write-Host '  READY timing: production DECISION_READY path only'

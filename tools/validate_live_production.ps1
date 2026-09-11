@@ -32,7 +32,7 @@ $artifact = $null
 if (Test-Path -LiteralPath $Out) {
     $timing = Get-Content -LiteralPath $Out -Raw | ConvertFrom-Json
     $timing | Add-Member -NotePropertyName source_commit -NotePropertyValue $head
-    $timing | Add-Member -NotePropertyName companion_version -NotePropertyValue '0.2.42'
+    $timing | Add-Member -NotePropertyName companion_version -NotePropertyValue '0.2.43'
     $timing | Add-Member -NotePropertyName debug_oracle_enabled -NotePropertyValue $false
     $timing | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $Out -Encoding UTF8
     $artifact = Get-Item -LiteralPath $Out -ErrorAction Stop

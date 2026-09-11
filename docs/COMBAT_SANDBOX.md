@@ -81,7 +81,7 @@ Each valid tactical tile parent record includes:
 
 ## PLAYER_LEGAL and native movement validation
 
-The sandbox is oracle-first: omniscient forensic jobs are captured first, then the independent `PLAYER_LEGAL` projection is built after the oracle work has completed. Oracle values never feed the production projection.
+The sandbox records visible non-owned actor identity, relation, and position during the capture substrate's existing entity-fingerprint pass, together with a detached copy of player-legal observation memory. The full independent `PLAYER_LEGAL` projection and its records remain deferred until the oracle work has completed. Before publication, actor visibility and occupancy are reconciled from those decision-boundary facts, so a later live-frame change cannot replace a currently visible hostile with stale memory under the original generation. This adds no second synchronous entity or map traversal to `DECISION_READY`, and oracle values never feed the production projection.
 
 After the deferred projection is available, DEBUG_ORACLE may enqueue a bounded validation plan. Production still uses zero native per-destination pathfinder calls. Native comparisons are diagnostic-only and are processed as ordinary sandbox jobs, so at most one native comparison runs in one tactical update.
 
