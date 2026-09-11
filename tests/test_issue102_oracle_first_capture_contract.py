@@ -48,7 +48,9 @@ def test_player_legal_phase_publishes_only_after_oracle_queue_drains() -> None:
 def test_player_legal_build_has_coarse_responsiveness_markers() -> None:
     text = _text(PLAYER_LEGAL_PHASE)
     begin = text.index("player_legal_build_begin")
-    call = text.index("this._enqueueProjectionRecords(this.State.player_legal_projection)")
+    call = text.index(
+        "this._enqueueProjectionRecords(this.State.player_legal_projection)"
+    )
     end = text.index("player_legal_build_end")
     assert begin < call < end
     assert 'local wasPlayerLegalBuild = _job.kind == "player_legal_build";' in text
