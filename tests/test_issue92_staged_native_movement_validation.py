@@ -196,8 +196,9 @@ def test_native_prefix_continuation_queue_failure_finishes_with_error() -> None:
     assert "this._finishNativePrefixPath(" in continuation
 
     validation = VALIDATION.read_text(encoding="utf-8")
-    initial_clear = validation.index("navigator.clearPath();")
-    sample_try = validation.index("try", validation.index("local nativePathTileIds"))
+    sample_start = validation.index("oracle._movementValidationSample <- function")
+    sample_try = validation.index("try", validation.index("local found", sample_start))
+    initial_clear = validation.index("navigator.clearPath();", sample_try)
     sample_catch = validation.index("catch (error)", sample_try)
     assert sample_try < initial_clear < sample_catch
 
