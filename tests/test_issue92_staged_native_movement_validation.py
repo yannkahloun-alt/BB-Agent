@@ -69,6 +69,8 @@ def test_native_calls_only_exist_in_debug_validation_sample_path() -> None:
     assert "navigator.getCostForPath(" in sample
     assert "reachability_agreement" in sample
     assert "cost_agreement" in sample
+    assert "affordances._navigatorPath(" in sample
+    assert "native_path_tile_ids" in sample
 
     production_graph = (SCRIPT_ROOT / "runtime_movement_graph_compat.nut").read_text(
         encoding="utf-8"

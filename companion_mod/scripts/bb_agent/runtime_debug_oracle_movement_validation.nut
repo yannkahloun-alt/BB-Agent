@@ -148,6 +148,7 @@ oracle._movementValidationSample <- function(_raw, _projection, _sample)
     local destination = tiles[_sample.tile_id];
     local found = false;
     local costs = null;
+    local nativePathTileIds = [];
 
     navigator.clearPath();
     navigator.clearVisualisation();
@@ -162,6 +163,13 @@ oracle._movementValidationSample <- function(_raw, _projection, _sample)
                 active.getActionPoints(),
                 active.getFatigueMax() - active.getFatigue()
             );
+            local nativePath = affordances._navigatorPath(
+                navigator,
+                origin,
+                destination
+            );
+            foreach (tile in nativePath)
+                nativePathTileIds.push(legal.tileID(tile));
         }
     }
     catch (error)
@@ -172,6 +180,7 @@ oracle._movementValidationSample <- function(_raw, _projection, _sample)
     navigator.clearVisualisation();
 
     _sample.native_found <- found;
+    _sample.native_path_tile_ids <- nativePathTileIds;
     _sample.native_complete <- costs != null
         && "IsComplete" in costs
         && costs.IsComplete;

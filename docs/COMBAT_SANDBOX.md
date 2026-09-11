@@ -83,7 +83,7 @@ Each valid tactical tile parent record includes:
 
 The sandbox records visible non-owned actor identity, relation, and position during the capture substrate's existing entity-fingerprint pass, together with a detached copy of player-legal observation memory. The full independent `PLAYER_LEGAL` projection and its records remain deferred until the oracle work has completed. Before publication, actor visibility and occupancy are reconciled from those decision-boundary facts, so a later live-frame change cannot replace a currently visible hostile with stale memory under the original generation. This adds no second synchronous entity or map traversal to `DECISION_READY`, and oracle values never feed the production projection.
 
-After the deferred projection is available, DEBUG_ORACLE may enqueue a bounded validation plan. Production still uses zero native per-destination pathfinder calls. Native comparisons are diagnostic-only and are processed as ordinary sandbox jobs, so at most one native comparison runs in one tactical update.
+After the deferred projection is available, DEBUG_ORACLE may enqueue a bounded validation plan. Production still uses zero native per-destination pathfinder calls. Native comparisons are diagnostic-only and are processed as ordinary sandbox jobs, so at most one native comparison runs in one tactical update. Each sampled record includes the native path's ordered tile IDs so ZOC route preference can be distinguished from graph-topology or resource-cost disagreement without reflecting navigator internals.
 
 The exact-visible validation plan is capped at six deterministic samples and may include:
 
