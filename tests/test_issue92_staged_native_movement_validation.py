@@ -9,6 +9,7 @@ FATIGUE = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_fatigue.nut"
 LEGALITY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_legality.nut"
 GEOMETRY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_geometry.nut"
 REMEMBERED = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_remembered.nut"
+PREFIX_PATH = SCRIPT_ROOT / "runtime_debug_oracle_native_prefix_path.nut"
 INSTALLER = ROOT / "tools/install_combat_sandbox.ps1"
 
 
@@ -30,9 +31,19 @@ def test_native_movement_validation_loads_after_ally_probe_before_export() -> No
     fatigue = preload.index("runtime_debug_oracle_movement_validation_fatigue")
     legality = preload.index("runtime_debug_oracle_movement_validation_legality")
     geometry = preload.index("runtime_debug_oracle_movement_validation_geometry")
+    prefix_path = preload.index("runtime_debug_oracle_native_prefix_path")
     remembered = preload.index("runtime_debug_oracle_movement_validation_remembered")
     export = preload.index("scripts/bb_agent/live_export")
-    assert roster < validation < fatigue < legality < geometry < remembered < export
+    assert (
+        roster
+        < validation
+        < fatigue
+        < legality
+        < geometry
+        < prefix_path
+        < remembered
+        < export
+    )
 
 
 def test_native_movement_validation_is_debug_only_and_staged() -> None:
@@ -119,6 +130,33 @@ def test_native_validation_compares_bounded_path_geometry_summaries() -> None:
         assert required in text
     assert "findPath(" not in text
     assert "getCostForPath(" not in text
+
+
+def test_native_prefix_path_reconstruction_is_staged_and_debug_only() -> None:
+    text = PREFIX_PATH.read_text(encoding="utf-8")
+    for required in (
+        "NativePrefixBudgetCap <- 32",
+        'kind = "movement_validation_native_prefix"',
+        "State.jobs.insert(",
+        "State.cursor,",
+        "_context.navigator.getCostForPath(",
+        'foreach (name in ["First", "SecondLastBeforeEnd", "LastBeforeEnd", "End"])',
+        "native_prefix_observations",
+        "native_path_tile_ids",
+        "_canonicalNeighbors(",
+        "native movement prefix revisited an earlier path endpoint",
+        "one_prefix_query_per_update=true",
+    ):
+        assert required in text
+    assert "findPath(" not in text
+    assert ".getPath(" not in text
+    assert ".travel(" not in text
+    assert "buildVisualisation(" not in text
+
+    production_graph = (SCRIPT_ROOT / "runtime_movement_graph_compat.nut").read_text(
+        encoding="utf-8"
+    )
+    assert "getCostForPath(" not in production_graph
 
 
 def test_remembered_validation_reuses_incremental_tile_discovery() -> None:

@@ -66,3 +66,7 @@ Production must never restore the old per-destination native `findPath()` loop. 
 Issue #94 is the deterministic offline fixture gate for #98. The executable corpus covers terrain, elevation, actor-modified costs, AP/fatigue limits, relation-aware actor occupancy, allied jump topology, visible blocker projection, hidden-state exclusion, ZOC entry/exit placement, rooted/stunned movement, deterministic adjacency, and any-feasible-route resource reachability.
 
 Native chosen-path identity and tie-breaking are not prerequisites for this corpus.
+
+## Deferred Phase-D path diagnostics
+
+When a capped DEBUG_ORACLE sample finds a concrete native/model geometry or cost disagreement, the diagnostic sandbox may reconstruct the already-selected native route from successive `getCostForPath()` AP-prefix anchors. Each prefix query is staged as its own tactical update and every new tile is checked against canonical player-legal `neighbor_ids`. This is validation evidence only: production still selects any feasible player-known route with zero native pathfinder calls, and the reconstructed native route never enters an `ActionAffordanceSet` or decision input.
