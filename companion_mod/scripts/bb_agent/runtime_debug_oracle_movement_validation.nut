@@ -227,21 +227,40 @@ sandbox._processJob = function(_job)
             this.State.player_legal_projection,
             _job.target
         );
-        if ("_stageMovementValidationNativePath" in oracle
-            && oracle._stageMovementValidationNativePath(
-                this,
-                _job,
-                sample,
-                this.State.raw,
-                this.State.player_legal_projection
-            ))
+        local staged = false;
+        try
         {
-            return;
+            staged = "_stageMovementValidationNativePath" in oracle
+                && oracle._stageMovementValidationNativePath(
+                    this,
+                    _job,
+                    sample,
+                    this.State.raw,
+                    this.State.player_legal_projection
+                );
         }
+        catch (error)
+        {
+            if ("_abortMovementValidationNativePath" in oracle)
+            {
+                oracle._abortMovementValidationNativePath(
+                    this,
+                    this.State.raw.Navigator
+                );
+            }
+            sample.error <- error.tostring();
+            sample.native_path_reconstruction_status <- "error";
+        }
+        if (staged) return;
         if ("_native_prefix_settings" in sample)
             delete sample._native_prefix_settings;
-        this.State.raw.Navigator.clearPath();
-        this.State.raw.Navigator.clearVisualisation();
+        if ("_clearNativePrefixNavigator" in oracle)
+            oracle._clearNativePrefixNavigator(this.State.raw.Navigator);
+        else
+        {
+            try { this.State.raw.Navigator.clearPath(); } catch (_error) {}
+            try { this.State.raw.Navigator.clearVisualisation(); } catch (_error) {}
+        }
         this._emitRecord(this.State.raw, _job.section, _job.key, sample);
         return;
     }

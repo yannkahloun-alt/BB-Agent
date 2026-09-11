@@ -8,6 +8,19 @@ local sandbox = ::BBAGENT_CombatSandbox;
 // path geometry differs from the player-legal model summary.
 oracle.NativePrefixBudgetCap <- 32;
 
+oracle._clearNativePrefixNavigator <- function(_navigator)
+{
+    if (_navigator == null) return;
+    try { _navigator.clearPath(); } catch (_error) {}
+    try { _navigator.clearVisualisation(); } catch (_error) {}
+};
+
+oracle._abortMovementValidationNativePath <- function(_sandbox, _navigator)
+{
+    this._clearNativePrefixNavigator(_navigator);
+    _sandbox.NativePrefixContext = null;
+};
+
 oracle._nativePrefixAnchorTiles <- function(_costs)
 {
     local ret = [];
@@ -47,8 +60,7 @@ oracle._finishNativePrefixPath <- function(_sandbox, _context, _error = null)
     }
     sample.native_path_tile_ids <- clone _context.path_tile_ids;
     sample.native_prefix_observations <- clone _context.observations;
-    _context.navigator.clearPath();
-    _context.navigator.clearVisualisation();
+    this._clearNativePrefixNavigator(_context.navigator);
     _sandbox.NativePrefixContext = null;
     _sandbox._emitRecord(
         _sandbox.State.raw,
@@ -93,7 +105,6 @@ oracle._stageMovementValidationNativePath <- function(
     }
 
     local originId = legal.tileID(_raw.ActiveActor.getTile());
-    local destinationId = _sample.tile_id;
     local context = {
         section = _job.section,
         key = _job.key,
@@ -102,7 +113,7 @@ oracle._stageMovementValidationNativePath <- function(
         active = _raw.ActiveActor,
         settings = settings,
         projection = _projection,
-        destination_id = destinationId,
+        destination_id = _sample.tile_id,
         ap_required = _sample.native_ap,
         ap_budget = 0,
         fatigue_available = _raw.ActiveActor.getFatigueMax()
@@ -112,8 +123,16 @@ oracle._stageMovementValidationNativePath <- function(
         path_tile_ids = [],
         observations = []
     };
-    this._insertNativePrefixJob(_sandbox, context);
     _sandbox.NativePrefixContext = context;
+    try
+    {
+        this._insertNativePrefixJob(_sandbox, context);
+    }
+    catch (error)
+    {
+        this._abortMovementValidationNativePath(_sandbox, _raw.Navigator);
+        throw error;
+    }
     return true;
 };
 
@@ -238,11 +257,11 @@ sandbox.NativePrefixContext <- null;
 local originalSandboxCancel = sandbox.cancel;
 sandbox.cancel = function(_reason)
 {
-    if (this.NativePrefixContext != null)
+    local context = this.NativePrefixContext;
+    this.NativePrefixContext = null;
+    if (context != null)
     {
-        this.NativePrefixContext.navigator.clearPath();
-        this.NativePrefixContext.navigator.clearVisualisation();
-        this.NativePrefixContext = null;
+        oracle._clearNativePrefixNavigator(context.navigator);
     }
     return originalSandboxCancel.acall([this, _reason]);
 };

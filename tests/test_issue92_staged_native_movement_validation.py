@@ -148,8 +148,11 @@ def test_native_prefix_path_reconstruction_is_staged_and_debug_only() -> None:
         "native movement prefix anchor order revisited an earlier tile",
         "terminal native movement prefix is not complete",
         "originalSandboxCancel",
-        "NativePrefixContext.navigator.clearPath()",
-        "NativePrefixContext.navigator.clearVisualisation()",
+        "_clearNativePrefixNavigator",
+        "try { _navigator.clearPath(); } catch (_error) {}",
+        "try { _navigator.clearVisualisation(); } catch (_error) {}",
+        "this.NativePrefixContext = null;",
+        "_abortMovementValidationNativePath",
         "one_prefix_query_per_update=true",
     ):
         assert required in text
@@ -162,6 +165,22 @@ def test_native_prefix_path_reconstruction_is_staged_and_debug_only() -> None:
         encoding="utf-8"
     )
     assert "getCostForPath(" not in production_graph
+
+
+def test_native_prefix_staging_registers_cleanup_before_queue_insertion() -> None:
+    text = PREFIX_PATH.read_text(encoding="utf-8")
+    stage_start = text.index("oracle._stageMovementValidationNativePath")
+    process_start = text.index("oracle._processMovementValidationNativePrefix")
+    stage = text[stage_start:process_start]
+    assert stage.index("_sandbox.NativePrefixContext = context;") < stage.index(
+        "this._insertNativePrefixJob(_sandbox, context);"
+    )
+    assert "this._abortMovementValidationNativePath(_sandbox, _raw.Navigator);" in stage
+
+    validation = VALIDATION.read_text(encoding="utf-8")
+    assert "catch (error)" in validation
+    assert "oracle._abortMovementValidationNativePath(" in validation
+    assert 'sample.native_path_reconstruction_status <- "error";' in validation
 
 
 def test_remembered_validation_reuses_incremental_tile_discovery() -> None:
