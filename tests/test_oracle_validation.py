@@ -224,6 +224,32 @@ def test_reconstructs_captured_native_path_from_cost_prefix_anchors() -> None:
     ) == ["tile:11:17", "tile:10:17", "tile:10:16", "tile:10:15"]
 
 
+def test_reconstructs_short_path_with_overlapping_native_anchor_aliases() -> None:
+    assert reconstruct_native_prefix_path(
+        origin_tile_id="tile:a",
+        destination_tile_id="tile:c",
+        prefixes=[
+            {
+                "tiles": 0,
+                "is_complete": False,
+                "end_tile_id": "tile:a",
+                "anchor_tile_ids": [],
+            },
+            {
+                "tiles": 2,
+                "is_complete": True,
+                "end_tile_id": "tile:c",
+                "anchor_tile_ids": ["tile:b", "tile:c", "tile:b", "tile:c"],
+            },
+        ],
+        neighbor_ids={
+            "tile:a": ["tile:b"],
+            "tile:b": ["tile:c"],
+            "tile:c": [],
+        },
+    ) == ["tile:b", "tile:c"]
+
+
 @pytest.mark.parametrize(
     ("prefixes", "match"),
     [
@@ -248,12 +274,18 @@ def test_reconstructs_captured_native_path_from_cost_prefix_anchors() -> None:
                 },
                 {
                     "tiles": 2,
-                    "is_complete": True,
+                    "is_complete": False,
                     "end_tile_id": "tile:c",
-                    "anchor_tile_ids": ["tile:b", "tile:c", "tile:b"],
+                    "anchor_tile_ids": ["tile:b", "tile:c"],
+                },
+                {
+                    "tiles": 1,
+                    "is_complete": True,
+                    "end_tile_id": "tile:b",
+                    "anchor_tile_ids": ["tile:b"],
                 },
             ],
-            "anchor order revisited an earlier tile",
+            "revisited an earlier path endpoint",
         ),
         (
             [

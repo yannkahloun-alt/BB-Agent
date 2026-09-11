@@ -176,11 +176,18 @@ oracle._processMovementValidationNativePrefix <- function(_sandbox, _context)
             local anchors = this._nativePrefixAnchorTiles(prefix);
             if (anchors.len() == 0)
                 throw "native movement prefix exposed no path anchors";
+            // Short paths alias the same tiles through First,
+            // SecondLastBeforeEnd, LastBeforeEnd, and End. Treat repeated
+            // fields in one native result as aliases; cross-prefix endpoint
+            // revisits remain rejected above.
+            local observationAnchorIds = {};
             local lastAnchorPosition = 0;
             foreach (tile in anchors)
             {
                 local tileId = legal.tileID(tile);
                 observation.anchor_tile_ids.push(tileId);
+                if (tileId in observationAnchorIds) continue;
+                observationAnchorIds[tileId] <- true;
                 if (tileId in _context.seen_positions)
                 {
                     local position = _context.seen_positions[tileId];
