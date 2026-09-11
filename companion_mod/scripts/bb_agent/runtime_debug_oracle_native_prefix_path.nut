@@ -176,26 +176,19 @@ oracle._processMovementValidationNativePrefix <- function(_sandbox, _context)
             local anchors = this._nativePrefixAnchorTiles(prefix);
             if (anchors.len() == 0)
                 throw "native movement prefix exposed no path anchors";
-            // Short paths alias the same tiles through First,
-            // SecondLastBeforeEnd, LastBeforeEnd, and End. Treat repeated
-            // fields in one native result as aliases; cross-prefix endpoint
-            // revisits remain rejected above.
+            // These named fields are overlapping positional references, not
+            // an ordered list. On a two-step path SecondLastBeforeEnd is the
+            // origin, after First has exposed the first step. Ignore anchors
+            // already established by this or an earlier prefix; the prefix
+            // End revisit check above remains the loop guard.
             local observationAnchorIds = {};
-            local lastAnchorPosition = 0;
             foreach (tile in anchors)
             {
                 local tileId = legal.tileID(tile);
                 observation.anchor_tile_ids.push(tileId);
                 if (tileId in observationAnchorIds) continue;
                 observationAnchorIds[tileId] <- true;
-                if (tileId in _context.seen_positions)
-                {
-                    local position = _context.seen_positions[tileId];
-                    if (position < lastAnchorPosition)
-                        throw "native movement prefix anchor order revisited an earlier tile";
-                    lastAnchorPosition = position;
-                    continue;
-                }
+                if (tileId in _context.seen_positions) continue;
                 if (!(tileId in _context.projection.runtime.tile_records))
                     throw "native movement path leaves the player-legal canonical map";
                 if (!affordances._canonicalNeighbors(
@@ -209,7 +202,6 @@ oracle._processMovementValidationNativePrefix <- function(_sandbox, _context)
                 _context.path_tile_ids.push(tileId);
                 local position = _context.path_tile_ids.len();
                 _context.seen_positions[tileId] <- position;
-                lastAnchorPosition = position;
                 _context.last_tile_id = tileId;
             }
         }

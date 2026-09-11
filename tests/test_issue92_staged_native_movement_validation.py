@@ -145,7 +145,7 @@ def test_native_prefix_path_reconstruction_is_staged_and_debug_only() -> None:
         "native_path_tile_ids",
         "_canonicalNeighbors(",
         "native movement prefix revisited an earlier path endpoint",
-        "native movement prefix anchor order revisited an earlier tile",
+        "overlapping positional references",
         "terminal native movement prefix is not complete",
         "originalSandboxCancel",
         "_clearNativePrefixNavigator",

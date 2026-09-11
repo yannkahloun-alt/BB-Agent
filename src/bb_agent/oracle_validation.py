@@ -34,24 +34,17 @@ def reconstruct_native_prefix_path(
         if not isinstance(anchors, list) or not anchors:
             raise ValueError("native movement prefix exposed no path anchors")
         observation_anchor_ids: set[str] = set()
-        last_anchor_position = 0
         for tile_id in anchors:
             if not isinstance(tile_id, str):
                 raise ValueError(
                     "native movement prefix exposed an invalid path anchor"
                 )
-            # Native anchor fields overlap on short paths. Repeated tile IDs
-            # within one result are aliases, not evidence that the route loops.
+            # Named native fields are overlapping positional references, not
+            # an ordered list. Short paths can expose the origin after First.
             if tile_id in observation_anchor_ids:
                 continue
             observation_anchor_ids.add(tile_id)
             if tile_id in seen_positions:
-                position = seen_positions[tile_id]
-                if position < last_anchor_position:
-                    raise ValueError(
-                        "native movement prefix anchor order revisited an earlier tile"
-                    )
-                last_anchor_position = position
                 continue
             if tile_id not in neighbor_ids:
                 raise ValueError("native movement path leaves the player-legal map")
@@ -62,7 +55,6 @@ def reconstruct_native_prefix_path(
             path.append(tile_id)
             position = len(path)
             seen_positions[tile_id] = position
-            last_anchor_position = position
             last = tile_id
 
     if prefixes:

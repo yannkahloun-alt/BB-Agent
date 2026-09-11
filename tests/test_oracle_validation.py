@@ -239,7 +239,12 @@ def test_reconstructs_short_path_with_overlapping_native_anchor_aliases() -> Non
                 "tiles": 2,
                 "is_complete": True,
                 "end_tile_id": "tile:c",
-                "anchor_tile_ids": ["tile:b", "tile:c", "tile:b", "tile:c"],
+                "anchor_tile_ids": [
+                    "tile:b",
+                    "tile:a",
+                    "tile:b",
+                    "tile:c",
+                ],
             },
         ],
         neighbor_ids={

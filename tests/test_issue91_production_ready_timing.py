@@ -25,7 +25,7 @@ def _log(*rows: tuple[str, str]) -> bytes:
 
 def test_timing_wrapper_loads_after_failure_latch_before_tactical_hook() -> None:
     preload = PRELOAD.read_text(encoding="utf-8")
-    assert 'Version = "0.2.45"' in preload
+    assert 'Version = "0.2.46"' in preload
     latch = preload.index("runtime_ready_failure_latch")
     timing = preload.index("runtime_live_ready_timing")
     hook = preload.index("hooks/tactical_state")
@@ -156,7 +156,7 @@ def test_validator_preserves_failed_ready_json_and_surfaces_stage() -> None:
     assert "$extractExit = $LASTEXITCODE" in text
     assert "if (Test-Path -LiteralPath $Out)" in text
     assert "Get-Item -LiteralPath $Out -ErrorAction Stop" in text
-    assert "companion_version -NotePropertyValue '0.2.45'" in text
+    assert "companion_version -NotePropertyValue '0.2.46'" in text
     assert "$timing.failure_stage" in text
     assert "Timing JSON verified on disk:" in text
     failure = text.index("if ($extractExit -ne 0)")
@@ -166,7 +166,7 @@ def test_validator_preserves_failed_ready_json_and_surfaces_stage() -> None:
 
 def test_production_installer_excludes_debug_overlay() -> None:
     text = INSTALLER.read_text(encoding="utf-8")
-    assert 'Version = "0\\.2\\.45"' in text
+    assert 'Version = "0\\.2\\.46"' in text
     assert "runtime_player_legal_numeric_compat" in text
     assert "runtime_live_ready_timing" in text
     assert "exactly one BB-Agent production zip" in text
