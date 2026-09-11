@@ -166,7 +166,7 @@ def test_validator_preserves_failed_ready_json_and_surfaces_stage() -> None:
 
 def test_production_installer_excludes_debug_overlay() -> None:
     text = INSTALLER.read_text(encoding="utf-8")
-    assert 'Version = "0\\.2\\.44"' in text
+    assert 'Version = "0\\.2\\.45"' in text
     assert "runtime_player_legal_numeric_compat" in text
     assert "runtime_live_ready_timing" in text
     assert "exactly one BB-Agent production zip" in text
