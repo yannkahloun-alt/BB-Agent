@@ -12,6 +12,7 @@
         CurrentRaw = null,
         LastEvent = null,
         LastError = null,
+        PendingPlayerVisibleNonOwnedActors = [],
         ObservationMemory = {},
         Provenance = {
             GameVersion = "scripts-162f498ac7c49b4c317bbf54718a595ecef6a65a",
@@ -285,6 +286,7 @@
     function _entityTokens()
     {
         local ret = [];
+        local visibleNonOwned = [];
         local groups = ::Tactical.Entities.getAllInstances();
         foreach (group in groups)
         {
@@ -292,9 +294,31 @@
             {
                 if (actor == null || actor.isNull()) continue;
                 ret.push(this._actorToken(actor));
+                try
+                {
+                    if (!actor.isPlayerControlled()
+                        && actor.isAlive()
+                        && actor.isPlacedOnMap()
+                        && !actor.isHiddenToPlayer()
+                        && actor.getTile().IsVisibleForPlayer)
+                    {
+                        visibleNonOwned.push({
+                            actor_id = "actor:" + actor.getID(),
+                            runtime_id = actor.getID().tostring(),
+                            relation = ::Tactical.TurnSequenceBar.getActiveEntity().isAlliedWith(actor)
+                                ? "ALLY"
+                                : "HOSTILE",
+                            tile_id = "tile:" + actor.getTile().SquareCoords.X
+                                + ":" + actor.getTile().SquareCoords.Y
+                        });
+                    }
+                }
+                catch (_error) {}
             }
         }
         ret.sort();
+        visibleNonOwned.sort(@(a, b) a.actor_id <=> b.actor_id);
+        this.State.PendingPlayerVisibleNonOwnedActors = visibleNonOwned;
         return ret;
     },
 
@@ -383,6 +407,10 @@
                 TurnStarted = _active.isTurnStarted()
             },
             RawSourceFingerprintInputs = _fingerprintInputs,
+            PlayerVisibleNonOwnedActors = this._copyArray(
+                this.State.PendingPlayerVisibleNonOwnedActors
+            ),
+            PlayerLegalObservationMemory = this.getObservationMemory(),
             ActiveActor = _active,
             TacticalState = _state,
             TurnSequenceBar = ::Tactical.TurnSequenceBar,
