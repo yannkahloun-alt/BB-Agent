@@ -254,6 +254,6 @@ sandbox.begin = function(_raw)
 };
 
 ::logInfo(
-    "[BB-Agent Combat Sandbox] oracle_first_loaded player_legal_deferred=last"
+    "[BB-Agent Combat Sandbox] oracle_first_loaded player_legal_publication_deferred=last"
     + " runtime_scaffolding_sharded=false scalar_pack_records=true"
 );

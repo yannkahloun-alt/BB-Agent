@@ -81,7 +81,7 @@ Each valid tactical tile parent record includes:
 
 ## PLAYER_LEGAL and native movement validation
 
-The sandbox is oracle-first: omniscient forensic jobs are captured first, then the independent `PLAYER_LEGAL` projection is built after the oracle work has completed. Oracle values never feed the production projection.
+The sandbox freezes the independent `PLAYER_LEGAL` projection at the decision boundary, before any omniscient forensic job is processed. Its records are published only after the oracle work has completed. This separates computation from publication: mutable runtime references cannot silently change the projection's generation, and oracle values never feed the production projection.
 
 After the deferred projection is available, DEBUG_ORACLE may enqueue a bounded validation plan. Production still uses zero native per-destination pathfinder calls. Native comparisons are diagnostic-only and are processed as ordinary sandbox jobs, so at most one native comparison runs in one tactical update.
 

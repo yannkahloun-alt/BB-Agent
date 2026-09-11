@@ -1,16 +1,27 @@
 local sandbox = ::BBAGENT_CombatSandbox;
 
-// Enforce a true two-phase sandbox lifecycle. The earlier oracle-first layer only
-// moved player_legal_build to the end of the seed queue, but incremental discovery
-// appends follow-up jobs behind that seed entry. Remove the build job entirely at
-// begin(), then release it only when the omniscient queue has actually drained.
-// Manifest finalization is allowed only after the PLAYER_LEGAL phase has executed
-// and all records it enqueued have drained too.
+// Freeze the independent PLAYER_LEGAL projection at the decision boundary. The
+// raw acquisition deliberately contains live runtime references; rebuilding from
+// them after the long oracle queue drains can observe a later visibility state
+// while still claiming the original source generation. Publication remains
+// oracle-first: the captured projection is not enqueued or serialized until the
+// omniscient queue has drained.
 local originalBegin = sandbox.begin;
 sandbox.begin = function(_raw)
 {
     originalBegin.acall([this, _raw]);
     if (this.State == null) return;
+
+    this.State.player_legal_projection = null;
+    this.State.player_legal_projection_error <- null;
+    try
+    {
+        this.State.player_legal_projection = ::BBAGENT_PlayerLegal.build(_raw);
+    }
+    catch (error)
+    {
+        this.State.player_legal_projection_error = error.tostring();
+    }
 
     local filtered = [];
     foreach (job in this.State.jobs)
@@ -36,7 +47,30 @@ sandbox._processJob = function(_job)
         );
     }
 
-    local ret = originalProcessJob.acall([this, _job]);
+    local ret = null;
+    if (wasPlayerLegalBuild && this.State != null)
+    {
+        if (this.State.player_legal_projection != null)
+        {
+            this._enqueueProjectionRecords(this.State.player_legal_projection);
+        }
+        else
+        {
+            this._enqueue(
+                "player_legal_meta",
+                "player_legal_meta",
+                "root",
+                {
+                    __capture_error = this.State.player_legal_projection_error,
+                    job_kind = _job.kind
+                }
+            );
+        }
+    }
+    else
+    {
+        ret = originalProcessJob.acall([this, _job]);
+    }
     if (wasPlayerLegalBuild && this.State != null)
     {
         this.State.player_legal_phase_complete = true;
@@ -73,5 +107,6 @@ sandbox._enqueueManifestJobs = function()
 
 ::logInfo(
     "[BB-Agent Combat Sandbox] player_legal_phase_loaded"
-    + " release=oracle_queue_drained manifest_after_player_legal=true"
+    + " snapshot=decision_boundary release=oracle_queue_drained"
+    + " manifest_after_player_legal=true"
 );

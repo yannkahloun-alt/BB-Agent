@@ -17,7 +17,18 @@ def _text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_player_legal_phase_releases_only_after_oracle_queue_drains() -> None:
+def test_player_legal_snapshot_is_frozen_before_oracle_queue_drains() -> None:
+    text = _text(PLAYER_LEGAL_PHASE)
+    begin = text.index("sandbox.begin = function(_raw)")
+    snapshot = text.index("::BBAGENT_PlayerLegal.build(_raw)", begin)
+    release = text.index("local originalEnqueueManifestJobs")
+    assert begin < snapshot < release
+    assert "this.State.player_legal_projection_error <- null" in text
+    assert "this.State.player_legal_projection = null" in text
+    assert "player_legal_publication_deferred=last" in _text(ORACLE_FIRST)
+
+
+def test_player_legal_phase_publishes_only_after_oracle_queue_drains() -> None:
     text = _text(PLAYER_LEGAL_PHASE)
     assert 'if (job.kind == "player_legal_build") continue;' in text
     assert "player_legal_phase_scheduled <- false" in text
@@ -27,6 +38,9 @@ def test_player_legal_phase_releases_only_after_oracle_queue_drains() -> None:
     assert "if (!this.State.player_legal_phase_scheduled)" in text
     assert 'this._enqueue("player_legal_build", null, null, null, null, false);' in text
     assert "oracle_jobs_drained=true" in text
+    assert "this._enqueueProjectionRecords(this.State.player_legal_projection);" in text
+    process = text[text.index("sandbox._processJob = function(_job)") :]
+    assert "::BBAGENT_PlayerLegal.build" not in process
     assert "this.State.player_legal_phase_complete = true;" in text
     assert "return originalEnqueueManifestJobs.acall([this]);" in text
 
@@ -34,7 +48,7 @@ def test_player_legal_phase_releases_only_after_oracle_queue_drains() -> None:
 def test_player_legal_build_has_coarse_responsiveness_markers() -> None:
     text = _text(PLAYER_LEGAL_PHASE)
     begin = text.index("player_legal_build_begin")
-    call = text.index("originalProcessJob.acall([this, _job])")
+    call = text.index("this._enqueueProjectionRecords(this.State.player_legal_projection)")
     end = text.index("player_legal_build_end")
     assert begin < call < end
     assert 'local wasPlayerLegalBuild = _job.kind == "player_legal_build";' in text
