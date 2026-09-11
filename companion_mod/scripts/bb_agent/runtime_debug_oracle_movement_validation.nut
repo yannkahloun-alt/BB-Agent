@@ -163,10 +163,11 @@ oracle._movementValidationSample <- function(_raw, _projection, _sample)
                 active.getActionPoints(),
                 active.getFatigueMax() - active.getFatigue()
             );
-            local nativePath = affordances._navigatorPath(
+            local nativePath = affordances._navigatorPathForProjection(
                 navigator,
                 origin,
-                destination
+                destination,
+                _projection
             );
             foreach (tile in nativePath)
                 nativePathTileIds.push(legal.tileID(tile));

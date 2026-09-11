@@ -165,7 +165,9 @@ def test_affordance_acquisition_keeps_native_probe_out_of_production_graph() -> 
     assert "navigator.getCostForPath(" not in graph
 
     assert "native movement path leaves the player-legal canonical map" in hardening
-    assert "this.CurrentProjection.runtime.tile_records" in hardening
+    assert "_projection.runtime.tile_records" in hardening
+    assert "this._navigatorPathForProjection(" in hardening
+    assert "this.CurrentProjection" in hardening
     for cost in (
         "ap_cost",
         "fatigue_cost",

@@ -5,6 +5,7 @@ ROOT = Path(__file__).resolve().parents[1]
 SCRIPT_ROOT = ROOT / "companion_mod/scripts/bb_agent"
 PRELOAD = ROOT / "companion_mod/scripts/!mods_preload/mod_bb_agent_capture.nut"
 VALIDATION = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation.nut"
+AFFORDANCE_HARDENING = SCRIPT_ROOT / "affordance_export_hardening.nut"
 FATIGUE = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_fatigue.nut"
 LEGALITY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_legality.nut"
 GEOMETRY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_geometry.nut"
@@ -69,7 +70,8 @@ def test_native_calls_only_exist_in_debug_validation_sample_path() -> None:
     assert "navigator.getCostForPath(" in sample
     assert "reachability_agreement" in sample
     assert "cost_agreement" in sample
-    assert "affordances._navigatorPath(" in sample
+    assert "affordances._navigatorPathForProjection(" in sample
+    assert "destination,\n                _projection" in sample
     assert "native_path_tile_ids" in sample
 
     production_graph = (SCRIPT_ROOT / "runtime_movement_graph_compat.nut").read_text(
@@ -77,6 +79,16 @@ def test_native_calls_only_exist_in_debug_validation_sample_path() -> None:
     )
     assert "findPath(" not in production_graph
     assert "getCostForPath(" not in production_graph
+
+
+def test_debug_native_path_read_supplies_player_legal_projection_explicitly() -> None:
+    hardening = AFFORDANCE_HARDENING.read_text(encoding="utf-8")
+    assert "affordances._navigatorPathForProjection <- function(" in hardening
+    assert "if (_projection == null)" in hardening
+    assert "_projection.runtime.tile_records" in hardening
+    assert "this._navigatorPathForProjection(" in hardening
+    assert "this.CurrentProjection" in hardening
+    assert "this.CurrentProjection.runtime.tile_records" not in hardening
 
 
 def test_native_validation_distinguishes_path_and_execution_fatigue() -> None:

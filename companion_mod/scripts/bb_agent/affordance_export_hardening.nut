@@ -7,18 +7,33 @@ affordances.CurrentProjection <- null;
 // already exists in the player-legal canonical map. Hidden raw map access must
 // not be used as an implicit path-only escape hatch.
 local originalNavigatorPath = affordances._navigatorPath;
-affordances._navigatorPath = function(_navigator, _origin, _destination)
+affordances._navigatorPathForProjection <- function(
+    _navigator,
+    _origin,
+    _destination,
+    _projection
+)
 {
     local path = originalNavigatorPath.acall([this, _navigator, _origin, _destination]);
-    if (this.CurrentProjection == null)
+    if (_projection == null)
         throw "movement path validation has no player-legal projection";
     foreach (tile in path)
     {
         local tileId = legal.tileID(tile);
-        if (!(tileId in this.CurrentProjection.runtime.tile_records))
+        if (!(tileId in _projection.runtime.tile_records))
             throw "native movement path leaves the player-legal canonical map";
     }
     return path;
+}
+
+affordances._navigatorPath = function(_navigator, _origin, _destination)
+{
+    return this._navigatorPathForProjection(
+        _navigator,
+        _origin,
+        _destination,
+        this.CurrentProjection
+    );
 }
 
 local originalAcquire = affordances.acquire;
