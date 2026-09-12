@@ -143,6 +143,8 @@ def test_native_prefix_path_reconstruction_is_staged_and_debug_only() -> None:
         'foreach (name in ["First", "SecondLastBeforeEnd", "LastBeforeEnd", "End"])',
         "native_prefix_observations",
         "native_path_tile_ids",
+        "bounded_multistep_control",
+        "geometry_or_cost_mismatch",
         "_canonicalNeighbors(",
         "native movement prefix revisited an earlier path endpoint",
         "overlapping positional references",

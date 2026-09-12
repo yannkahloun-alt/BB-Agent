@@ -143,6 +143,6 @@ def test_validator_verifies_diagnostic_json_on_disk() -> None:
     assert "if ($artifact.Length -le 0)" in text
     assert "PRODUCTION VALIDATION ARTIFACT:" in text
     assert "Diagnostic JSON verified on disk:" in text
-    assert "companion_version -NotePropertyValue '0.2.46'" in text
+    assert "companion_version -NotePropertyValue '0.2.47'" in text
     assert "source_commit -NotePropertyValue $head" in text
 # fmt: on

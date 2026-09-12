@@ -4,8 +4,8 @@ local oracle = ::BBAGENT_DebugOracle;
 local sandbox = ::BBAGENT_CombatSandbox;
 
 // Phase-D diagnostic only. At most one getCostForPath() prefix query is made
-// per sandbox update, and only for a capped exact-visible sample whose native
-// path geometry differs from the player-legal model summary.
+// per sandbox update, and only for a capped exact-visible mismatch or the
+// single farthest-reachable multi-step control sample.
 oracle.NativePrefixBudgetCap <- 32;
 
 oracle._clearNativePrefixNavigator <- function(_navigator)
@@ -90,11 +90,20 @@ oracle._stageMovementValidationNativePath <- function(
             || ("endpoint_agreement" in _sample
                 && !_sample.endpoint_agreement)
             || !_sample.cost_agreement);
-    if (!mismatch)
+    local control = !mismatch
+        && _sample.role == "farthest_reachable"
+        && _sample.model_reachable
+        && _sample.native_complete
+        && typeof _sample.native_tiles == "integer"
+        && _sample.native_tiles > 1;
+    if (!mismatch && !control)
     {
         _sample.native_path_reconstruction_status <- "not_requested_geometry_agrees";
         return false;
     }
+    _sample.native_path_reconstruction_reason <- mismatch
+        ? "geometry_or_cost_mismatch"
+        : "bounded_multistep_control";
     if (typeof _sample.native_ap != "integer"
         || _sample.native_ap <= 0
         || _sample.native_ap > this.NativePrefixBudgetCap)
