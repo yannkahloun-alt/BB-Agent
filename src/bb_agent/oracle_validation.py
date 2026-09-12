@@ -5,6 +5,70 @@ from __future__ import annotations
 from typing import Any
 
 
+def reconstruct_native_prefix_path(
+    *,
+    origin_tile_id: str,
+    destination_tile_id: str,
+    prefixes: list[dict[str, Any]],
+    neighbor_ids: dict[str, list[str]],
+) -> list[str]:
+    """Validate and merge ordered native cost-prefix path anchors."""
+
+    path: list[str] = []
+    seen_positions = {origin_tile_id: 0}
+    last = origin_tile_id
+    for prefix in prefixes:
+        tiles = prefix.get("tiles")
+        if isinstance(tiles, bool) or not isinstance(tiles, int) or tiles < 0:
+            raise ValueError("native movement prefix has an invalid movement sentinel")
+        if tiles == 0:
+            continue
+        end = prefix.get("end_tile_id")
+        if not isinstance(end, str):
+            raise ValueError("native movement prefix advanced without an endpoint")
+        if end in seen_positions and end != last:
+            raise ValueError(
+                "native movement prefix revisited an earlier path endpoint"
+            )
+        anchors = prefix.get("anchor_tile_ids")
+        if not isinstance(anchors, list) or not anchors:
+            raise ValueError("native movement prefix exposed no path anchors")
+        observation_anchor_ids: set[str] = set()
+        for tile_id in anchors:
+            if not isinstance(tile_id, str):
+                raise ValueError(
+                    "native movement prefix exposed an invalid path anchor"
+                )
+            # Named native fields are overlapping positional references, not
+            # an ordered list. Short paths can expose the origin after First.
+            if tile_id in observation_anchor_ids:
+                continue
+            observation_anchor_ids.add(tile_id)
+            if tile_id in seen_positions:
+                continue
+            if tile_id not in neighbor_ids:
+                raise ValueError("native movement path leaves the player-legal map")
+            if tile_id not in neighbor_ids.get(last, []):
+                raise ValueError(
+                    "native movement cost anchors left a canonical path gap"
+                )
+            path.append(tile_id)
+            position = len(path)
+            seen_positions[tile_id] = position
+            last = tile_id
+
+    if prefixes:
+        terminal_complete = prefixes[-1].get("is_complete")
+        if terminal_complete is not True:
+            raise ValueError("terminal native movement prefix is not complete")
+
+    if not path:
+        raise ValueError("native movement prefixes produced no ordered path steps")
+    if last != destination_tile_id:
+        raise ValueError("reconstructed native movement path has the wrong destination")
+    return path
+
+
 def summarize_ally_jump_probe(snapshot: dict[str, Any]) -> dict[str, Any]:
     """Compare the sandbox ally-jump native sample with modeled step totals."""
 
@@ -148,6 +212,16 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
         and sample.get("native_complete") is True
         and sample.get("endpoint_agreement") is False
     )
+    reconstructed_paths = sum(
+        1
+        for sample in exact_samples
+        if sample.get("native_path_reconstruction_status") == "complete"
+    )
+    path_reconstruction_errors = sum(
+        1
+        for sample in exact_samples
+        if sample.get("native_path_reconstruction_status") == "error"
+    )
 
     return {
         "sample_count": len(samples),
@@ -163,6 +237,8 @@ def summarize_movement_validation(snapshot: dict[str, Any]) -> dict[str, Any]:
         "fatigue_semantics_neither_count": fatigue_semantics_neither,
         "tile_count_mismatch_count": tile_count_mismatches,
         "endpoint_mismatch_count": endpoint_mismatches,
+        "native_path_reconstructed_count": reconstructed_paths,
+        "native_path_reconstruction_error_count": path_reconstruction_errors,
         "remembered_sample_count": len(remembered_samples),
         "remembered_roles": [sample.get("role") for sample in remembered_samples],
         "remembered_native_found_count": sum(

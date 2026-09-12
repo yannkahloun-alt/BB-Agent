@@ -1,6 +1,7 @@
 import pytest
 
 from bb_agent.oracle_validation import (
+    reconstruct_native_prefix_path,
     summarize_ally_jump_probe,
     summarize_movement_validation,
 )
@@ -140,6 +141,8 @@ def test_movement_validation_aggregates_agreement_and_mismatches() -> None:
     assert summary["fatigue_semantics_neither_count"] == 1
     assert summary["tile_count_mismatch_count"] == 1
     assert summary["endpoint_mismatch_count"] == 1
+    assert summary["native_path_reconstructed_count"] == 0
+    assert summary["native_path_reconstruction_error_count"] == 0
     assert summary["remembered_sample_count"] == 1
     assert summary["remembered_roles"] == ["remembered_nearest"]
     assert summary["remembered_native_found_count"] == 1
@@ -161,3 +164,158 @@ def test_movement_validation_reports_sample_errors() -> None:
     assert summary["remembered_sample_count"] == 0
     assert summary["error_count"] == 1
     assert summary["errors"] == ["boom"]
+
+
+def test_reconstructs_captured_native_path_from_cost_prefix_anchors() -> None:
+    prefixes = [
+        {
+            "tiles": 0,
+            "is_complete": False,
+            "end_tile_id": "tile:12:18",
+            "anchor_tile_ids": [],
+        },
+        {
+            "tiles": 1,
+            "is_complete": False,
+            "end_tile_id": "tile:11:17",
+            "anchor_tile_ids": ["tile:11:17"],
+        },
+        {
+            "tiles": 2,
+            "is_complete": False,
+            "end_tile_id": "tile:10:17",
+            "anchor_tile_ids": ["tile:11:17", "tile:10:17"],
+        },
+        {
+            "tiles": 3,
+            "is_complete": False,
+            "end_tile_id": "tile:10:16",
+            "anchor_tile_ids": [
+                "tile:11:17",
+                "tile:10:17",
+                "tile:10:16",
+            ],
+        },
+        {
+            "tiles": 4,
+            "is_complete": True,
+            "end_tile_id": "tile:10:15",
+            "anchor_tile_ids": [
+                "tile:11:17",
+                "tile:10:17",
+                "tile:10:16",
+                "tile:10:15",
+            ],
+        },
+    ]
+    neighbors = {
+        "tile:12:18": ["tile:11:17"],
+        "tile:11:17": ["tile:10:17"],
+        "tile:10:17": ["tile:10:16"],
+        "tile:10:16": ["tile:10:15"],
+        "tile:10:15": [],
+    }
+
+    assert reconstruct_native_prefix_path(
+        origin_tile_id="tile:12:18",
+        destination_tile_id="tile:10:15",
+        prefixes=prefixes,
+        neighbor_ids=neighbors,
+    ) == ["tile:11:17", "tile:10:17", "tile:10:16", "tile:10:15"]
+
+
+def test_reconstructs_short_path_with_overlapping_native_anchor_aliases() -> None:
+    assert reconstruct_native_prefix_path(
+        origin_tile_id="tile:a",
+        destination_tile_id="tile:c",
+        prefixes=[
+            {
+                "tiles": 0,
+                "is_complete": False,
+                "end_tile_id": "tile:a",
+                "anchor_tile_ids": [],
+            },
+            {
+                "tiles": 2,
+                "is_complete": True,
+                "end_tile_id": "tile:c",
+                "anchor_tile_ids": [
+                    "tile:b",
+                    "tile:a",
+                    "tile:b",
+                    "tile:c",
+                ],
+            },
+        ],
+        neighbor_ids={
+            "tile:a": ["tile:b"],
+            "tile:b": ["tile:c"],
+            "tile:c": [],
+        },
+    ) == ["tile:b", "tile:c"]
+
+
+@pytest.mark.parametrize(
+    ("prefixes", "match"),
+    [
+        (
+            [
+                {
+                    "tiles": 1,
+                    "is_complete": True,
+                    "end_tile_id": "tile:c",
+                    "anchor_tile_ids": ["tile:c"],
+                }
+            ],
+            "canonical path gap",
+        ),
+        (
+            [
+                {
+                    "tiles": 1,
+                    "is_complete": False,
+                    "end_tile_id": "tile:b",
+                    "anchor_tile_ids": ["tile:b"],
+                },
+                {
+                    "tiles": 2,
+                    "is_complete": False,
+                    "end_tile_id": "tile:c",
+                    "anchor_tile_ids": ["tile:b", "tile:c"],
+                },
+                {
+                    "tiles": 1,
+                    "is_complete": True,
+                    "end_tile_id": "tile:b",
+                    "anchor_tile_ids": ["tile:b"],
+                },
+            ],
+            "revisited an earlier path endpoint",
+        ),
+        (
+            [
+                {
+                    "tiles": 1,
+                    "is_complete": False,
+                    "end_tile_id": "tile:b",
+                    "anchor_tile_ids": ["tile:b"],
+                }
+            ],
+            "terminal native movement prefix is not complete",
+        ),
+    ],
+)
+def test_native_prefix_reconstruction_rejects_gaps_and_loops(
+    prefixes: list[dict[str, object]], match: str
+) -> None:
+    with pytest.raises(ValueError, match=match):
+        reconstruct_native_prefix_path(
+            origin_tile_id="tile:a",
+            destination_tile_id="tile:c",
+            prefixes=prefixes,
+            neighbor_ids={
+                "tile:a": ["tile:b"],
+                "tile:b": ["tile:c"],
+                "tile:c": [],
+            },
+        )

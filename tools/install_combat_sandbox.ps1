@@ -50,7 +50,7 @@ try {
     $zip.Dispose()
 }
 
-if ($preload -notmatch 'Version = "0\.2\.43"') { throw 'Wrong BB-Agent companion version' }
+if ($preload -notmatch 'Version = "0\.2\.47"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_player_legal_blocking_compat') { throw 'Player-legal blocker projection missing' }
 if ($preload -notmatch 'runtime_player_legal_actor_enumeration_compat') { throw 'Player-legal actor enumeration compatibility missing' }
 if ($preload -notmatch 'runtime_player_legal_turn_list_fastpath') { throw 'Player-legal turn-list fast path missing' }
@@ -73,6 +73,7 @@ if ($preload -notmatch 'runtime_debug_oracle_movement_validation') { throw 'Stag
 if ($preload -notmatch 'runtime_debug_oracle_movement_validation_fatigue') { throw 'Native movement fatigue-semantics validation missing' }
 if ($preload -notmatch 'runtime_debug_oracle_movement_validation_legality') { throw 'Native movement legality validation missing' }
 if ($preload -notmatch 'runtime_debug_oracle_movement_validation_geometry') { throw 'Native movement geometry validation missing' }
+if ($preload -notmatch 'runtime_debug_oracle_native_prefix_path') { throw 'Staged native prefix path reconstruction missing' }
 if ($preload -notmatch 'runtime_debug_oracle_movement_validation_remembered') { throw 'Remembered-terrain movement validation missing' }
 foreach ($forbidden in @(
     'runtime_combat_sandbox_incremental',
@@ -101,7 +102,7 @@ if ($installed.Count -ne 2) {
 
 Write-Host ''
 Write-Host 'FULL COMBAT SANDBOX INSTALLED'
-Write-Host '  companion: 0.2.43'
+Write-Host '  companion: 0.2.47'
 Write-Host '  capture mode: true two-phase oracle-first staged discovery + capture'
 Write-Host '  player-legal projection: released only after the omniscient sandbox queue drains'
 Write-Host '  player-legal actors: tactical turn-list source; no native EntityManager.getAllInstances scan'
@@ -113,6 +114,7 @@ Write-Host '  ally-jump probe: one DEBUG_ORACLE native sample, roster-scanned wh
 Write-Host '  native movement validation: <=6 exact-visible + <=2 remembered DEBUG samples, one native call per update'
 Write-Host '  native validation split: legality, resource reachability, preview cost, fatigue semantics'
 Write-Host '  native geometry summary: model/native tile-count plus first/end endpoint comparison'
+Write-Host '  native Phase-D path: mismatched samples sweep one cost-prefix budget per update'
 Write-Host '  remembered scope: reuses incremental tile discovery; no extra full-map scan'
 Write-Host '  native fatigue semantics: compare path-search fatigue and execution fatigue independently'
 Write-Host '  duplicate runtime collections: summarized as bounded actor/skill/item references'

@@ -44,7 +44,7 @@ try {
     $zip.Dispose()
 }
 
-if ($preload -notmatch 'Version = "0\.2\.42"') { throw 'Wrong BB-Agent companion version' }
+if ($preload -notmatch 'Version = "0\.2\.47"') { throw 'Wrong BB-Agent companion version' }
 if ($preload -notmatch 'runtime_player_legal_numeric_compat') {
     throw 'PLAYER_LEGAL numeric compatibility layer missing'
 }
@@ -66,7 +66,7 @@ if ($installed.Count -ne 1 -or $installed[0].Name -ne 'mod_bb_agent_capture.zip'
 
 Write-Host ''
 Write-Host 'BB-AGENT PRODUCTION LIVE VALIDATION INSTALLED'
-Write-Host '  companion: 0.2.43'
+Write-Host '  companion: 0.2.47'
 Write-Host '  DEBUG_ORACLE overlay: NOT installed'
 Write-Host '  PLAYER_LEGAL numeric normalization: source-proven whole numbers only'
 Write-Host '  READY timing: production DECISION_READY path only'

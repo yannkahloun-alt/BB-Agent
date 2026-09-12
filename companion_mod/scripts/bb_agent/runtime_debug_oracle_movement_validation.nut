@@ -149,10 +149,10 @@ oracle._movementValidationSample <- function(_raw, _projection, _sample)
     local found = false;
     local costs = null;
 
-    navigator.clearPath();
-    navigator.clearVisualisation();
     try
     {
+        navigator.clearPath();
+        navigator.clearVisualisation();
         found = navigator.findPath(origin, destination, settings, 0);
         if (found)
         {
@@ -168,8 +168,6 @@ oracle._movementValidationSample <- function(_raw, _projection, _sample)
     {
         _sample.error <- error.tostring();
     }
-    navigator.clearPath();
-    navigator.clearVisualisation();
 
     _sample.native_found <- found;
     _sample.native_complete <- costs != null
@@ -202,6 +200,9 @@ oracle._movementValidationSample <- function(_raw, _projection, _sample)
         && _sample.native_complete
         && _sample.native_ap == _sample.model_ap
         && _sample.native_fatigue == _sample.model_fatigue;
+    // A later DEBUG_ORACLE layer may consume the already-stored native path
+    // incrementally. This runtime-only value is removed before record emission.
+    _sample._native_prefix_settings <- settings;
     return _sample;
 };
 
@@ -226,6 +227,40 @@ sandbox._processJob = function(_job)
             this.State.player_legal_projection,
             _job.target
         );
+        local staged = false;
+        try
+        {
+            staged = "_stageMovementValidationNativePath" in oracle
+                && oracle._stageMovementValidationNativePath(
+                    this,
+                    _job,
+                    sample,
+                    this.State.raw,
+                    this.State.player_legal_projection
+                );
+        }
+        catch (error)
+        {
+            if ("_abortMovementValidationNativePath" in oracle)
+            {
+                oracle._abortMovementValidationNativePath(
+                    this,
+                    this.State.raw.Navigator
+                );
+            }
+            sample.error <- error.tostring();
+            sample.native_path_reconstruction_status <- "error";
+        }
+        if (staged) return;
+        if ("_native_prefix_settings" in sample)
+            delete sample._native_prefix_settings;
+        if ("_clearNativePrefixNavigator" in oracle)
+            oracle._clearNativePrefixNavigator(this.State.raw.Navigator);
+        else
+        {
+            try { this.State.raw.Navigator.clearPath(); } catch (_error) {}
+            try { this.State.raw.Navigator.clearVisualisation(); } catch (_error) {}
+        }
         this._emitRecord(this.State.raw, _job.section, _job.key, sample);
         return;
     }

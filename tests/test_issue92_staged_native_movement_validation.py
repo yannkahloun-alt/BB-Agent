@@ -9,6 +9,7 @@ FATIGUE = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_fatigue.nut"
 LEGALITY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_legality.nut"
 GEOMETRY = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_geometry.nut"
 REMEMBERED = SCRIPT_ROOT / "runtime_debug_oracle_movement_validation_remembered.nut"
+PREFIX_PATH = SCRIPT_ROOT / "runtime_debug_oracle_native_prefix_path.nut"
 INSTALLER = ROOT / "tools/install_combat_sandbox.ps1"
 
 
@@ -30,9 +31,19 @@ def test_native_movement_validation_loads_after_ally_probe_before_export() -> No
     fatigue = preload.index("runtime_debug_oracle_movement_validation_fatigue")
     legality = preload.index("runtime_debug_oracle_movement_validation_legality")
     geometry = preload.index("runtime_debug_oracle_movement_validation_geometry")
+    prefix_path = preload.index("runtime_debug_oracle_native_prefix_path")
     remembered = preload.index("runtime_debug_oracle_movement_validation_remembered")
     export = preload.index("scripts/bb_agent/live_export")
-    assert roster < validation < fatigue < legality < geometry < remembered < export
+    assert (
+        roster
+        < validation
+        < fatigue
+        < legality
+        < geometry
+        < prefix_path
+        < remembered
+        < export
+    )
 
 
 def test_native_movement_validation_is_debug_only_and_staged() -> None:
@@ -119,6 +130,79 @@ def test_native_validation_compares_bounded_path_geometry_summaries() -> None:
         assert required in text
     assert "findPath(" not in text
     assert "getCostForPath(" not in text
+
+
+def test_native_prefix_path_reconstruction_is_staged_and_debug_only() -> None:
+    text = PREFIX_PATH.read_text(encoding="utf-8")
+    for required in (
+        "NativePrefixBudgetCap <- 32",
+        'kind = "movement_validation_native_prefix"',
+        "State.jobs.insert(",
+        "State.cursor,",
+        "_context.navigator.getCostForPath(",
+        'foreach (name in ["First", "SecondLastBeforeEnd", "LastBeforeEnd", "End"])',
+        "native_prefix_observations",
+        "native_path_tile_ids",
+        "bounded_multistep_control",
+        "geometry_or_cost_mismatch",
+        "_canonicalNeighbors(",
+        "native movement prefix revisited an earlier path endpoint",
+        "overlapping positional references",
+        "terminal native movement prefix is not complete",
+        "originalSandboxCancel",
+        "_clearNativePrefixNavigator",
+        "try { _navigator.clearPath(); } catch (_error) {}",
+        "try { _navigator.clearVisualisation(); } catch (_error) {}",
+        "this.NativePrefixContext = null;",
+        "_abortMovementValidationNativePath",
+        "one_prefix_query_per_update=true",
+    ):
+        assert required in text
+    assert "findPath(" not in text
+    assert ".getPath(" not in text
+    assert ".travel(" not in text
+    assert "buildVisualisation(" not in text
+
+    production_graph = (SCRIPT_ROOT / "runtime_movement_graph_compat.nut").read_text(
+        encoding="utf-8"
+    )
+    assert "getCostForPath(" not in production_graph
+
+
+def test_native_prefix_staging_registers_cleanup_before_queue_insertion() -> None:
+    text = PREFIX_PATH.read_text(encoding="utf-8")
+    stage_start = text.index("oracle._stageMovementValidationNativePath")
+    process_start = text.index("oracle._processMovementValidationNativePrefix")
+    stage = text[stage_start:process_start]
+    assert stage.index("_sandbox.NativePrefixContext = context;") < stage.index(
+        "this._insertNativePrefixJob(_sandbox, context);"
+    )
+    assert "this._abortMovementValidationNativePath(_sandbox, _raw.Navigator);" in stage
+
+    validation = VALIDATION.read_text(encoding="utf-8")
+    assert "catch (error)" in validation
+    assert "oracle._abortMovementValidationNativePath(" in validation
+    assert 'sample.native_path_reconstruction_status <- "error";' in validation
+
+
+def test_native_prefix_continuation_queue_failure_finishes_with_error() -> None:
+    text = PREFIX_PATH.read_text(encoding="utf-8")
+    process_start = text.index("oracle._processMovementValidationNativePrefix")
+    cancel_start = text.index("sandbox.NativePrefixContext <- null")
+    process = text[process_start:cancel_start]
+    continuation = process[process.index("++_context.ap_budget;") :]
+    assert "try" in continuation
+    assert "this._insertNativePrefixJob(_sandbox, _context);" in continuation
+    assert "catch (error)" in continuation
+    assert '"native prefix continuation could not be queued: "' in continuation
+    assert "this._finishNativePrefixPath(" in continuation
+
+    validation = VALIDATION.read_text(encoding="utf-8")
+    sample_start = validation.index("oracle._movementValidationSample <- function")
+    sample_try = validation.index("try", validation.index("local found", sample_start))
+    initial_clear = validation.index("navigator.clearPath();", sample_try)
+    sample_catch = validation.index("catch (error)", sample_try)
+    assert sample_try < initial_clear < sample_catch
 
 
 def test_remembered_validation_reuses_incremental_tile_discovery() -> None:
